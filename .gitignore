@@ -1,0 +1,19 @@
+# Rust
+/target/
+
+# Nota: Cargo.lock va TRACCIATO (applicazione binaria)
+
+# Node / client
+node_modules/
+client/dist/
+client/.svelte-kit/
+
+# Runtime: dati di gioco locali dell'host (piano D18/D20)
+saves/
+profiles.json
+
+# Code graph MCP (tokensave)
+.tokensave/
+
+# OS / editor
+.DS_Store
