@@ -2,7 +2,7 @@
 
 > **Sei un agente (o un umano) appena entrato in questo progetto?** Questo file è il punto d'ingresso ufficiale (decisione D23): leggilo per orientarti, poi apri il piano per i dettagli tecnici.
 
-**Aggiornato:** 3 novembre 2026 — repo creato; piano **v1.3**; **Fase 0+1 completata** (pipeline coding→reviewer, rework applicato e verificato dal planner).
+**Aggiornato:** 3 novembre 2026 (sera) — piano **v1.3**; **Fase 0+1+2 completate** (pipeline coding→reviewer; Fase 2 chiusa con review + rework mirato F1–F8 verificato dal planner).
 **Repo:** GitHub **privato** `kidgvbs/ciufciuf` — clone canonico: `~/Rust/ciufciuf`.
 
 ---
@@ -24,7 +24,18 @@ Primo traguardo: mappa **USA** (`usa_v2`, regole edizione V2 2025) giocabile da 
 |---|---|
 | Piano | **v1.3, completo e vincolante** — `docs/plan/ciufciuf-v1.3.md`. Punti aperti (§14): chiusi; restano solo i ruleset futuri (1910/Mega/Big Cities), rinviati per design |
 | Fase 0+1 | **Completata e verificata** (3/11/2026): workspace Cargo, `ttr-proto` (contratto §7 completo con binding ts-rs), dati USA `usa_v2` (36 città, 100 segmenti, 22 doppie, 33 biglietti — 7 check di `ttr-validate` verdi), motore `ttr-core` (regole USA complete, macchina a stati §6, RNG seeded + replay deterministico, `legalMoves` per-fase, CLI `ttr-cli`). 66 test verdi + fuzzing 1000 partite con invarianti. Review: 2 fix veri applicati (variante WS `DRAW_TICKETS`, gate per-fase di legalMoves) + test edge "trigger ultimo dell'ordine" |
-| Prossimo passo | Pacchetto **Fase 2** alla pipeline coding→reviewer: `ttr-server` — WebSocket + protocollo §7 + lobby + QR multi-IP + profili (nome+colore) + reconnect/snapshot + persistenza JSON in `saves/` (D18). Backlog noto per la Fase 2: mapping `EngineError`→`ErrorReason`, modulo conversione core↔proto |
+| Fase 2 | **Completata e verificata** (3/11/2026 sera): crate `ttr-server` — attore per game (`GameCommand` via mpsc), WS §7 con envelope `ServerMessage`, lobby REST (7 endpoint, seed opzionale per test), QR multi-IP + `/api/lan`, reconnect/`SNAPSHOT`, persistenza D18 (`saves/` atomic write, replay, `resume_game`), auth minima LAN (E9). Contratto proto esteso E1–E8 + binding ts rigenerati; unico fix al core: E10 (`update_ticket_completion` mid-game, con golden test). Commit: `cb3d059` + `14c84fc` + rework `de8ff94` (F1 auth WS, F2 chiusura socket su token errato, F3 resume per player_id, F4 lobby via attore `GetInfo`, F5 dedup `client_seq=0`, F6 disconnect per connessione, F7 log save, F8 golden E10 + test §9). **99 test verdi**, clippy `-D warnings` pulito |
+| Prossimo passo | Pacchetto **Fase 3** alla pipeline coding→reviewer: client **Svelte 5** (D22) — viste TV (mappa) + controller telefono, SDK dai binding `crates/ttr-proto/bindings/`, connessione WS con reconnect/`SNAPSHOT` su `visibilitychange` (D17) |
+
+### Decisioni wire della Fase 2 (registro E1–E10 — spec completa: `docs/packages/fase2-ttr-server.md`)
+
+- **E1** envelope `ServerMessage`: tag `type` + `payload` annidato; `ErrorPayload` al posto di `ErrorMessage`.
+- **E2** `GameState::WaitingForPlayers` pre-start. **E3** `PrivateState.offered_tickets` con guardie (draft iniziale vs `TicketChoice` mid-game solo current player).
+- **E4** `PublicState.final_scores: Option<Vec<FinalScoreInfo>>` + `longest_path_player_ids` a fine partita.
+- **E5** `visible_deck: Vec<Option<CardColor>>` (indici allineati alle face-up). **E6** `client_seq` su tutti i payload inbound + `PrivateState.seq` monotono per giocatore su ogni unicast (dedup idempotenza, survives reconnect).
+- **E7** `Snapshot.private: Option<PrivateState>` (`None` = spettatore). **E8** `ErrorReason` esteso con `GameNotFound`/`Unauthorized`/`GameFull`/`NameTaken`.
+- **E9** auth minima LAN: playerId+token (uuid v4) da REST, `hostToken` per start, WS auth via query string; azioni inbound autorizzate dall'identità della **connessione**, mai dal payload.
+- **E10** unico intervento consentito a `ttr-core`: `update_ticket_completion` in `handle_mid_game_choice` (biglietti mid-game già completati prima della scelta).
 
 **Regola di manutenzione: chi completa uno step o prende una decisione, aggiorna questo RECAP.**
 
@@ -90,7 +101,7 @@ ciufciuf/
 - **Planner** (orchestra, confeziona pacchetti di contesto) → **coding** (implementa + self-check: build/test/lint prima dell'handoff) → **reviewer** (review diff-based: correttezza, memory leak, errori, logica; non modifica). Rework mirato se la review trova problemi.
 - Prima di scrivere codice: leggere le sezioni del piano citate dal pacchetto (di solito §3 regole, §4 dati, §6 stati, §7 protocollo).
 - **Aggiornare questo RECAP** a ogni decisione o step completato.
-- tokensave non è inizializzato qui (il repo ha solo documentazione): quando arriva il primo codice, eseguire `tokensave init` + `tokensave sync` dalla root (`.tokensave/` è già nel `.gitignore`).
+- tokensave è inizializzato in questo repo: dopo modifiche al codice eseguire `tokensave sync` dalla root (`.tokensave/` è nel `.gitignore`).
 
 ## 8. FAQ rapida
 
