@@ -318,7 +318,7 @@ impl Engine {
 
     /// Aggiorna il completamento dei biglietti per un giocatore
     /// basandosi sulla connettività corrente.
-    fn update_ticket_completion(&mut self, player_index: usize) {
+    pub(crate) fn update_ticket_completion(&mut self, player_index: usize) {
         let ticket_ids: Vec<(String, String, String)> = self.players[player_index]
             .tickets
             .keys()

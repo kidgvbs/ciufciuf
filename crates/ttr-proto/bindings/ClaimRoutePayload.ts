@@ -5,4 +5,4 @@ export type ClaimRoutePayload = { player_id: string, route_id: string,
 /**
  * Suggerimento: il server valida e risolve il pagamento (locomotive automatiche).
  */
-cards_discarded: Array<CardColor>, };
+cards_discarded: Array<CardColor>, client_seq: bigint | null, };

@@ -58,6 +58,8 @@ pub enum PlayerColor {
 #[ts(export)]
 #[non_exhaustive]
 pub enum GameState {
+    /// Lobby: in attesa di giocatori. I client collegati vedono i join in tempo reale.
+    WaitingForPlayers,
     /// Draft iniziale biglietti — tutti in parallelo.
     InitialDraft,
     /// Turno normale: il giocatore sceglie una delle 3 (o 4 in Europe) azioni.
@@ -75,6 +77,8 @@ pub enum GameState {
     /// Partita terminata, schermata punteggi.
     GameOver,
 }
+
+// ── Messaggi inbound (client → server) ──────────────────────────────
 
 /// Azione inbound (client → server). Messaggio inviato su `game/{gameId}/action`.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -103,6 +107,9 @@ pub enum InboundAction {
 pub struct DrawCardPayload {
     pub player_id: String,
     pub source: DrawSource,
+    /// Numero di sequenza client per idempotenza (E6). `None` = client semplice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -117,6 +124,8 @@ pub enum DrawSource {
 #[ts(export)]
 pub struct DrawTicketsPayload {
     pub player_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -125,6 +134,8 @@ pub struct ChooseTicketsPayload {
     pub player_id: String,
     /// Id dei biglietti da tenere (in ordine lessicografico).
     pub keep: Vec<TicketId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -134,17 +145,45 @@ pub struct ClaimRoutePayload {
     pub route_id: RouteId,
     /// Suggerimento: il server valida e risolve il pagamento (locomotive automatiche).
     pub cards_discarded: Vec<CardColor>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct RequestSnapshotPayload {
     pub player_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_seq: Option<u64>,
 }
 
-// ── Messaggi outbound ───────────────────────────────────────────────
+// ── Envelope outbound (E1) ──────────────────────────────────────────
 
-/// Broadcast pubblico: `game/{gameId}/state`
+/// Messaggio outbound inviato sul WebSocket.
+///
+/// L'envelope usa adjacent tagging: `{"type":"PUBLIC_STATE","payload":{…}}`.
+/// I "canali" §7 diventano varianti di questo enum.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(tag = "type", content = "payload")]
+#[ts(export)]
+pub enum ServerMessage {
+    /// Broadcast pubblico a tutti i client (giocatori e spettatori).
+    #[serde(rename = "PUBLIC_STATE")]
+    PublicState(PublicState),
+    /// Unicast privato a un singolo giocatore.
+    #[serde(rename = "PRIVATE_STATE")]
+    PrivateState(PrivateState),
+    /// Errore su un'azione, inviato solo al giocatore interessato.
+    #[serde(rename = "ERROR")]
+    Error(ErrorPayload),
+    /// Snapshot completo dopo (re)connect o su richiesta.
+    #[serde(rename = "SNAPSHOT")]
+    Snapshot(Snapshot),
+}
+
+// ── Messaggi outbound: payload ──────────────────────────────────────
+
+/// Broadcast pubblico: stato della partita visibile a tutti.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PublicState {
@@ -154,13 +193,18 @@ pub struct PublicState {
     pub current_turn_player_id: Option<String>,
     pub last_round: bool,
     pub last_round_trigger_player_id: Option<String>,
-    pub visible_deck: Vec<CardColor>,
+    /// Carte scoperte: `None` = slot vuoto (E5). Gli indici di `drawFaceUp` restano allineati.
+    pub visible_deck: Vec<Option<CardColor>>,
     pub claimed_routes: Vec<ClaimedRoute>,
     pub players_summary: Vec<PlayerSummary>,
     /// Europe: in `TUNNEL_RESOLUTION`, le carte rivelate e costo extra.
     pub tunnel_reveal: Option<TunnelReveal>,
     /// Europe: stazioni costruite.
     pub stations: Vec<StationPlacement>,
+    /// Punteggi finali: `None` finché la partita non è terminata (E4).
+    pub final_scores: Option<Vec<FinalScoreInfo>>,
+    /// Vincitori del longest path: id giocatori, non indici (E4).
+    pub longest_path_player_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -198,13 +242,29 @@ pub struct StationPlacement {
     pub player_id: String,
 }
 
-/// Broadcast unicast privato: `user/{playerId}/private`
+/// Punteggio finale per giocatore (E4).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct FinalScoreInfo {
+    pub player_id: String,
+    pub route_points: i32,
+    pub ticket_completed: i32,
+    pub ticket_failed: i32,
+    pub longest_path_bonus: i32,
+    pub total: i32,
+}
+
+/// Broadcast unicast privato: stato visibile solo al giocatore interessato.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PrivateState {
+    /// Numero di sequenza outbound per idempotenza client (E6).
     pub seq: u64,
     pub hand: Vec<CardColor>,
     pub tickets: Vec<TicketInfo>,
+    /// Biglietti attualmente offerti per la scelta (E3).
+    pub offered_tickets: Vec<TicketInfo>,
     pub legal_moves: LegalMoves,
 }
 
@@ -225,21 +285,20 @@ pub struct LegalMoves {
     pub can_draw_tickets: bool,
 }
 
-/// Errore: inviato sul canale privato del giocatore.
+/// Payload di errore (dentro `ServerMessage::Error`).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
-pub struct ErrorMessage {
-    #[serde(rename = "type")]
-    pub msg_type: String,
+pub struct ErrorPayload {
     pub seq: u64,
     pub reason: ErrorReason,
     pub action_ref: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[ts(export)]
 pub enum ErrorReason {
+    // Errori di gioco (da EngineError)
     InsufficientCards,
     RouteAlreadyClaimed,
     RouteBlockedDoubleVariant,
@@ -247,17 +306,21 @@ pub enum ErrorReason {
     NotYourTurn,
     WrongState,
     TicketChoiceOutOfRange,
+    // Errori server-level (E8)
+    GameNotFound,
+    Unauthorized,
+    GameFull,
+    NameTaken,
 }
 
-/// Snapshot completo dopo (re)connect.
+/// Snapshot completo dopo (re)connect (E7).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Snapshot {
-    #[serde(rename = "type")]
-    pub msg_type: String,
     pub protocol_version: u32,
     pub public: PublicState,
-    pub private: PrivateState,
+    /// `None` per gli spettatori (table view senza `playerId`), `Some` per i giocatori.
+    pub private: Option<PrivateState>,
 }
 
 // ── Newtype id ──────────────────────────────────────────────────────
@@ -323,10 +386,19 @@ mod tests {
     }
 
     #[test]
+    fn roundtrip_game_state_waiting() {
+        let json = serde_json::to_string(&GameState::WaitingForPlayers).unwrap();
+        assert_eq!(json, "\"WAITING_FOR_PLAYERS\"");
+        let back: GameState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, GameState::WaitingForPlayers);
+    }
+
+    #[test]
     fn roundtrip_inbound_draw() {
         let msg = InboundAction::DrawTrainCard(DrawCardPayload {
             player_id: "p1".into(),
             source: DrawSource::FaceUp { index: 2 },
+            client_seq: Some(42),
         });
         let json = serde_json::to_string(&msg).unwrap();
         let back: InboundAction = serde_json::from_str(&json).unwrap();
@@ -334,9 +406,24 @@ mod tests {
             InboundAction::DrawTrainCard(p) => {
                 assert_eq!(p.player_id, "p1");
                 assert!(matches!(p.source, DrawSource::FaceUp { index: 2 }));
+                assert_eq!(p.client_seq, Some(42));
             }
             _ => panic!("wrong variant"),
         }
+    }
+
+    #[test]
+    fn roundtrip_inbound_draw_no_seq() {
+        let msg = InboundAction::DrawTrainCard(DrawCardPayload {
+            player_id: "p1".into(),
+            source: DrawSource::Deck,
+            client_seq: None,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        // client_seq=None non deve apparire nel JSON
+        assert!(!json.contains("clientSeq"));
+        assert!(json.contains("DRAW_TRAIN_CARD"));
+        let _back: InboundAction = serde_json::from_str(&json).unwrap();
     }
 
     #[test]
@@ -344,6 +431,7 @@ mod tests {
         let msg = InboundAction::ChooseTickets(ChooseTicketsPayload {
             player_id: "p2".into(),
             keep: vec!["denver_phoenix".into(), "seattle_new_york".into()],
+            client_seq: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         let back: InboundAction = serde_json::from_str(&json).unwrap();
@@ -357,6 +445,7 @@ mod tests {
     fn roundtrip_inbound_draw_tickets() {
         let msg = InboundAction::DrawTickets(DrawTicketsPayload {
             player_id: "p2".into(),
+            client_seq: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("DRAW_TICKETS"));
@@ -371,6 +460,7 @@ mod tests {
     fn roundtrip_inbound_request_snapshot() {
         let msg = InboundAction::RequestSnapshot(RequestSnapshotPayload {
             player_id: "p3".into(),
+            client_seq: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
         let _back: InboundAction = serde_json::from_str(&json).unwrap();
@@ -385,16 +475,77 @@ mod tests {
             current_turn_player_id: Some("p1".into()),
             last_round: false,
             last_round_trigger_player_id: None,
-            visible_deck: vec![CardColor::Red, CardColor::Blue, CardColor::Locomotive],
+            visible_deck: vec![
+                Some(CardColor::Red),
+                Some(CardColor::Blue),
+                Some(CardColor::Locomotive),
+            ],
             claimed_routes: vec![],
             players_summary: vec![],
             tunnel_reveal: None,
             stations: vec![],
+            final_scores: None,
+            longest_path_player_ids: None,
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
         assert_eq!(back.game_id, "g1");
         assert_eq!(back.visible_deck.len(), 3);
+        assert!(back.final_scores.is_none());
+    }
+
+    #[test]
+    fn roundtrip_public_state_final_scores() {
+        let state = PublicState {
+            game_id: "g1".into(),
+            protocol_version: 1,
+            state: GameState::GameOver,
+            current_turn_player_id: None,
+            last_round: false,
+            last_round_trigger_player_id: None,
+            visible_deck: vec![],
+            claimed_routes: vec![],
+            players_summary: vec![],
+            tunnel_reveal: None,
+            stations: vec![],
+            final_scores: Some(vec![FinalScoreInfo {
+                player_id: "p1".into(),
+                route_points: 42,
+                ticket_completed: 30,
+                ticket_failed: -10,
+                longest_path_bonus: 10,
+                total: 72,
+            }]),
+            longest_path_player_ids: Some(vec!["p1".into()]),
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let back: PublicState = serde_json::from_str(&json).unwrap();
+        let scores = back.final_scores.unwrap();
+        assert_eq!(scores[0].total, 72);
+        assert_eq!(back.longest_path_player_ids.unwrap(), vec!["p1"]);
+    }
+
+    #[test]
+    fn roundtrip_public_state_visible_deck_none() {
+        let state = PublicState {
+            game_id: "g1".into(),
+            protocol_version: 1,
+            state: GameState::PlayerTurn,
+            current_turn_player_id: Some("p1".into()),
+            last_round: false,
+            last_round_trigger_player_id: None,
+            visible_deck: vec![Some(CardColor::Red), None, Some(CardColor::Blue)],
+            claimed_routes: vec![],
+            players_summary: vec![],
+            tunnel_reveal: None,
+            stations: vec![],
+            final_scores: None,
+            longest_path_player_ids: None,
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        let back: PublicState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.visible_deck.len(), 3);
+        assert!(back.visible_deck[1].is_none());
     }
 
     #[test]
@@ -407,6 +558,7 @@ mod tests {
                 points: 11,
                 completed: false,
             }],
+            offered_tickets: vec![],
             legal_moves: LegalMoves {
                 routes: vec!["denver_phoenix_1".into()],
                 draw_face_up: vec![0, 2],
@@ -419,6 +571,7 @@ mod tests {
         assert_eq!(back.seq, 42);
         assert_eq!(back.hand.len(), 3);
         assert!(back.legal_moves.can_draw_deck);
+        assert!(back.offered_tickets.is_empty());
     }
 
     #[test]
@@ -426,5 +579,153 @@ mod tests {
         let json = "\"INSUFFICIENT_CARDS\"";
         let reason: ErrorReason = serde_json::from_str(json).unwrap();
         assert!(matches!(reason, ErrorReason::InsufficientCards));
+    }
+
+    #[test]
+    fn error_reason_new_variants() {
+        for json in [
+            "\"GAME_NOT_FOUND\"",
+            "\"UNAUTHORIZED\"",
+            "\"GAME_FULL\"",
+            "\"NAME_TAKEN\"",
+        ] {
+            let reason: ErrorReason = serde_json::from_str(json).unwrap();
+            let back_str = serde_json::to_string(&reason).unwrap();
+            assert_eq!(back_str, json, "roundtrip failed for {}", json);
+        }
+    }
+
+    #[test]
+    fn roundtrip_server_message_public() {
+        let msg = ServerMessage::PublicState(PublicState {
+            game_id: "g1".into(),
+            protocol_version: 1,
+            state: GameState::WaitingForPlayers,
+            current_turn_player_id: None,
+            last_round: false,
+            last_round_trigger_player_id: None,
+            visible_deck: vec![],
+            claimed_routes: vec![],
+            players_summary: vec![],
+            tunnel_reveal: None,
+            stations: vec![],
+            final_scores: None,
+            longest_path_player_ids: None,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"PUBLIC_STATE\""));
+        assert!(json.contains("\"payload\""));
+        let back: ServerMessage = serde_json::from_str(&json).unwrap();
+        match back {
+            ServerMessage::PublicState(ps) => {
+                assert_eq!(ps.game_id, "g1");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_server_message_error() {
+        let msg = ServerMessage::Error(ErrorPayload {
+            seq: 7,
+            reason: ErrorReason::InsufficientCards,
+            action_ref: Some("CLAIM_ROUTE denver_phoenix_1".into()),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"ERROR\""));
+        let back: ServerMessage = serde_json::from_str(&json).unwrap();
+        match back {
+            ServerMessage::Error(ep) => {
+                assert_eq!(ep.seq, 7);
+                assert_eq!(ep.action_ref.unwrap(), "CLAIM_ROUTE denver_phoenix_1");
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_server_message_snapshot() {
+        let msg = ServerMessage::Snapshot(Snapshot {
+            protocol_version: 1,
+            public: PublicState {
+                game_id: "g1".into(),
+                protocol_version: 1,
+                state: GameState::PlayerTurn,
+                current_turn_player_id: Some("p1".into()),
+                last_round: false,
+                last_round_trigger_player_id: None,
+                visible_deck: vec![],
+                claimed_routes: vec![],
+                players_summary: vec![],
+                tunnel_reveal: None,
+                stations: vec![],
+                final_scores: None,
+                longest_path_player_ids: None,
+            },
+            private: Some(PrivateState {
+                seq: 5,
+                hand: vec![],
+                tickets: vec![],
+                offered_tickets: vec![],
+                legal_moves: LegalMoves {
+                    routes: vec![],
+                    draw_face_up: vec![],
+                    can_draw_deck: false,
+                    can_draw_tickets: false,
+                },
+            }),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"SNAPSHOT\""));
+        let back: ServerMessage = serde_json::from_str(&json).unwrap();
+        match back {
+            ServerMessage::Snapshot(snap) => {
+                assert!(snap.private.is_some());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn snapshot_spectator_private_none() {
+        let msg = ServerMessage::Snapshot(Snapshot {
+            protocol_version: 1,
+            public: PublicState {
+                game_id: "g1".into(),
+                protocol_version: 1,
+                state: GameState::PlayerTurn,
+                current_turn_player_id: Some("p1".into()),
+                last_round: false,
+                last_round_trigger_player_id: None,
+                visible_deck: vec![],
+                claimed_routes: vec![],
+                players_summary: vec![],
+                tunnel_reveal: None,
+                stations: vec![],
+                final_scores: None,
+                longest_path_player_ids: None,
+            },
+            private: None,
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        let back: ServerMessage = serde_json::from_str(&json).unwrap();
+        match back {
+            ServerMessage::Snapshot(snap) => {
+                assert!(snap.private.is_none());
+            }
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_visible_deck_empty_slot() {
+        // E5: slot vuoto = null nel JSON
+        let deck: Vec<Option<CardColor>> = vec![Some(CardColor::Red), None, None];
+        let json = serde_json::to_string(&deck).unwrap();
+        assert_eq!(json, "[\"RED\",null,null]");
+        let back: Vec<Option<CardColor>> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.len(), 3);
+        assert_eq!(back[0], Some(CardColor::Red));
+        assert_eq!(back[1], None);
     }
 }

@@ -3,6 +3,10 @@ import type { PrivateState } from "./PrivateState";
 import type { PublicState } from "./PublicState";
 
 /**
- * Snapshot completo dopo (re)connect.
+ * Snapshot completo dopo (re)connect (E7).
  */
-export type Snapshot = { type: string, protocol_version: number, public: PublicState, private: PrivateState, };
+export type Snapshot = { protocol_version: number, public: PublicState, 
+/**
+ * `None` per gli spettatori (table view senza `playerId`), `Some` per i giocatori.
+ */
+private: PrivateState | null, };

@@ -2,6 +2,6 @@
 import type { ErrorReason } from "./ErrorReason";
 
 /**
- * Errore: inviato sul canale privato del giocatore.
+ * Payload di errore (dentro `ServerMessage::Error`).
  */
-export type ErrorMessage = { type: string, seq: bigint, reason: ErrorReason, action_ref: string | null, };
+export type ErrorPayload = { seq: bigint, reason: ErrorReason, action_ref: string | null, };

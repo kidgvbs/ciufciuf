@@ -235,6 +235,10 @@ impl Engine {
         // Scarti in fondo al mazzo in ordine
         self.ticket_draw_pile.extend(discarded.clone());
 
+        // Aggiorna completamento biglietti: un biglietto pescato mid-game
+        // potrebbe essere già completato dalle rotte esistenti (E10).
+        self.update_ticket_completion(player_index);
+
         let mut events = vec![GameEvent::TicketsChosen {
             player_index,
             kept: keep.to_vec(),

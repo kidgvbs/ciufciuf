@@ -6,4 +6,4 @@
  * L'enum è marcato `#[non_exhaustive]` per consentire l'aggiunta di stati
  * futuri (es. `WAITING_FOR_PLAYERS` e stati Europe) senza breaking change.
  */
-export type GameState = "INITIAL_DRAFT" | "PLAYER_TURN" | "SECOND_CARD_DRAW" | "TICKET_CHOICE" | "LAST_ROUND" | "TUNNEL_RESOLUTION" | "STATION_SCORING" | "GAME_OVER";
+export type GameState = "WAITING_FOR_PLAYERS" | "INITIAL_DRAFT" | "PLAYER_TURN" | "SECOND_CARD_DRAW" | "TICKET_CHOICE" | "LAST_ROUND" | "TUNNEL_RESOLUTION" | "STATION_SCORING" | "GAME_OVER";

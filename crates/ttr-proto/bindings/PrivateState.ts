@@ -4,6 +4,14 @@ import type { LegalMoves } from "./LegalMoves";
 import type { TicketInfo } from "./TicketInfo";
 
 /**
- * Broadcast unicast privato: `user/{playerId}/private`
+ * Broadcast unicast privato: stato visibile solo al giocatore interessato.
  */
-export type PrivateState = { seq: bigint, hand: Array<CardColor>, tickets: Array<TicketInfo>, legal_moves: LegalMoves, };
+export type PrivateState = { 
+/**
+ * Numero di sequenza outbound per idempotenza client (E6).
+ */
+seq: bigint, hand: Array<CardColor>, tickets: Array<TicketInfo>, 
+/**
+ * Biglietti attualmente offerti per la scelta (E3).
+ */
+offered_tickets: Array<TicketInfo>, legal_moves: LegalMoves, };
