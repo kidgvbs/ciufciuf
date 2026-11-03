@@ -395,10 +395,7 @@ mod tests {
 
         // TicketChoiceOutOfRange (BelowMin + TooMany + NotOffered)
         assert_eq!(
-            engine_error_to_reason(&EngineError::TicketChoiceBelowMin {
-                kept: 1,
-                min: 2
-            }),
+            engine_error_to_reason(&EngineError::TicketChoiceBelowMin { kept: 1, min: 2 }),
             ErrorReason::TicketChoiceOutOfRange
         );
         assert_eq!(
@@ -418,22 +415,19 @@ mod tests {
         // InvalidAction (tutti i restanti)
         for (err, label) in [
             (
-                EngineError::FaceUpIndexOutOfRange {
-                    index: 5,
-                    max: 4,
-                },
+                EngineError::FaceUpIndexOutOfRange { index: 5, max: 4 },
                 "FaceUpIndexOutOfRange",
             ),
-            (EngineError::LocomotiveAsSecondCard, "LocomotiveAsSecondCard"),
+            (
+                EngineError::LocomotiveAsSecondCard,
+                "LocomotiveAsSecondCard",
+            ),
             (
                 EngineError::CardNotAvailable { index: 0 },
                 "CardNotAvailable",
             ),
             (EngineError::DeckEmpty, "DeckEmpty"),
-            (
-                EngineError::PlayerNotFound { index: 42 },
-                "PlayerNotFound",
-            ),
+            (EngineError::PlayerNotFound { index: 42 }, "PlayerNotFound"),
             (
                 EngineError::RouteNotFound {
                     route_id: "nx".into(),

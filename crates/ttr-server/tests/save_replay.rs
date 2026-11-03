@@ -36,13 +36,21 @@ async fn save_and_replay() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
-    assert!(save_path.exists(), "save file {:?} deve esistere", save_path);
+    assert!(
+        save_path.exists(),
+        "save file {:?} deve esistere",
+        save_path
+    );
 
     // Legge il save file e verifica i contenuti.
     let save_json = std::fs::read_to_string(&save_path).expect("lettura save file");
     let save: serde_json::Value = serde_json::from_str(&save_json).expect("parse JSON save");
 
-    assert_eq!(save["status"].as_str().unwrap(), "completed", "status deve essere completed");
+    assert_eq!(
+        save["status"].as_str().unwrap(),
+        "completed",
+        "status deve essere completed"
+    );
     let actions = save["actions"].as_array().expect("actions array");
     assert!(!actions.is_empty(), "deve esserci almeno 1 azione nel save");
     assert_eq!(save["gameId"].as_str().unwrap(), game.game_id);
@@ -53,8 +61,8 @@ async fn save_and_replay() {
         serde_json::from_str(&save_json).expect("parse SaveData");
     let ruleset = load_usa_ruleset();
     let map_data = usa_map();
-    let replayed = ttr_server::save::replay_engine(&save_data, &map_data, &ruleset)
-        .expect("replay engine");
+    let replayed =
+        ttr_server::save::replay_engine(&save_data, &map_data, &ruleset).expect("replay engine");
 
     // Verifica che il motore riprodotto sia in GameOver.
     assert!(
@@ -65,16 +73,24 @@ async fn save_and_replay() {
 
     // Confronta i final_scores del final_public con i punteggi dei giocatori
     // nel motore riprodotto.
-    let orig_scores = final_public.final_scores.as_ref().expect("final_scores originali");
-    assert_eq!(replayed.num_players(), orig_scores.len(),
-        "stesso numero di giocatori nel replay");
+    let orig_scores = final_public
+        .final_scores
+        .as_ref()
+        .expect("final_scores originali");
+    assert_eq!(
+        replayed.num_players(),
+        orig_scores.len(),
+        "stesso numero di giocatori nel replay"
+    );
 
     for (i, orig_fs) in orig_scores.iter().enumerate() {
         let replayed_player = replayed.player(i).expect("giocatore nel replay");
         // `PlayerState.score` contiene solo i punti rotta, come `route_points`.
-        assert_eq!(replayed_player.score, orig_fs.route_points,
+        assert_eq!(
+            replayed_player.score, orig_fs.route_points,
             "punti rotta coerenti per giocatore {}: replay={}, orig={}",
-            i, replayed_player.score, orig_fs.route_points);
+            i, replayed_player.score, orig_fs.route_points
+        );
         // Verifica anche il totale dei biglietti (non salvato su PlayerState).
         assert_eq!(
             orig_fs.ticket_completed + orig_fs.ticket_failed,
@@ -87,9 +103,11 @@ async fn save_and_replay() {
     // Verifica che il numero di rotte claimate coincida.
     let orig_claimed = final_public.claimed_routes.len();
     let replayed_claimed = replayed.claimed_route_ids().len();
-    assert_eq!(replayed_claimed, orig_claimed,
+    assert_eq!(
+        replayed_claimed, orig_claimed,
         "stesso numero di rotte claimate: replay={}, orig={}",
-        replayed_claimed, orig_claimed);
+        replayed_claimed, orig_claimed
+    );
 }
 
 /// §9.5: partita salvata a metà → `resume_game` → join col nome salvato →
@@ -112,16 +130,38 @@ async fn resume_flow() {
     let mut public: Option<ttr_proto::PublicState> = None;
 
     // Consuma SNAPSHOT iniziali
-    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
-    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+    apply_msg(
+        &a.client.as_mut().unwrap().recv().await,
+        &mut a,
+        &mut public,
+    );
+    apply_msg(
+        &b.client.as_mut().unwrap().recv().await,
+        &mut b,
+        &mut public,
+    );
 
     // Draft entrambi
-    let draft_a = decide(&a.player_id, &mut a.client.as_mut().unwrap().view,
-        public.as_ref().unwrap(), &map, &mut a.drafted).unwrap().unwrap();
+    let draft_a = decide(
+        &a.player_id,
+        &mut a.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut a.drafted,
+    )
+    .unwrap()
+    .unwrap();
     a.client.as_mut().unwrap().send(&draft_a).await;
 
-    let draft_b = decide(&b.player_id, &mut b.client.as_mut().unwrap().view,
-        public.as_ref().unwrap(), &map, &mut b.drafted).unwrap().unwrap();
+    let draft_b = decide(
+        &b.player_id,
+        &mut b.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut b.drafted,
+    )
+    .unwrap()
+    .unwrap();
     b.client.as_mut().unwrap().send(&draft_b).await;
 
     // Consuma post-draft finché non inizia il turno
@@ -131,8 +171,12 @@ async fn resume_flow() {
         let msg_b = b.client.as_mut().unwrap().recv().await;
         apply_msg(&msg_b, &mut b, &mut public);
         let p = public.as_ref().unwrap();
-        if p.state == GameState::GameOver { panic!("game over troppo presto"); }
-        if p.state == GameState::PlayerTurn || p.state == GameState::LastRound { break; }
+        if p.state == GameState::GameOver {
+            panic!("game over troppo presto");
+        }
+        if p.state == GameState::PlayerTurn || p.state == GameState::LastRound {
+            break;
+        }
     }
 
     // A gioca il primo turno
@@ -140,11 +184,15 @@ async fn resume_flow() {
         let msg = a.client.as_mut().unwrap().recv().await;
         let fresh = apply_msg(&msg, &mut a, &mut public);
         let p = public.as_ref().unwrap();
-        if p.state == GameState::GameOver { break; }
+        if p.state == GameState::GameOver {
+            break;
+        }
         if fresh && p.current_turn_player_id.as_deref() == Some(&a.player_id) {
             let a_c = a.client.as_mut().unwrap();
             let a_act = decide(&a.player_id, &mut a_c.view, p, &map, &mut a.drafted).unwrap();
-            if let Some(act) = a_act { a_c.send(&act).await; }
+            if let Some(act) = a_act {
+                a_c.send(&act).await;
+            }
             break;
         }
     }
@@ -154,7 +202,9 @@ async fn resume_flow() {
         let msg = b.client.as_mut().unwrap().recv().await;
         let fresh = apply_msg(&msg, &mut b, &mut public);
         let p = public.as_ref().unwrap();
-        if p.state == GameState::GameOver { break; }
+        if p.state == GameState::GameOver {
+            break;
+        }
         if fresh && p.current_turn_player_id.as_deref() == Some(&b.player_id) {
             break;
         }
@@ -166,7 +216,9 @@ async fn resume_flow() {
         assert!(p.current_turn_player_id.as_deref() == Some(&b.player_id));
         let b_c = b.client.as_mut().unwrap();
         let b_act = decide(&b.player_id, &mut b_c.view, p, &map, &mut b.drafted).unwrap();
-        if let Some(act) = b_act { b_c.send(&act).await; }
+        if let Some(act) = b_act {
+            b_c.send(&act).await;
+        }
     }
 
     // Consuma la risposta del server all'azione di B per aggiornare `public`.
@@ -174,8 +226,10 @@ async fn resume_flow() {
         let msg = b.client.as_mut().unwrap().recv().await;
         apply_msg(&msg, &mut b, &mut public);
         let p = public.as_ref().unwrap();
-        if matches!(p.state, GameState::GameOver | GameState::PlayerTurn | GameState::LastRound)
-            && p.current_turn_player_id.as_deref() != Some(&b.player_id)
+        if matches!(
+            p.state,
+            GameState::GameOver | GameState::PlayerTurn | GameState::LastRound
+        ) && p.current_turn_player_id.as_deref() != Some(&b.player_id)
         {
             break;
         }
@@ -189,7 +243,11 @@ async fn resume_flow() {
 
     // Verifica che il save file esista.
     let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
-    assert!(save_path.exists(), "save file mid-game deve esistere: {:?}", save_path);
+    assert!(
+        save_path.exists(),
+        "save file mid-game deve esistere: {:?}",
+        save_path
+    );
 
     // Usa resume_game con l'AppState del server (condivide il registro partite).
     let (resumed_id, resumed_host_token) = ttr_server::resume_game(&server.state, &save_path)
@@ -210,21 +268,43 @@ async fn resume_flow() {
 
     // Connetti entrambi e verifica che lo SNAPSHOT iniziale abbia lo stesso
     // PUBLIC_STATE (fase, claimedRoutes, playersSummary) del pre-resume.
-    let resumed_a = WsClient::connect(&server, &resumed_id, &resumed_pa.player_id, &resumed_pa.token).await;
-    let resumed_b = WsClient::connect(&server, &resumed_id, &resumed_pb.player_id, &resumed_pb.token).await;
+    let resumed_a = WsClient::connect(
+        &server,
+        &resumed_id,
+        &resumed_pa.player_id,
+        &resumed_pa.token,
+    )
+    .await;
+    let resumed_b = WsClient::connect(
+        &server,
+        &resumed_id,
+        &resumed_pb.player_id,
+        &resumed_pb.token,
+    )
+    .await;
 
     let mut ra = Player::new(resumed_a);
     let mut rb = Player::new(resumed_b);
     let mut resumed_public: Option<ttr_proto::PublicState> = None;
 
-    apply_msg(&ra.client.as_mut().unwrap().recv().await, &mut ra, &mut resumed_public);
-    apply_msg(&rb.client.as_mut().unwrap().recv().await, &mut rb, &mut resumed_public);
+    apply_msg(
+        &ra.client.as_mut().unwrap().recv().await,
+        &mut ra,
+        &mut resumed_public,
+    );
+    apply_msg(
+        &rb.client.as_mut().unwrap().recv().await,
+        &mut rb,
+        &mut resumed_public,
+    );
 
     let snap_public = resumed_public.expect("SNAPSHOT public dopo resume");
 
     // Confronta fase
-    assert_eq!(snap_public.state, pre_resume_public.state,
-        "stessa fase dopo resume");
+    assert_eq!(
+        snap_public.state, pre_resume_public.state,
+        "stessa fase dopo resume"
+    );
 
     // Confronta claimedRoutes (almeno lo stesso conteggio)
     assert_eq!(
@@ -234,9 +314,15 @@ async fn resume_flow() {
     );
 
     // Confronta playersSummary (stessi nomi)
-    let snap_names: Vec<String> = snap_public.players_summary.iter()
-        .map(|ps| ps.name.clone()).collect();
-    let pre_names: Vec<String> = pre_resume_public.players_summary.iter()
-        .map(|ps| ps.name.clone()).collect();
+    let snap_names: Vec<String> = snap_public
+        .players_summary
+        .iter()
+        .map(|ps| ps.name.clone())
+        .collect();
+    let pre_names: Vec<String> = pre_resume_public
+        .players_summary
+        .iter()
+        .map(|ps| ps.name.clone())
+        .collect();
     assert_eq!(snap_names, pre_names, "stessi nomi giocatori dopo resume");
 }

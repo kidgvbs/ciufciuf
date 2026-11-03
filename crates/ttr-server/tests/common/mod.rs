@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use futures_util::{SinkExt, StreamExt};
+use tokio_tungstenite::tungstenite::Message;
 use ttr_core::MapData;
 use ttr_proto::{CardColor, InboundAction, PublicState, ServerMessage};
-use tokio_tungstenite::tungstenite::Message;
 
 // ── Dati ────────────────────────────────────────────────────────────
 
@@ -57,8 +57,8 @@ impl TestServer {
     pub async fn start() -> Self {
         let data = data_dir();
         let saves = temp_saves_dir();
-        let state = ttr_server::AppState::new(data.clone(), saves.clone(), 0)
-            .expect("AppState::new");
+        let state =
+            ttr_server::AppState::new(data.clone(), saves.clone(), 0).expect("AppState::new");
         Self::start_with_state(state, saves).await
     }
 
@@ -154,11 +154,7 @@ pub async fn create_game(base: &str, name: &str) -> CreatedGame {
 }
 
 /// Crea una partita via REST con un seed RNG opzionale (determinismo test).
-pub async fn create_game_with_seed(
-    base: &str,
-    name: &str,
-    seed: Option<u64>,
-) -> CreatedGame {
+pub async fn create_game_with_seed(base: &str, name: &str, seed: Option<u64>) -> CreatedGame {
     let client = reqwest::Client::new();
     let mut body = serde_json::json!({
         "rulesetId": "usa_v2",
@@ -178,12 +174,7 @@ pub async fn create_game_with_seed(
 }
 
 /// Join di un giocatore via REST.
-pub async fn join_game(
-    base: &str,
-    game_id: &str,
-    name: &str,
-    color: Option<&str>,
-) -> JoinedPlayer {
+pub async fn join_game(base: &str, game_id: &str, name: &str, color: Option<&str>) -> JoinedPlayer {
     let client = reqwest::Client::new();
     let mut body = serde_json::json!({ "name": name });
     if let Some(c) = color {
@@ -277,12 +268,7 @@ pub struct WsClient {
 
 impl WsClient {
     /// Connette un giocatore al WebSocket della partita.
-    pub async fn connect(
-        server: &TestServer,
-        game_id: &str,
-        player_id: &str,
-        token: &str,
-    ) -> Self {
+    pub async fn connect(server: &TestServer, game_id: &str, player_id: &str, token: &str) -> Self {
         let url = format!(
             "{}?playerId={}&token={}",
             server.ws_url(game_id),
@@ -320,7 +306,12 @@ impl WsClient {
     /// Legge il prossimo messaggio e aggiorna la vista.
     pub async fn recv(&mut self) -> ServerMessage {
         loop {
-            let msg = self.read.next().await.expect("stream chiuso").expect("read");
+            let msg = self
+                .read
+                .next()
+                .await
+                .expect("stream chiuso")
+                .expect("read");
             if let Message::Text(text) = msg {
                 let parsed: ServerMessage = serde_json::from_str(&text).expect("parse msg");
                 match &parsed {
@@ -392,11 +383,7 @@ pub fn route_color_card(color: &str) -> Option<CardColor> {
 /// dalla mano corrente, secondo la regola del pacchetto §9.1: colore della
 /// rotta, o (grigia) il primo colore con conteggio sufficiente in ordine enum,
 /// locomotive a riempimento. `len` è la lunghezza della rotta (`route.len`).
-pub fn build_payment(
-    hand: &[CardColor],
-    route_color: &str,
-    len: usize,
-) -> Option<Vec<CardColor>> {
+pub fn build_payment(hand: &[CardColor], route_color: &str, len: usize) -> Option<Vec<CardColor>> {
     let loco_count = hand.iter().filter(|c| **c == CardColor::Locomotive).count();
 
     let chosen = if let Some(target) = route_color_card(route_color) {

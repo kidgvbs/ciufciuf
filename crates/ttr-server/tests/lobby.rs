@@ -31,7 +31,10 @@ async fn qr_returns_svg() {
 
     let client = reqwest::Client::new();
     let resp = client
-        .get(format!("{}/qr?data=http://example.com:8080", server.base_url))
+        .get(format!(
+            "{}/qr?data=http://example.com:8080",
+            server.base_url
+        ))
         .send()
         .await
         .expect("GET /qr");
@@ -42,7 +45,11 @@ async fn qr_returns_svg() {
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    assert!(ct.contains("svg"), "Content-Type deve indicare SVG, trovato: {}", ct);
+    assert!(
+        ct.contains("svg"),
+        "Content-Type deve indicare SVG, trovato: {}",
+        ct
+    );
 
     let body = resp.text().await.expect("body qr");
     assert!(body.contains("<svg"), "il body deve contenere un tag <svg>");
@@ -94,7 +101,10 @@ async fn lobby_name_duplicate_returns_409() {
     // Secondo join con lo stesso nome (case-insensitive) → 409 NAME_TAKEN.
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/api/games/{}/join", server.base_url, game.game_id))
+        .post(format!(
+            "{}/api/games/{}/join",
+            server.base_url, game.game_id
+        ))
         .json(&serde_json::json!({ "name": "alice" }))
         .send()
         .await
@@ -124,7 +134,10 @@ async fn lobby_auto_color() {
     let p2 = join_game(&server.base_url, &game.game_id, "Bob", None).await;
 
     // Verifichiamo che entrambi abbiano token validi e player_id diversi.
-    assert_ne!(p1.player_id, p2.player_id, "player_id devono essere diversi");
+    assert_ne!(
+        p1.player_id, p2.player_id,
+        "player_id devono essere diversi"
+    );
     assert!(!p1.token.is_empty());
     assert!(!p2.token.is_empty());
 }
@@ -142,18 +155,13 @@ async fn start_below_min_returns_400() {
     let resp = client
         .post(format!(
             "{}/api/games/{}/start",
-            server.base_url,
-            game.game_id
+            server.base_url, game.game_id
         ))
         .json(&serde_json::json!({ "hostToken": game.host_token }))
         .send()
         .await
         .expect("POST start (below min)");
-    assert_eq!(
-        resp.status(),
-        400,
-        "start con 0 giocatori deve tornare 400"
-    );
+    assert_eq!(resp.status(), 400, "start con 0 giocatori deve tornare 400");
 }
 
 // ── Lobby: join dopo start → 409 ────────────────────────────────────
@@ -170,16 +178,15 @@ async fn join_after_start_returns_409() {
     // Terzo giocatore prova a unirsi dopo lo start → 409 GAME_STARTED.
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/api/games/{}/join", server.base_url, game.game_id))
+        .post(format!(
+            "{}/api/games/{}/join",
+            server.base_url, game.game_id
+        ))
         .json(&serde_json::json!({ "name": "Charlie" }))
         .send()
         .await
         .expect("POST join (after start)");
-    assert_eq!(
-        resp.status(),
-        409,
-        "join dopo start deve tornare 409"
-    );
+    assert_eq!(resp.status(), 409, "join dopo start deve tornare 409");
     let body: serde_json::Value = resp.json().await.expect("body errore");
     assert!(
         body["error"].as_str().unwrap_or("").contains("STARTED"),
@@ -214,10 +221,22 @@ async fn seq_monotono() {
     // Verifica che il seq sia cresciuto per entrambi i giocatori.
     let final_seq_a = a.last_acted_seq;
     let final_seq_b = b.last_acted_seq;
-    assert!(final_seq_a > 0, "seq A deve essere > 0, trovato {}", final_seq_a);
-    assert!(final_seq_b > 0, "seq B deve essere > 0, trovato {}", final_seq_b);
+    assert!(
+        final_seq_a > 0,
+        "seq A deve essere > 0, trovato {}",
+        final_seq_a
+    );
+    assert!(
+        final_seq_b > 0,
+        "seq B deve essere > 0, trovato {}",
+        final_seq_b
+    );
     // Il seq di A è avanzato più volte (almeno 3 messaggi).
-    assert!(final_seq_a >= 3, "seq A >= 3 (almeno 3 messaggi outbound), trovato {}", final_seq_a);
+    assert!(
+        final_seq_a >= 3,
+        "seq A >= 3 (almeno 3 messaggi outbound), trovato {}",
+        final_seq_a
+    );
 }
 
 // Tutti gli helper (Player, decide, apply_msg, run_game, WsClient, …)

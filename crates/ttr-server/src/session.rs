@@ -261,13 +261,11 @@ impl GameSession {
 
         // Resume mode: verifica che il nome sia nel roster salvato
         if !self.saved_roster.is_empty() {
-            let (saved_id, saved_index, saved_color) =
-                self.saved_roster
-                    .get(&name_lower)
-                    .cloned()
-                    .ok_or_else(|| {
-                        "NAME_NOT_IN_SAVE".to_string()
-                    })?;
+            let (saved_id, saved_index, saved_color) = self
+                .saved_roster
+                .get(&name_lower)
+                .cloned()
+                .ok_or_else(|| "NAME_NOT_IN_SAVE".to_string())?;
 
             // Rifiuta se il giocatore ha già fatto join
             if self.player_index.contains_key(&saved_id) {

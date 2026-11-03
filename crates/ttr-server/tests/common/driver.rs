@@ -68,16 +68,27 @@ pub fn decide(
                 return Ok(None);
             }
             // keep = primi 2 biglietti offerti (l'ordine è deterministico).
-            let keep: Vec<String> = view.offered_tickets.iter().take(2).map(|t| t.id.clone()).collect();
+            let keep: Vec<String> = view
+                .offered_tickets
+                .iter()
+                .take(2)
+                .map(|t| t.id.clone())
+                .collect();
             if keep.len() < 2 {
-                return Err(format!("draft: solo {} biglietti offerti per {}", keep.len(), me));
+                return Err(format!(
+                    "draft: solo {} biglietti offerti per {}",
+                    keep.len(),
+                    me
+                ));
             }
             *drafted = true;
-            Ok(Some(InboundAction::ChooseTickets(ttr_proto::ChooseTicketsPayload {
-                player_id,
-                keep,
-                client_seq: None,
-            })))
+            Ok(Some(InboundAction::ChooseTickets(
+                ttr_proto::ChooseTicketsPayload {
+                    player_id,
+                    keep,
+                    client_seq: None,
+                },
+            )))
         }
         GameState::PlayerTurn | GameState::LastRound => {
             if public.current_turn_player_id.as_deref() != Some(me) {
@@ -88,27 +99,33 @@ pub fn decide(
                 && let Some((len, color)) = route_len_color(map, rid)
                 && let Some(payment) = build_payment(&view.hand, &color, len)
             {
-                return Ok(Some(InboundAction::ClaimRoute(ttr_proto::ClaimRoutePayload {
-                    player_id,
-                    route_id: rid.clone(),
-                    cards_discarded: payment,
-                    client_seq: None,
-                })));
+                return Ok(Some(InboundAction::ClaimRoute(
+                    ttr_proto::ClaimRoutePayload {
+                        player_id,
+                        route_id: rid.clone(),
+                        cards_discarded: payment,
+                        client_seq: None,
+                    },
+                )));
             }
             // 2) DRAW_TRAIN_CARD dal mazzo.
             if view.legal_moves.can_draw_deck {
-                return Ok(Some(InboundAction::DrawTrainCard(ttr_proto::DrawCardPayload {
-                    player_id,
-                    source: ttr_proto::DrawSource::Deck,
-                    client_seq: None,
-                })));
+                return Ok(Some(InboundAction::DrawTrainCard(
+                    ttr_proto::DrawCardPayload {
+                        player_id,
+                        source: ttr_proto::DrawSource::Deck,
+                        client_seq: None,
+                    },
+                )));
             }
             // 3) DRAW_TICKETS.
             if view.legal_moves.can_draw_tickets {
-                return Ok(Some(InboundAction::DrawTickets(ttr_proto::DrawTicketsPayload {
-                    player_id,
-                    client_seq: None,
-                })));
+                return Ok(Some(InboundAction::DrawTickets(
+                    ttr_proto::DrawTicketsPayload {
+                        player_id,
+                        client_seq: None,
+                    },
+                )));
             }
             Ok(None)
         }
@@ -117,19 +134,23 @@ pub fn decide(
                 return Ok(None);
             }
             if view.legal_moves.can_draw_deck {
-                return Ok(Some(InboundAction::DrawTrainCard(ttr_proto::DrawCardPayload {
-                    player_id,
-                    source: ttr_proto::DrawSource::Deck,
-                    client_seq: None,
-                })));
+                return Ok(Some(InboundAction::DrawTrainCard(
+                    ttr_proto::DrawCardPayload {
+                        player_id,
+                        source: ttr_proto::DrawSource::Deck,
+                        client_seq: None,
+                    },
+                )));
             }
             // Seconda pescata da una delle scoperte (mai una locomotiva).
             if let Some(idx) = view.legal_moves.draw_face_up.first().copied() {
-                return Ok(Some(InboundAction::DrawTrainCard(ttr_proto::DrawCardPayload {
-                    player_id,
-                    source: ttr_proto::DrawSource::FaceUp { index: idx },
-                    client_seq: None,
-                })));
+                return Ok(Some(InboundAction::DrawTrainCard(
+                    ttr_proto::DrawCardPayload {
+                        player_id,
+                        source: ttr_proto::DrawSource::FaceUp { index: idx },
+                        client_seq: None,
+                    },
+                )));
             }
             Err(format!("SecondCardDraw senza pescata legale per {}", me))
         }
@@ -139,11 +160,13 @@ pub fn decide(
             }
             // keep = primo biglietto offerto (keepMin mid-game è 1).
             if let Some(first) = view.offered_tickets.first().cloned() {
-                return Ok(Some(InboundAction::ChooseTickets(ttr_proto::ChooseTicketsPayload {
-                    player_id,
-                    keep: vec![first.id],
-                    client_seq: None,
-                })));
+                return Ok(Some(InboundAction::ChooseTickets(
+                    ttr_proto::ChooseTicketsPayload {
+                        player_id,
+                        keep: vec![first.id],
+                        client_seq: None,
+                    },
+                )));
             }
             Err(format!("TicketChoice senza biglietti offerti per {}", me))
         }

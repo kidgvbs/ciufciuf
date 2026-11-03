@@ -38,10 +38,7 @@ pub fn build_router(state: AppState) -> Router {
 /// Restituisce `(game_id, host_token)` se il resume ha successo.
 /// La partita viene registrata in lobby col roster salvato; i giocatori
 /// si riagganciano per nome via `POST /api/games/{id}/join`.
-pub async fn resume_game(
-    state: &AppState,
-    save_path: &Path,
-) -> Result<(String, String), String> {
+pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, String), String> {
     use tokio::sync::mpsc;
     use uuid::Uuid;
 
@@ -69,7 +66,13 @@ pub async fn resume_game(
     let saved_player_entries: Vec<(String, String, ttr_proto::PlayerColor)> = save_data
         .players
         .iter()
-        .map(|p| (p.id.clone(), p.name.clone(), save::parse_color(&p.color).unwrap_or(ttr_proto::PlayerColor::Red)))
+        .map(|p| {
+            (
+                p.id.clone(),
+                p.name.clone(),
+                save::parse_color(&p.color).unwrap_or(ttr_proto::PlayerColor::Red),
+            )
+        })
         .collect();
 
     let session = session::GameSession::new_resumed(
