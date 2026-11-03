@@ -61,6 +61,12 @@ pub struct ActionRecord {
 
 impl Engine {
     /// Crea una nuova partita.
+    ///
+    /// # Panics
+    ///
+    /// Se `ruleset.final_round_includes_trigger` è `false`: la semantica
+    /// «l'ultimo giro esclude il trigger» non è implementata (nessun ruleset
+    /// corrente la usa; se servirà, sarà un change deliberato, piano §6/D11).
     pub fn new(
         seed: u64,
         ruleset: Ruleset,
@@ -70,6 +76,10 @@ impl Engine {
         player_colors: Vec<ttr_proto::PlayerColor>,
         first_player: usize,
     ) -> Self {
+        assert!(
+            ruleset.final_round_includes_trigger,
+            "final_round_includes_trigger deve essere true; la semantica false non è implementata"
+        );
         let num_players = player_ids.len();
         let mut rng = SeededRng::new(seed);
 

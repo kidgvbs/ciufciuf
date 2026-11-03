@@ -479,6 +479,121 @@ fn golden_last_round_includes_trigger() {
     assert_eq!(eng.phase(), GamePhase::GameOver);
 }
 
+/// Edge case: il trigger dell'ultimo giro è l'ultimo giocatore nell'ordine.
+///
+/// Sequenza attesa (piano §6/D11, §1 blockquote):
+/// 1. P1 (ultimo) claim con ≤2 treni → LastRoundAnnounced(trigger=1)
+/// 2. Turno finale di P0 → TurnAdvanced
+/// 3. Turno finale di P1 → GameOver
+///
+/// Nessun giro extra.
+#[test]
+fn golden_last_round_trigger_is_last_player() {
+    let (ids, names, colors) = two_players();
+    // first_player = 0, quindi l'ordine è P0 → P1
+    let mut eng = Engine::new(171, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+    assert_eq!(eng.current_player(), 0, "P0 inizia");
+
+    // P0 fa un'azione normale (non trigger)
+    eng.set_player_hand(0, vec![CardColor::Red]);
+    eng.apply(Action::ClaimRoute {
+        player_index: 0,
+        route_id: "A_B_1".into(),
+        cards_discarded: vec![CardColor::Red],
+    })
+    .unwrap();
+    assert_eq!(eng.current_player(), 1, "dopo P0 tocca a P1");
+
+    // P1 (ultimo dell'ordine) claim: porta i treni a ≤2 → trigger
+    eng.set_player_trains(1, 4);
+    eng.set_player_hand(1, vec![CardColor::Blue, CardColor::Blue]);
+    let events = eng
+        .apply(Action::ClaimRoute {
+            player_index: 1,
+            route_id: "B_C_1".into(),
+            cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+        })
+        .unwrap();
+
+    // Verify: LastRoundAnnounced con trigger=P1
+    let last_round_ev = events
+        .iter()
+        .find(|e| matches!(e, GameEvent::LastRoundAnnounced { .. }));
+    assert!(
+        last_round_ev.is_some(),
+        "P1 (ultimo) deve innescare LastRoundAnnounced"
+    );
+    assert_eq!(eng.last_round_trigger_player(), Some(1));
+    assert!(eng.last_round());
+    assert_eq!(eng.current_player(), 0, "dopo trigger di P1, tocca a P0");
+    assert_eq!(eng.phase(), GamePhase::LastRound);
+
+    // P0 fa il suo ultimo turno
+    let ev0 = eng
+        .apply(Action::DrawTrainCard {
+            player_index: 0,
+            source: DrawSource::Deck,
+        })
+        .unwrap();
+    if eng.phase() == GamePhase::SecondCardDraw {
+        // Seconda pescata completa il turno
+        let ev0b = eng
+            .apply(Action::DrawTrainCard {
+                player_index: 0,
+                source: DrawSource::Deck,
+            })
+            .unwrap();
+        assert!(
+            ev0b.iter()
+                .any(|e| matches!(e, GameEvent::TurnAdvanced { .. })),
+            "seconda pescata di P0 deve avanzare il turno"
+        );
+    } else {
+        assert!(
+            ev0.iter()
+                .any(|e| matches!(e, GameEvent::TurnAdvanced { .. })),
+            "turno di P0 deve avanzare"
+        );
+    }
+    assert_eq!(
+        eng.current_player(),
+        1,
+        "dopo turno finale di P0, tocca a P1 (trigger)"
+    );
+    assert_eq!(eng.phase(), GamePhase::LastRound, "ancora LastRound");
+
+    // P1 fa il SUO ultimo turno → GameOver
+    let ev1 = eng
+        .apply(Action::DrawTrainCard {
+            player_index: 1,
+            source: DrawSource::Deck,
+        })
+        .unwrap();
+    if eng.phase() == GamePhase::SecondCardDraw {
+        let ev2 = eng
+            .apply(Action::DrawTrainCard {
+                player_index: 1,
+                source: DrawSource::Deck,
+            })
+            .unwrap();
+        assert!(
+            ev2.iter().any(|e| matches!(e, GameEvent::GameOver { .. })),
+            "dopo il turno finale di P1 (trigger), la partita deve finire"
+        );
+    } else {
+        assert!(
+            ev1.iter().any(|e| matches!(e, GameEvent::GameOver { .. })),
+            "dopo il turno finale di P1 (trigger), la partita deve finire"
+        );
+    }
+    assert_eq!(
+        eng.phase(),
+        GamePhase::GameOver,
+        "nessun giro extra dopo il turno finale del trigger"
+    );
+}
+
 #[test]
 fn golden_route_point_table() {
     let (ids, names, colors) = two_players();
@@ -647,6 +762,222 @@ fn golden_initial_draft_parallel() {
         .unwrap();
     }
     assert_eq!(eng.phase(), GamePhase::PlayerTurn);
+}
+
+// ============================================================
+// Sezione 2.5 — legalMoves gate + §3.3 test gap closures
+// ============================================================
+
+/// legalMoves in SecondCardDraw: niente rotte, niente ticket draw.
+#[test]
+fn golden_legal_moves_second_card_draw() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(61, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    })
+    .unwrap();
+    assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+
+    let lm = eng.legal_moves(0);
+    assert!(
+        lm.routes.is_empty(),
+        "no claimable routes in SecondCardDraw"
+    );
+    assert!(
+        !lm.can_draw_tickets,
+        "cannot draw tickets in SecondCardDraw"
+    );
+    // can_draw_deck deve essere ancora vero
+    assert!(lm.can_draw_deck, "can still draw from deck");
+}
+
+/// legalMoves in TicketChoice: tutto vuoto/false.
+#[test]
+fn golden_legal_moves_ticket_choice_empty() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(62, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+
+    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    assert_eq!(eng.phase(), GamePhase::TicketChoice);
+
+    let lm = eng.legal_moves(0);
+    assert!(lm.routes.is_empty(), "no routes in TicketChoice");
+    assert!(lm.draw_face_up.is_empty(), "no face-up in TicketChoice");
+    assert!(!lm.can_draw_deck, "no deck draw in TicketChoice");
+    assert!(!lm.can_draw_tickets, "no ticket draw in TicketChoice");
+}
+
+/// R4.1: Esaurimento totale mazzo+scarti: la pescata si completa
+/// parzialmente e il turno NON si perde.
+#[test]
+fn golden_total_deck_exhaustion_no_turn_loss() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(63, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+
+    // Svuota mazzo E scarti
+    eng.clear_deck_and_discards();
+
+    // La pescata dal mazzo dovrebbe fallire perché non ci sono carte
+    let r = eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    });
+    assert!(
+        matches!(r, Err(EngineError::DeckEmpty)),
+        "deck+discards vuoti → DeckEmpty"
+    );
+
+    // Il giocatore può comunque reclamare una rotta
+    eng.set_player_hand(0, vec![CardColor::Red]);
+    let ev = eng.apply(Action::ClaimRoute {
+        player_index: 0,
+        route_id: "A_B_1".into(),
+        cards_discarded: vec![CardColor::Red],
+    });
+    assert!(
+        ev.is_ok(),
+        "può ancora reclamare dopo esaurimento deck: {:?}",
+        ev.err()
+    );
+
+    // Può anche pescare biglietti
+    eng.set_player_trains(1, 45); // reset trains so no last round
+    let ev2 = eng.apply(Action::DrawTickets { player_index: 1 });
+    assert!(
+        ev2.is_ok(),
+        "può pescare biglietti dopo esaurimento deck: {:?}",
+        ev2.err()
+    );
+}
+
+/// R4.2: Rotta doppia bloccata a 3 giocatori.
+#[test]
+fn golden_double_route_blocked_3p() {
+    let (ids, names, colors) = three_players();
+    let mut eng = Engine::new(
+        64,
+        strict_double_ruleset(),
+        double_route_map(),
+        ids,
+        names,
+        colors,
+        0,
+    );
+    complete_initial_draft(&mut eng);
+
+    // P0 claim A_B_1
+    eng.set_player_hand(0, vec![CardColor::Red, CardColor::Red]);
+    eng.apply(Action::ClaimRoute {
+        player_index: 0,
+        route_id: "A_B_1".into(),
+        cards_discarded: vec![CardColor::Red, CardColor::Red],
+    })
+    .unwrap();
+
+    // P1 claim B_C_1
+    eng.set_player_hand(1, vec![CardColor::Blue]);
+    eng.apply(Action::ClaimRoute {
+        player_index: 1,
+        route_id: "B_C_1".into(),
+        cards_discarded: vec![CardColor::Blue],
+    })
+    .unwrap();
+
+    // P2 prova A_B_2 → deve fallire (blocco a 3p)
+    eng.set_player_hand(2, vec![CardColor::Green, CardColor::Green]);
+    let r = eng.apply(Action::ClaimRoute {
+        player_index: 2,
+        route_id: "A_B_2".into(),
+        cards_discarded: vec![CardColor::Green, CardColor::Green],
+    });
+    assert!(
+        matches!(r, Err(EngineError::RouteBlockedDouble { .. })),
+        "doppia bloccata a 3p: {:?}",
+        r.err()
+    );
+}
+
+/// R4.3: Scarti biglietti di setup in fondo al mazzo dopo initial draft
+/// (regola `reshuffleBottom`).
+#[test]
+fn golden_setup_ticket_discards_bottom() {
+    let (ids, names, colors) = two_players();
+    // Seed fisso per riproducibilità
+    let mut eng = Engine::new(65, mini_ruleset(), mini_map(), ids, names, colors, 0);
+
+    // (snapshot pre-draft non serve per il test — lo teniamo commentato
+    // per eventuali regression future)
+    let _pile_before: Vec<String> = eng.ticket_pile().to_vec();
+
+    // P0 sceglie i primi 2 biglietti offerti (tiene minimo)
+    let tickets_p0 = eng.initial_tickets_for(0).unwrap().to_vec();
+    let keep_p0: Vec<String> = tickets_p0.iter().take(2).cloned().collect();
+    let discarded_p0: Vec<String> = tickets_p0.iter().skip(2).cloned().collect();
+    eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: keep_p0,
+    })
+    .unwrap();
+
+    // P1 sceglie i primi 2
+    let tickets_p1 = eng.initial_tickets_for(1).unwrap().to_vec();
+    let keep_p1: Vec<String> = tickets_p1.iter().take(2).cloned().collect();
+    let discarded_p1: Vec<String> = tickets_p1.iter().skip(2).cloned().collect();
+    eng.apply(Action::ChooseTickets {
+        player_index: 1,
+        keep: keep_p1,
+    })
+    .unwrap();
+
+    assert_eq!(eng.phase(), GamePhase::PlayerTurn, "draft completato");
+
+    // Gli scarti devono essere in fondo al mazzo biglietti
+    let pile_after: Vec<String> = eng.ticket_pile().to_vec();
+
+    // Verifica di appartenenza: ogni scarto deve essere presente nella parte finale del mazzo
+    let all_discarded: Vec<String> = [discarded_p0, discarded_p1].concat().into_iter().collect();
+
+    for tid in &all_discarded {
+        assert!(
+            pile_after.contains(tid),
+            "scarto {} deve essere nel mazzo biglietti dopo il draft",
+            tid
+        );
+    }
+
+    // Verifica di posizione: gli scarti devono stare in fondo (dopo tutti i ticket non ancora distribuiti)
+    let n_discarded = all_discarded.len();
+    assert!(
+        pile_after.len() >= n_discarded,
+        "il mazzo ha almeno {} biglietti",
+        n_discarded
+    );
+    let bottom: Vec<String> = pile_after[pile_after.len() - n_discarded..].to_vec();
+
+    // Con reshuffleBottom, gli scarti sono mescolati (l'ordine non è deterministico) ma sono in fondo
+    for tid in &all_discarded {
+        assert!(
+            bottom.contains(tid),
+            "scarto {} deve essere nel fondo del mazzo",
+            tid
+        );
+    }
+
+    // Tutti i biglietti non-scartati devono stare PRIMA del fondo
+    let top: Vec<String> = pile_after[..pile_after.len() - n_discarded].to_vec();
+    for tid in &top {
+        assert!(
+            !all_discarded.contains(tid),
+            "biglietto non scartato {} non può stare tra gli scarti in fondo",
+            tid
+        );
+    }
 }
 
 // ============================================================

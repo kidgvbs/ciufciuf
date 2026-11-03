@@ -2,9 +2,10 @@
 import type { ChooseTicketsPayload } from "./ChooseTicketsPayload";
 import type { ClaimRoutePayload } from "./ClaimRoutePayload";
 import type { DrawCardPayload } from "./DrawCardPayload";
+import type { DrawTicketsPayload } from "./DrawTicketsPayload";
 import type { RequestSnapshotPayload } from "./RequestSnapshotPayload";
 
 /**
  * Azione inbound (client → server). Messaggio inviato su `game/{gameId}/action`.
  */
-export type InboundAction = { "actionType": "DRAW_TRAIN_CARD" } & DrawCardPayload | { "actionType": "CHOOSE_TICKETS" } & ChooseTicketsPayload | { "actionType": "CLAIM_ROUTE" } & ClaimRoutePayload | { "actionType": "REQUEST_SNAPSHOT" } & RequestSnapshotPayload;
+export type InboundAction = { "actionType": "DRAW_TRAIN_CARD" } & DrawCardPayload | { "actionType": "DRAW_TICKETS" } & DrawTicketsPayload | { "actionType": "CHOOSE_TICKETS" } & ChooseTicketsPayload | { "actionType": "CLAIM_ROUTE" } & ClaimRoutePayload | { "actionType": "REQUEST_SNAPSHOT" } & RequestSnapshotPayload;

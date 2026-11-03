@@ -24,5 +24,16 @@
 - Pittsburgh–Saint Louis: Rob217 (single green 5) preferito a geckods (doppia)
 - Nashville–Raleigh: Rob217 (single black 3) preferito a geckods (doppia)
 
+## Errori noti della fonte `geckods/ticket-to-ride`
+
+I seguenti errori sono documentati per provenienza; **non** sono stati importati nei
+nostri dati, che usano invece i valori corretti:
+
+- **Atlanta–Miami**: il nostro dato è Blue 5 (geckods riporta 6 — con 6 vagoni blu
+  si sforerebbero i 27 disponibili).
+- **Atlanta–Raleigh** e **Nashville–Pittsburgh**: geckods le omette del tutto;
+  entrambe sono presenti e corrette nei nostri dati (single Black 3 e single Gray 4
+  rispettivamente).
+
 ## Statistiche
 - 36 città, 100 segmenti (22 doppie + 56 singole), 33 biglietti (30 classici + 3 V2)

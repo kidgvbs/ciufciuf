@@ -2,7 +2,7 @@
 //!
 //! Piano §9.1 (Union-Find), §9.3 (Longest path DFS con backtracking).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::types::{ClaimedRouteInfo, Route, RouteId, TicketDef};
 
@@ -15,17 +15,17 @@ use crate::types::{ClaimedRouteInfo, Route, RouteId, TicketDef};
 #[derive(Debug, Clone)]
 pub struct UnionFind {
     /// Mappa city_id → parent (se stesso = radice).
-    parent: HashMap<String, String>,
+    parent: BTreeMap<String, String>,
     /// Mappa city_id → rank.
-    rank: HashMap<String, usize>,
+    rank: BTreeMap<String, usize>,
 }
 
 impl UnionFind {
     /// Crea un nuovo Union-Find vuoto.
     pub fn new() -> Self {
         Self {
-            parent: HashMap::new(),
-            rank: HashMap::new(),
+            parent: BTreeMap::new(),
+            rank: BTreeMap::new(),
         }
     }
 

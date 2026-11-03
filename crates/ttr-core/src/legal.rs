@@ -1,6 +1,6 @@
 //! Calcolo delle mosse legali per un giocatore (piano §9.4).
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use ttr_proto::CardColor;
 
@@ -17,23 +17,44 @@ pub struct LegalMoves {
     pub can_draw_tickets: bool,
 }
 
+impl LegalMoves {
+    /// Nessuna mossa valida (fasi dove non si può agire).
+    pub fn empty() -> Self {
+        Self {
+            routes: vec![],
+            draw_face_up: vec![],
+            can_draw_deck: false,
+            can_draw_tickets: false,
+        }
+    }
+}
+
 impl Engine {
+    /// Mosse legali filtrate per fase (piano §7.3/§9.4).
+    ///
+    /// Il client è "scemo": non deve mai vedere mosse che il motore
+    /// rifiuterebbe con `WrongState` o `NotYourTurn`.
     pub fn legal_moves(&self, player_index: usize) -> LegalMoves {
         if player_index >= self.players.len() {
-            return LegalMoves {
-                routes: vec![],
-                draw_face_up: vec![],
-                can_draw_deck: false,
-                can_draw_tickets: false,
-            };
+            return LegalMoves::empty();
         }
 
-        let player = &self.players[player_index];
-        let hand = &player.hand;
+        match self.phase {
+            GamePhase::PlayerTurn | GamePhase::LastRound => {
+                self.legal_moves_player_turn(player_index)
+            }
+            GamePhase::SecondCardDraw => self.legal_moves_second_draw(),
+            GamePhase::InitialDraft | GamePhase::TicketChoice | GamePhase::GameOver => {
+                LegalMoves::empty()
+            }
+        }
+    }
 
+    fn legal_moves_player_turn(&self, player_index: usize) -> LegalMoves {
+        let hand = &self.players[player_index].hand;
         let claimable = self.claimable_routes(player_index, hand);
 
-        let drawable_indices: Vec<usize> = self
+        let draw_face_up: Vec<usize> = self
             .face_up
             .iter()
             .enumerate()
@@ -41,24 +62,29 @@ impl Engine {
             .map(|(i, _)| i)
             .collect();
 
-        let (draw_face_up, can_draw_deck) = match self.phase {
-            GamePhase::SecondCardDraw => {
-                let filtered: Vec<usize> = drawable_indices
-                    .into_iter()
-                    .filter(|&i| !matches!(self.face_up[i], Some(CardColor::Locomotive)))
-                    .collect();
-                (filtered, self.can_draw_from_deck())
-            }
-            _ => (drawable_indices, self.can_draw_from_deck()),
-        };
-
-        let can_draw_tickets = self.can_draw_tickets();
-
         LegalMoves {
             routes: claimable,
             draw_face_up,
-            can_draw_deck,
-            can_draw_tickets,
+            can_draw_deck: self.can_draw_from_deck(),
+            can_draw_tickets: self.can_draw_tickets(),
+        }
+    }
+
+    fn legal_moves_second_draw(&self) -> LegalMoves {
+        let draw_face_up: Vec<usize> = self
+            .face_up
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.is_some())
+            .filter(|(_, c)| !matches!(c, Some(CardColor::Locomotive)))
+            .map(|(i, _)| i)
+            .collect();
+
+        LegalMoves {
+            routes: vec![],
+            draw_face_up,
+            can_draw_deck: self.can_draw_from_deck(),
+            can_draw_tickets: false,
         }
     }
 
@@ -111,7 +137,7 @@ impl Engine {
         route_color: &str,
         len: usize,
         loco_count: usize,
-        color_counts: &HashMap<CardColor, usize>,
+        color_counts: &BTreeMap<CardColor, usize>,
     ) -> bool {
         if hand.len() < len {
             return false;
@@ -150,8 +176,8 @@ impl Engine {
     }
 }
 
-fn count_colors(hand: &[CardColor]) -> HashMap<CardColor, usize> {
-    let mut counts = HashMap::new();
+fn count_colors(hand: &[CardColor]) -> BTreeMap<CardColor, usize> {
+    let mut counts = BTreeMap::new();
     for card in hand {
         *counts.entry(*card).or_default() += 1;
     }

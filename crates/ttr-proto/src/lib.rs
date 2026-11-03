@@ -84,6 +84,9 @@ pub enum InboundAction {
     /// Pescare una carta treno dal mazzo coperto.
     #[serde(rename = "DRAW_TRAIN_CARD")]
     DrawTrainCard(DrawCardPayload),
+    /// Pescare nuovi biglietti mid-game (azione nº 3 del turno, piano §3.1/§7.1).
+    #[serde(rename = "DRAW_TICKETS")]
+    DrawTickets(DrawTicketsPayload),
     /// Scegliere quali biglietti tenere (initial draft o mid-game).
     #[serde(rename = "CHOOSE_TICKETS")]
     ChooseTickets(ChooseTicketsPayload),
@@ -108,6 +111,12 @@ pub struct DrawCardPayload {
 pub enum DrawSource {
     Deck,
     FaceUp { index: usize },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct DrawTicketsPayload {
+    pub player_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -340,6 +349,20 @@ mod tests {
         let back: InboundAction = serde_json::from_str(&json).unwrap();
         match back {
             InboundAction::ChooseTickets(p) => assert_eq!(p.keep.len(), 2),
+            _ => panic!("wrong variant"),
+        }
+    }
+
+    #[test]
+    fn roundtrip_inbound_draw_tickets() {
+        let msg = InboundAction::DrawTickets(DrawTicketsPayload {
+            player_id: "p2".into(),
+        });
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("DRAW_TICKETS"));
+        let back: InboundAction = serde_json::from_str(&json).unwrap();
+        match back {
+            InboundAction::DrawTickets(p) => assert_eq!(p.player_id, "p2"),
             _ => panic!("wrong variant"),
         }
     }
