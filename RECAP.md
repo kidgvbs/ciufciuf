@@ -2,7 +2,7 @@
 
 > **Sei un agente (o un umano) appena entrato in questo progetto?** Questo file è il punto d'ingresso ufficiale (decisione D23): leggilo per orientarti, poi apri il piano per i dettagli tecnici.
 
-**Aggiornato:** 3 novembre 2026 — repo creato; piano portato a **v1.3** (integra D22 Svelte e D23 repo/RECAP).
+**Aggiornato:** 3 novembre 2026 — repo creato; piano **v1.3**; **Fase 0+1 completata** (pipeline coding→reviewer, rework applicato e verificato dal planner).
 **Repo:** GitHub **privato** `kidgvbs/ciufciuf` — clone canonico: `~/Rust/ciufciuf`.
 
 ---
@@ -23,8 +23,8 @@ Primo traguardo: mappa **USA** (`usa_v2`, regole edizione V2 2025) giocabile da 
 | Voce | Stato |
 |---|---|
 | Piano | **v1.3, completo e vincolante** — `docs/plan/ciufciuf-v1.3.md`. Punti aperti (§14): chiusi; restano solo i ruleset futuri (1910/Mega/Big Cities), rinviati per design |
-| Codice | **Non esiste ancora**: il repo contiene solo documentazione |
-| Prossimo passo | Pacchetto **Fase 0+1** alla pipeline coding→reviewer: workspace Cargo (`crates/`), `ttr-proto` (tipi contratto + export ts-rs), dati USA `usa_v2` + `ttr-validate`, motore `ttr-core` (regole USA complete, macchina a stati del piano §6, RNG seeded, test golden + fuzzing) |
+| Fase 0+1 | **Completata e verificata** (3/11/2026): workspace Cargo, `ttr-proto` (contratto §7 completo con binding ts-rs), dati USA `usa_v2` (36 città, 100 segmenti, 22 doppie, 33 biglietti — 7 check di `ttr-validate` verdi), motore `ttr-core` (regole USA complete, macchina a stati §6, RNG seeded + replay deterministico, `legalMoves` per-fase, CLI `ttr-cli`). 66 test verdi + fuzzing 1000 partite con invarianti. Review: 2 fix veri applicati (variante WS `DRAW_TICKETS`, gate per-fase di legalMoves) + test edge "trigger ultimo dell'ordine" |
+| Prossimo passo | Pacchetto **Fase 2** alla pipeline coding→reviewer: `ttr-server` — WebSocket + protocollo §7 + lobby + QR multi-IP + profili (nome+colore) + reconnect/snapshot + persistenza JSON in `saves/` (D18). Backlog noto per la Fase 2: mapping `EngineError`→`ErrorReason`, modulo conversione core↔proto |
 
 **Regola di manutenzione: chi completa uno step o prende una decisione, aggiorna questo RECAP.**
 
