@@ -2,6 +2,7 @@
 members = [
     "crates/ttr-proto",
     "crates/ttr-validate",
+    "crates/ttr-core",
 ]
 resolver = "2"
 
