@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "crates/ttr-proto",
+    "crates/ttr-validate",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "UNLICENSED"
+repository = "https://github.com/kidgvbs/ciufciuf"
