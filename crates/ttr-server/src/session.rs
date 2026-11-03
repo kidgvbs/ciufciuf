@@ -22,6 +22,25 @@ pub struct GameHandle {
     pub started: bool,
 }
 
+/// Esito della connessione WebSocket restituito all'handler dopo l'auth.
+#[derive(Debug)]
+pub enum ConnectOutcome {
+    /// Connessione autenticata con successo.
+    Ok { conn_id: u64 },
+    /// Token non valido o assente per giocatore autenticato.
+    Unauthorized,
+    /// Partita non trovata o attore terminato.
+    GameNotFound,
+}
+
+/// Informazioni fresche sulla partita richieste dalla lobby REST.
+#[derive(Debug, Clone)]
+pub struct GameInfo {
+    pub players: Vec<(String, String, PlayerColor)>, // (player_id, name, color)
+    pub players_joined: usize,
+    pub started: bool,
+}
+
 #[derive(Debug)]
 pub enum GameCommand {
     Join {
@@ -47,13 +66,21 @@ pub enum GameCommand {
         player_id: Option<String>,
         token: Option<String>,
         tx: mpsc::UnboundedSender<ServerMessage>,
+        /// Risposta con l'esito dell'auth; l'handler WS chiude il socket su errore.
+        reply: tokio::sync::oneshot::Sender<ConnectOutcome>,
     },
     Disconnect {
         player_id: Option<String>,
+        /// ID della singola connessione da rimuovere (multi-tab).
+        conn_id: u64,
     },
     RequestSnapshot {
         player_id: Option<String>,
         reply: tokio::sync::oneshot::Sender<Option<ServerMessage>>,
+    },
+    /// Interrogazione dello stato corrente della lobby dall'esterno (REST).
+    GetInfo {
+        reply: tokio::sync::oneshot::Sender<GameInfo>,
     },
     Shutdown,
 }
@@ -101,10 +128,15 @@ pub(crate) struct GameSession {
     pub host_token: String,
     pub max_players: u32,
     pub started: bool,
-    pub connections: BTreeMap<String, Vec<mpsc::UnboundedSender<ServerMessage>>>,
-    pub spectators: Vec<mpsc::UnboundedSender<ServerMessage>>,
+    /// Connessioni per giocatore: ogni entry è (conn_id, sender).
+    pub connections: BTreeMap<String, Vec<(u64, mpsc::UnboundedSender<ServerMessage>)>>,
+    /// Spettatori: (conn_id, sender).
+    pub spectators: Vec<(u64, mpsc::UnboundedSender<ServerMessage>)>,
     pub outbound_seq: BTreeMap<String, u64>,
-    pub last_client_seq: BTreeMap<String, u64>,
+    /// Ultimo `client_seq` ricevuto per giocatore (`None` = mai visto, F5).
+    pub last_client_seq: BTreeMap<String, Option<u64>>,
+    /// Contatore per assegnare connection ID univoci (F6).
+    pub next_conn_id: u64,
     pub final_scores: Option<Vec<ttr_proto::FinalScoreInfo>>,
     pub longest_path_player_ids: Option<Vec<String>>,
     pub save_path: Option<std::path::PathBuf>,
@@ -146,6 +178,7 @@ impl GameSession {
             spectators: Vec::new(),
             outbound_seq: BTreeMap::new(),
             last_client_seq: BTreeMap::new(),
+            next_conn_id: 0,
             final_scores: None,
             longest_path_player_ids: None,
             save_path,
@@ -193,6 +226,7 @@ impl GameSession {
             spectators: Vec::new(),
             outbound_seq: BTreeMap::new(),
             last_client_seq: BTreeMap::new(),
+            next_conn_id: 0,
             final_scores: None,
             longest_path_player_ids: None,
             save_path,
@@ -235,11 +269,19 @@ impl GameSession {
                     player_id,
                     token,
                     tx,
-                } => self.handle_connect(player_id, token, tx),
-                GameCommand::Disconnect { player_id } => self.handle_disconnect(player_id),
+                    reply,
+                } => self.handle_connect(player_id, token, tx, reply),
+                GameCommand::Disconnect {
+                    player_id,
+                    conn_id,
+                } => self.handle_disconnect(player_id, conn_id),
                 GameCommand::RequestSnapshot { player_id, reply } => {
                     let snap = self.build_snapshot(player_id.as_deref());
                     let _ = reply.send(snap);
+                }
+                GameCommand::GetInfo { reply } => {
+                    let info = self.build_game_info();
+                    let _ = reply.send(info);
                 }
                 GameCommand::Shutdown => break,
             }
@@ -273,9 +315,12 @@ impl GameSession {
             }
 
             let actual_id = saved_id;
-            self.player_index.insert(actual_id.clone(), saved_index);
+            // F3: player_index mappa player_id → posizione in self.players,
+            // NON l'indice del motore (che sta in SessionPlayer.index).
+            let roster_idx = self.players.len();
+            self.player_index.insert(actual_id.clone(), roster_idx);
             self.outbound_seq.insert(actual_id.clone(), 0);
-            self.last_client_seq.insert(actual_id.clone(), 0);
+            self.last_client_seq.insert(actual_id.clone(), None);
             self.connections.insert(actual_id.clone(), Vec::new());
             self.players.push(SessionPlayer {
                 name,
@@ -305,7 +350,8 @@ impl GameSession {
         let idx = self.players.len();
         self.player_index.insert(player_id.clone(), idx);
         self.outbound_seq.insert(player_id.clone(), 0);
-        self.last_client_seq.insert(player_id.clone(), 0);
+        // F5: None = mai visto un client_seq da questo giocatore.
+        self.last_client_seq.insert(player_id.clone(), None);
         self.connections.insert(player_id.clone(), Vec::new());
 
         // Colore: esplicito se richiesto, altrimenti primo libero in ordine
@@ -424,21 +470,34 @@ impl GameSession {
         inbound: ttr_proto::InboundAction,
         client_seq: Option<u64>,
     ) {
-        // Idempotenza inbound (E6)
+        // Idempotenza inbound (E6, F5).
+        // last_client_seq: None = mai visto; accetta qualsiasi seq.
+        // Some(last): accetta solo seq > last, altrimenti dedup.
         if let Some(seq) = client_seq {
-            let last = self.last_client_seq.get(&player_id).copied().unwrap_or(0);
-            if seq <= last && seq > 0 {
-                let pi = self.player_index.get(&player_id).copied();
-                self.push_private_state_single(&player_id, pi);
+            let last = self
+                .last_client_seq
+                .get(&player_id)
+                .and_then(|v| *v);
+            if let Some(last_seq) = last
+                && seq <= last_seq
+            {
+                // F3: risolvi l'indice del motore via SessionPlayer.index.
+                let engine_idx = self
+                    .player_index
+                    .get(&player_id)
+                    .and_then(|&session_pos| {
+                        self.players.get(session_pos).and_then(|p| p.index)
+                    });
+                self.push_private_state_single(&player_id, engine_idx);
                 return;
             }
-            self.last_client_seq.insert(player_id.clone(), seq);
+            self.last_client_seq.insert(player_id.clone(), Some(seq));
         }
 
         // RequestSnapshot non arriva qui — gestito dal chiamante in ws.rs
 
-        // Risolvi player_index
-        let pi = match self.player_index.get(&player_id).copied() {
+        // Risolvi l'indice del motore per questo giocatore (F3: via SessionPlayer.index).
+        let session_pos = match self.player_index.get(&player_id).copied() {
             Some(idx) => idx,
             None => {
                 let _ = self.send_error(
@@ -449,9 +508,20 @@ impl GameSession {
                 return;
             }
         };
+        let engine_idx = match self.players.get(session_pos).and_then(|p| p.index) {
+            Some(ei) => ei,
+            None => {
+                let _ = self.send_error(
+                    &player_id,
+                    ttr_proto::ErrorReason::InvalidAction,
+                    Some("giocatore non ancora inizializzato".into()),
+                );
+                return;
+            }
+        };
 
         // Converti InboundAction → ttr_core::Action
-        let action = crate::lobby::inbound_to_core_action(&inbound, pi);
+        let action = crate::lobby::inbound_to_core_action(&inbound, engine_idx);
 
         let engine = match &mut self.engine {
             Some(e) => e,
@@ -483,11 +553,14 @@ impl GameSession {
                         self.longest_path_player_ids = Some(
                             longest_path_players
                                 .iter()
-                                .map(|&idx| {
-                                    self.player_index
+                                .map(|&ei| {
+                                    // F3: ei è un indice del motore; cerca il SessionPlayer con .index == ei.
+                                    self.players
                                         .iter()
-                                        .find(|&(_, i)| *i == idx)
-                                        .map(|(id, _)| id.clone())
+                                        .position(|p| p.index == Some(ei))
+                                        .and_then(|session_pos| {
+                                            self.player_index.iter().find(|&(_, &sp)| sp == session_pos).map(|(id, _)| id.clone())
+                                        })
                                         .unwrap_or_default()
                                 })
                                 .collect(),
@@ -512,6 +585,7 @@ impl GameSession {
         player_id: Option<String>,
         token: Option<String>,
         tx: mpsc::UnboundedSender<ServerMessage>,
+        reply: tokio::sync::oneshot::Sender<ConnectOutcome>,
     ) {
         let authenticated = match (&player_id, &token) {
             (Some(pid), Some(tok)) => self
@@ -520,27 +594,30 @@ impl GameSession {
                 .and_then(|&idx| self.players.get(idx))
                 .map(|p| p.token == *tok)
                 .unwrap_or(false),
-            (None, _) => true,
+            (None, _) => true, // spettatore: sempre ok
             _ => false,
         };
 
         if !authenticated {
-            let _ = tx.send(ServerMessage::Error(ttr_proto::ErrorPayload {
-                seq: 0,
-                reason: ttr_proto::ErrorReason::Unauthorized,
-                action_ref: None,
-            }));
+            // F2: rispondi via oneshot e lascia che l'handler WS chiuda il socket.
+            let _ = reply.send(ConnectOutcome::Unauthorized);
             return;
         }
+
+        let conn_id = self.next_conn_id;
+        self.next_conn_id += 1;
 
         if let Some(ref pid) = player_id {
             self.connections
                 .entry(pid.clone())
                 .or_default()
-                .push(tx.clone());
+                .push((conn_id, tx.clone()));
         } else {
-            self.spectators.push(tx.clone());
+            self.spectators.push((conn_id, tx.clone()));
         }
+
+        // F2: notifica esito positivo con conn_id per il cleanup.
+        let _ = reply.send(ConnectOutcome::Ok { conn_id });
 
         let snap = self.build_snapshot(player_id.as_deref());
         if let Some(msg) = snap {
@@ -548,13 +625,21 @@ impl GameSession {
         }
     }
 
-    fn handle_disconnect(&mut self, player_id: Option<String>) {
-        if let Some(pid) = player_id {
-            self.connections.remove(&pid);
+    fn handle_disconnect(&mut self, player_id: Option<String>, conn_id: u64) {
+        // F6: rimuove la singola connessione per conn_id, non tutte del giocatore.
+        if let Some(ref pid) = player_id {
+            if let Some(senders) = self.connections.get_mut(pid) {
+                senders.retain(|(cid, _)| *cid != conn_id);
+                // Se il giocatore non ha più connessioni, non rimuoviamo l'entry:
+                // il giocatore esiste ancora e può riconnettersi.
+            }
+        } else {
+            self.spectators.retain(|(cid, _)| *cid != conn_id);
         }
-        self.spectators.retain(|tx| !tx.is_closed());
+        // Pulizia connessioni chiuse (best-effort).
+        self.spectators.retain(|(_, tx)| !tx.is_closed());
         for senders in self.connections.values_mut() {
-            senders.retain(|tx| !tx.is_closed());
+            senders.retain(|(_, tx)| !tx.is_closed());
         }
     }
 
@@ -564,24 +649,27 @@ impl GameSession {
         let public = bridge::build_public_state(self);
         let msg = ServerMessage::PublicState(public);
 
-        for tx in &self.spectators {
+        for (_cid, tx) in &self.spectators {
             let _ = tx.send(msg.clone());
         }
         for senders in self.connections.values() {
-            for tx in senders {
+            for (_cid, tx) in senders {
                 let _ = tx.send(msg.clone());
             }
         }
     }
 
     fn push_private_states(&mut self) {
+        // F3: passa l'indice del motore (SessionPlayer.index), non la posizione in self.players.
         let players: Vec<(String, usize)> = self
             .player_index
             .iter()
-            .map(|(pid, &idx)| (pid.clone(), idx))
+            .filter_map(|(pid, &idx)| {
+                self.players.get(idx).and_then(|p| p.index).map(|ei| (pid.clone(), ei))
+            })
             .collect();
-        for (pid, idx) in players {
-            self.push_private_state_single(&pid, Some(idx));
+        for (pid, engine_idx) in players {
+            self.push_private_state_single(&pid, Some(engine_idx));
         }
     }
 
@@ -593,7 +681,7 @@ impl GameSession {
             ps.seq = seq;
             let msg = ServerMessage::PrivateState(ps);
             if let Some(senders) = self.connections.get(player_id) {
-                for tx in senders {
+                for (_cid, tx) in senders {
                     let _ = tx.send(msg.clone());
                 }
             }
@@ -616,7 +704,7 @@ impl GameSession {
         });
 
         if let Some(senders) = self.connections.get(player_id) {
-            for tx in senders {
+            for (_cid, tx) in senders {
                 let _ = tx.send(msg.clone());
             }
         }
@@ -628,11 +716,15 @@ impl GameSession {
     fn build_snapshot(&mut self, player_id: Option<&str>) -> Option<ServerMessage> {
         let public = bridge::build_public_state(self);
         let private = player_id.and_then(|pid| {
-            let idx = self.player_index.get(pid).copied();
+            // F3: risolvi l'indice del motore via SessionPlayer.index.
+            let engine_idx = self
+                .player_index
+                .get(pid)
+                .and_then(|&idx| self.players.get(idx).and_then(|p| p.index));
             // E6: il `seq` del private dentro SNAPSHOT avanza anch'esso.
             let seq = self.outbound_seq.get(pid).copied().unwrap_or(0) + 1;
             self.outbound_seq.insert(pid.to_string(), seq);
-            bridge::build_private_state(self, pid, idx)
+            bridge::build_private_state(self, pid, engine_idx)
         });
 
         Some(ServerMessage::Snapshot(ttr_proto::Snapshot {
@@ -642,12 +734,44 @@ impl GameSession {
         }))
     }
 
+    // ── GameInfo (F4: lobby via attore) ────────────────────────────
+
+    fn build_game_info(&self) -> GameInfo {
+        // Ordina i giocatori per indice di join (deterministico).
+        let mut ordered: Vec<(usize, &String)> = self
+            .player_index
+            .iter()
+            .map(|(id, &idx)| (idx, id))
+            .collect();
+        ordered.sort_by_key(|(idx, _)| *idx);
+
+        let players: Vec<(String, String, PlayerColor)> = ordered
+            .into_iter()
+            .filter_map(|(idx, id)| {
+                self.players.get(idx).map(|p| (id.clone(), p.name.clone(), p.color))
+            })
+            .collect();
+
+        GameInfo {
+            players,
+            players_joined: self.player_index.len(),
+            started: self.started,
+        }
+    }
+
     // ── Save ─────────────────────────────────────────────────────
 
     fn write_save(&self) {
         if let Some(ref path) = self.save_path {
             let data = crate::save::build_save_data(self);
-            let _ = crate::save::write_atomic(path, &data);
+            if let Err(e) = crate::save::write_atomic(path, &data) {
+                tracing::error!(
+                    game_id = %self.game_id,
+                    path = %path.display(),
+                    "write_save fallita: {}",
+                    e
+                );
+            }
         }
     }
 

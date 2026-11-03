@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use ttr_proto::PlayerColor;
 
-use crate::session::{GameCommand, GameHandle, GameSession};
+use crate::session::{GameCommand, GameHandle, GameInfo, GameSession};
 use crate::state::AppState;
 
 // ── Tipi risposta REST ─────────────────────────────────────────────
@@ -254,20 +254,25 @@ struct ListGamesResponse {
     games: Vec<GameListItem>,
 }
 
-/// GET /api/games — elenca le partite attive.
+/// GET /api/games — elenca le partite attive, interrogando l'attore (F4).
 pub async fn list_games(State(state): State<AppState>) -> impl IntoResponse {
-    let games = state.games.read().await;
-    let list: Vec<GameListItem> = games
-        .values()
-        .map(|h| GameListItem {
+    let handles: Vec<GameHandle> = {
+        let games = state.games.read().await;
+        games.values().cloned().collect()
+    };
+
+    let mut list: Vec<GameListItem> = Vec::with_capacity(handles.len());
+    for h in handles {
+        let info = query_game_info(&h).await;
+        list.push(GameListItem {
             game_id: h.game_id.clone(),
             name: h.game_name.clone(),
             ruleset_id: h.ruleset_id.clone(),
-            players_joined: h.players_joined,
+            players_joined: info.as_ref().map(|i| i.players_joined).unwrap_or(h.players_joined),
             max_players: h.max_players,
-            started: h.started,
-        })
-        .collect();
+            started: info.as_ref().map(|i| i.started).unwrap_or(h.started),
+        });
+    }
     Json(ListGamesResponse { games: list })
 }
 
@@ -294,33 +299,62 @@ struct GetGameResponse {
     max_players: u32,
 }
 
-/// GET /api/games/{id} — dettagli partita in lobby.
+/// GET /api/games/{id} — dettagli partita in lobby (F4: via attore).
 pub async fn get_game(
     State(state): State<AppState>,
     Path(game_id): Path<String>,
 ) -> axum::response::Response {
-    let games = state.games.read().await;
-    let handle = match games.get(&game_id) {
-        Some(h) => h.clone(),
-        None => {
-            return ErrorResponse::new("GAME_NOT_FOUND", None).into_response();
+    let handle = {
+        let games = state.games.read().await;
+        match games.get(&game_id) {
+            Some(h) => h.clone(),
+            None => {
+                return ErrorResponse::new("GAME_NOT_FOUND", None).into_response();
+            }
         }
     };
-    drop(games);
 
-    // Chiedi all'attore lo stato corrente dei giocatori
-    // Per semplicità usiamo il players_joined del GameHandle
-    // (andrebbe arricchito con i dettagli giocatore via query all'attore)
+    let info = query_game_info(&handle).await;
+
     let response = GetGameResponse {
         game_id: handle.game_id.clone(),
         name: handle.game_name.clone(),
         ruleset_id: handle.ruleset_id.clone(),
-        players: vec![], // TODO: popolare da attore
-        started: handle.started,
+        players: info
+            .as_ref()
+            .map(|i| {
+                i.players
+                    .iter()
+                    .map(|(id, name, color)| LobbyPlayer {
+                        player_id: id.clone(),
+                        name: name.clone(),
+                        color: *color,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+        started: info.as_ref().map(|i| i.started).unwrap_or(handle.started),
         max_players: handle.max_players,
     };
 
     Json(response).into_response()
+}
+
+/// Interroga l'attore con `GetInfo`; timeout breve → fallback ai dati cache.
+async fn query_game_info(handle: &GameHandle) -> Option<GameInfo> {
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    if handle
+        .tx
+        .send(GameCommand::GetInfo { reply: reply_tx })
+        .await
+        .is_err()
+    {
+        return None; // attore morto
+    }
+    tokio::time::timeout(std::time::Duration::from_millis(500), reply_rx)
+        .await
+        .ok()
+        .and_then(|r| r.ok())
 }
 
 // ── /api/games/{id}/join ───────────────────────────────────────────

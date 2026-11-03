@@ -289,6 +289,24 @@ impl WsClient {
         }
     }
 
+    /// Connette uno spettatore (senza playerId né token).
+    #[allow(dead_code)]
+    pub async fn connect_spectator(server: &TestServer, game_id: &str) -> Self {
+        let url = server.ws_url(game_id);
+        let (ws, _) = tokio_tungstenite::connect_async(&url)
+            .await
+            .expect("connect spectator WS");
+        let (write, read) = ws.split();
+        WsClient {
+            player_id: String::new(),
+            token: String::new(),
+            view: PlayerView::default(),
+            last_snapshot: None,
+            write,
+            read,
+        }
+    }
+
     /// Invia un'azione inbound (serializzata) al server.
     pub async fn send(&mut self, action: &InboundAction) {
         let json = serde_json::to_string(action).expect("serializza InboundAction");

@@ -12,6 +12,7 @@ mod common;
 
 use common::driver::*; // Player, decide, apply_msg, run_game, recv_from
 use common::*;
+use futures_util::StreamExt;
 use ttr_proto::{GameState, InboundAction, ServerMessage};
 
 /// Test §9.1: partita completa fino a `GAME_OVER` con `finalScores` coerenti.
@@ -378,5 +379,277 @@ async fn idempotency() {
     assert_eq!(
         hand_after_retransmit, hand_after,
         "idempotenza: ritrasmissione non deve cambiare la mano"
+    );
+}
+
+/// Test F1: spettatore (connessione senza playerId) riceve solo pubblico.
+#[tokio::test]
+async fn spectator_public_only() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+
+    let game = create_game_with_seed(&server.base_url, "Spectator", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", None).await;
+    start_game(&server.base_url, &game.game_id, &game.host_token).await;
+
+    let a_ws = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+    let b_ws = WsClient::connect(&server, &game.game_id, &pb.player_id, &pb.token).await;
+    let mut spec = WsClient::connect_spectator(&server, &game.game_id).await;
+
+    let mut a = Player::new(a_ws);
+    let mut b = Player::new(b_ws);
+    let mut public: Option<ttr_proto::PublicState> = None;
+
+    // Consuma SNAPSHOT iniziali per A, B e spettatore.
+    let snap_spec = spec.recv().await;
+    assert!(
+        matches!(snap_spec, ServerMessage::Snapshot(_)),
+        "spettatore riceve SNAPSHOT iniziale"
+    );
+    if let ServerMessage::Snapshot(ref s) = snap_spec {
+        assert!(s.private.is_none(), "spettatore: private None nello SNAPSHOT");
+    }
+
+    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
+    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+
+    // Draft entrambi i giocatori (spettatore non partecipa).
+    let draft_a = decide(
+        &a.player_id,
+        &mut a.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut a.drafted,
+    )
+    .unwrap()
+    .unwrap();
+    a.client.as_mut().unwrap().send(&draft_a).await;
+
+    let draft_b = decide(
+        &b.player_id,
+        &mut b.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut b.drafted,
+    )
+    .unwrap()
+    .unwrap();
+    b.client.as_mut().unwrap().send(&draft_b).await;
+
+    // Consuma post-draft: lo spettatore deve ricevere PUBLIC_STATE ma mai PRIVATE_STATE.
+    // Due fasi: prima A e B fino a PlayerTurn, poi drena lo spettatore.
+    let mut spec_got_public = false;
+    let mut spec_got_private = false;
+    loop {
+        tokio::select! {
+            msg = a.client.as_mut().unwrap().recv() => {
+                apply_msg(&msg, &mut a, &mut public);
+            }
+            msg = b.client.as_mut().unwrap().recv() => {
+                apply_msg(&msg, &mut b, &mut public);
+            }
+        }
+        if public.as_ref().map(|p| p.state == GameState::PlayerTurn).unwrap_or(false) {
+            break;
+        }
+    }
+    // Drena i messaggi broadcast accumulati nello stream dello spettatore
+    // (il PublicState post-draft è stato inviato anche agli spectator).
+    while let Ok(msg) =
+        tokio::time::timeout(std::time::Duration::from_millis(200), spec.recv()).await
+    {
+        match msg {
+            ServerMessage::PublicState(_) => spec_got_public = true,
+            ServerMessage::PrivateState(_) => spec_got_private = true,
+            _ => {}
+        }
+    }
+    assert!(spec_got_public, "spettatore riceve PUBLIC_STATE");
+    assert!(!spec_got_private, "spettatore NON riceve PRIVATE_STATE");
+
+    // Lo spettatore prova a inviare un'azione → deve ricevere ERROR.
+    spec.send(&ttr_proto::InboundAction::DrawTrainCard(
+        ttr_proto::DrawCardPayload {
+            player_id: "chiunque".into(),
+            source: ttr_proto::DrawSource::Deck,
+            client_seq: None,
+        },
+    ))
+    .await;
+    let msg = spec.recv().await;
+    assert!(
+        matches!(msg, ServerMessage::Error(ref e) if e.reason == ttr_proto::ErrorReason::Unauthorized),
+        "spettatore: azione inbound → ERROR Unauthorized"
+    );
+}
+
+/// Test F2: token errato → socket chiuso dal server.
+#[tokio::test]
+async fn wrong_token_closes_socket() {
+    let server = TestServer::start().await;
+
+    let game = create_game_with_seed(&server.base_url, "WrongToken", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+
+    // Connetti con token sbagliato.
+    let url = format!(
+        "{}?playerId={}&token=token_sbagliato",
+        server.ws_url(&game.game_id),
+        pa.player_id,
+    );
+    let (ws, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .expect("connect WS (token errato)");
+    let (_write, mut read) = ws.split();
+
+    // Il server deve chiudere il socket: la read deve tornare Close o None.
+    let msg = tokio::time::timeout(std::time::Duration::from_secs(5), read.next())
+        .await
+        .expect("timeout attesa chiusura");
+    match msg {
+        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => {
+            // OK: server ha chiuso
+        }
+        Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
+            // Verifica che sia ERROR Unauthorized
+            let parsed: ServerMessage =
+                serde_json::from_str(&text).expect("parse close msg");
+            assert!(
+                matches!(parsed, ServerMessage::Error(ref e) if e.reason == ttr_proto::ErrorReason::Unauthorized),
+                "token errato → ERROR Unauthorized"
+            );
+            // Dopo l'ERROR il server deve chiudere: la prossima read è Close, None, o errore di reset.
+            let next = tokio::time::timeout(std::time::Duration::from_secs(5), read.next())
+                .await
+                .ok()
+                .flatten();
+            match next {
+                None
+                | Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_)))
+                | Some(Err(tokio_tungstenite::tungstenite::Error::Protocol(
+                    tokio_tungstenite::tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+                ))) => { /* OK */ }
+                other => panic!("dopo ERROR il socket deve chiudersi, ricevuto: {:?}", other),
+            }
+        }
+        None => {
+            // Socket chiuso senza frame
+        }
+        other => {
+            panic!("atteso Close o ERROR, ricevuto: {:?}", other);
+        }
+    }
+}
+
+/// Test F5: `client_seq: Some(0)` non deve bypassare il dedup.
+#[tokio::test]
+async fn client_seq_zero_dedup() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+
+    let game = create_game_with_seed(&server.base_url, "SeqZero", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", None).await;
+    start_game(&server.base_url, &game.game_id, &game.host_token).await;
+
+    let a_ws = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+    let b_ws = WsClient::connect(&server, &game.game_id, &pb.player_id, &pb.token).await;
+
+    let mut a = Player::new(a_ws);
+    let mut b = Player::new(b_ws);
+    let mut public: Option<ttr_proto::PublicState> = None;
+
+    // Consuma SNAPSHOT iniziali e draft.
+    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
+    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+
+    let draft_a = decide(
+        &a.player_id,
+        &mut a.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut a.drafted,
+    )
+    .unwrap()
+    .unwrap();
+    a.client.as_mut().unwrap().send(&draft_a).await;
+
+    let draft_b = decide(
+        &b.player_id,
+        &mut b.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut b.drafted,
+    )
+    .unwrap()
+    .unwrap();
+    b.client.as_mut().unwrap().send(&draft_b).await;
+
+    // Consuma post-draft finché non inizia il turno di A.
+    loop {
+        let msg_a = a.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg_a, &mut a, &mut public);
+        let msg_b = b.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg_b, &mut b, &mut public);
+        let p = public.as_ref().unwrap();
+        if p.state == GameState::GameOver {
+            panic!("game over troppo presto");
+        }
+        if (p.state == GameState::PlayerTurn || p.state == GameState::LastRound)
+            && p.current_turn_player_id.as_deref() == Some(&a.player_id)
+        {
+            break;
+        }
+    }
+
+    // Svuota eventuali PrivateState pendenti per avere un hand pulito.
+    while let Ok(msg) = tokio::time::timeout(
+        std::time::Duration::from_millis(200),
+        a.client.as_mut().unwrap().recv(),
+    )
+    .await
+    {
+        apply_msg(&msg, &mut a, &mut public);
+    }
+    let hand_before = a.client.as_ref().unwrap().view.hand.clone();
+
+    // Azione con client_seq: Some(0) — deve essere accettata la prima volta.
+    let draw = InboundAction::DrawTrainCard(ttr_proto::DrawCardPayload {
+        player_id: a.player_id.clone(),
+        source: ttr_proto::DrawSource::Deck,
+        client_seq: Some(0),
+    });
+    a.client.as_mut().unwrap().send(&draw).await;
+
+    // Ricevi risposta.
+    loop {
+        let msg = a.client.as_mut().unwrap().recv().await;
+        let fresh = apply_msg(&msg, &mut a, &mut public);
+        if fresh {
+            break;
+        }
+    }
+    let hand_after_first = a.client.as_ref().unwrap().view.hand.clone();
+
+    // Ritrasmetti con stesso client_seq: Some(0) → deve essere droppata.
+    a.client.as_mut().unwrap().send(&draw).await;
+    loop {
+        let msg = a.client.as_mut().unwrap().recv().await;
+        let fresh = apply_msg(&msg, &mut a, &mut public);
+        if fresh {
+            break;
+        }
+    }
+    let hand_after_second = a.client.as_ref().unwrap().view.hand.clone();
+
+    assert_eq!(
+        hand_after_second, hand_after_first,
+        "F5: stesso client_seq Some(0) → dedup, mano invariata"
+    );
+    // Verifica che la prima applicazione abbia effettivamente cambiato la mano.
+    assert!(
+        hand_after_first != hand_before,
+        "prima applicazione con client_seq Some(0) deve funzionare"
     );
 }

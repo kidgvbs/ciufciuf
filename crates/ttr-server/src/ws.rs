@@ -9,7 +9,7 @@ use axum::response::IntoResponse;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 
-use crate::session::GameCommand;
+use crate::session::{ConnectOutcome, GameCommand};
 use crate::state::AppState;
 
 /// Parametri query string per il WS.
@@ -43,7 +43,7 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
         Some(h) => h,
         None => {
             let _ = sender
-                .send(axum::extract::ws::Message::Text(
+                .send(Message::Text(
                     serde_json::to_string(&ttr_proto::ServerMessage::Error(
                         ttr_proto::ErrorPayload {
                             seq: 0,
@@ -62,15 +62,57 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
     // Crea un canale per i messaggi outbound
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ttr_proto::ServerMessage>();
 
-    // Invia comando Connect
+    // Autenticazione via attore (F2): invia Connect e attende esito.
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     let _ = handle
         .tx
         .send(GameCommand::Connect {
             player_id: params.player_id.clone(),
             token: params.token.clone(),
             tx: tx.clone(),
+            reply: reply_tx,
         })
         .await;
+
+    let conn_id: u64 = match reply_rx.await.unwrap_or(ConnectOutcome::GameNotFound) {
+        ConnectOutcome::Ok { conn_id } => conn_id,
+        ConnectOutcome::Unauthorized => {
+            // F2: chiudi il socket su auth fallita (E9).
+            let _ = sender
+                .send(Message::Text(
+                    serde_json::to_string(&ttr_proto::ServerMessage::Error(
+                        ttr_proto::ErrorPayload {
+                            seq: 0,
+                            reason: ttr_proto::ErrorReason::Unauthorized,
+                            action_ref: None,
+                        },
+                    ))
+                    .unwrap_or_default()
+                    .into(),
+                ))
+                .await;
+            return;
+        }
+        ConnectOutcome::GameNotFound => {
+            let _ = sender
+                .send(Message::Text(
+                    serde_json::to_string(&ttr_proto::ServerMessage::Error(
+                        ttr_proto::ErrorPayload {
+                            seq: 0,
+                            reason: ttr_proto::ErrorReason::GameNotFound,
+                            action_ref: None,
+                        },
+                    ))
+                    .unwrap_or_default()
+                    .into(),
+                ))
+                .await;
+            return;
+        }
+    };
+
+    // F1: l'identità è quella della connessione, risolta una volta sola.
+    let connection_identity: Option<String> = params.player_id.clone();
 
     // Task per inoltrare messaggi dall'attore al WS
     let outbound_task = {
@@ -79,7 +121,7 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
             while let Some(msg) = rx.recv().await {
                 let json = serde_json::to_string(&msg).unwrap_or_default();
                 if sender
-                    .send(axum::extract::ws::Message::Text(json.into()))
+                    .send(Message::Text(json.into()))
                     .await
                     .is_err()
                 {
@@ -89,37 +131,55 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
         })
     };
 
-    // Loop inbound: leggi messaggi dal client
+    // Loop inbound: leggi messaggi dal client.
+    // F1: l'identity della connessione decide se l'azione è autorizzata.
     while let Some(Ok(msg)) = receiver.next().await {
         match msg {
             Message::Text(text) => {
                 let action: Result<ttr_proto::InboundAction, _> = serde_json::from_str(&text);
                 match action {
                     Ok(inbound) => {
-                        let player_id = inbound_player_id(&inbound);
                         let client_seq = extract_client_seq(&inbound);
 
-                        if matches!(inbound, ttr_proto::InboundAction::RequestSnapshot(_)) {
-                            let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                            let _ = handle
-                                .tx
-                                .send(GameCommand::RequestSnapshot {
-                                    player_id: params.player_id.clone(),
-                                    reply: reply_tx,
-                                })
-                                .await;
-                            if let Ok(Some(snap)) = reply_rx.await {
-                                let _ = tx.send(snap);
+                        match &connection_identity {
+                            None => {
+                                // Spettatore: nessuna azione inbound consentita (F1).
+                                let _ = tx.send(ttr_proto::ServerMessage::Error(
+                                    ttr_proto::ErrorPayload {
+                                        seq: 0,
+                                        reason: ttr_proto::ErrorReason::Unauthorized,
+                                        action_ref: None,
+                                    },
+                                ));
                             }
-                        } else {
-                            let _ = handle
-                                .tx
-                                .send(GameCommand::Action {
-                                    player_id,
+                            Some(pid) => {
+                                if matches!(
                                     inbound,
-                                    client_seq,
-                                })
-                                .await;
+                                    ttr_proto::InboundAction::RequestSnapshot(_)
+                                ) {
+                                    let (snap_tx, snap_rx) =
+                                        tokio::sync::oneshot::channel();
+                                    let _ = handle
+                                        .tx
+                                        .send(GameCommand::RequestSnapshot {
+                                            player_id: Some(pid.clone()),
+                                            reply: snap_tx,
+                                        })
+                                        .await;
+                                    if let Ok(Some(snap)) = snap_rx.await {
+                                        let _ = tx.send(snap);
+                                    }
+                                } else {
+                                    let _ = handle
+                                        .tx
+                                        .send(GameCommand::Action {
+                                            player_id: pid.clone(),
+                                            inbound,
+                                            client_seq,
+                                        })
+                                        .await;
+                                }
+                            }
                         }
                     }
                     Err(_) => {
@@ -132,25 +192,16 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
         }
     }
 
-    // Cleanup disconnessione
+    // Cleanup disconnessione — F6: passa il conn_id per rimuovere solo questa.
     let _ = handle
         .tx
         .send(GameCommand::Disconnect {
-            player_id: params.player_id,
+            player_id: connection_identity,
+            conn_id,
         })
         .await;
 
     outbound_task.abort();
-}
-
-fn inbound_player_id(inbound: &ttr_proto::InboundAction) -> String {
-    match inbound {
-        ttr_proto::InboundAction::DrawTrainCard(p) => p.player_id.clone(),
-        ttr_proto::InboundAction::DrawTickets(p) => p.player_id.clone(),
-        ttr_proto::InboundAction::ChooseTickets(p) => p.player_id.clone(),
-        ttr_proto::InboundAction::ClaimRoute(p) => p.player_id.clone(),
-        ttr_proto::InboundAction::RequestSnapshot(p) => p.player_id.clone(),
-    }
 }
 
 fn extract_client_seq(inbound: &ttr_proto::InboundAction) -> Option<u64> {

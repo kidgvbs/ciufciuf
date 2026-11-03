@@ -326,3 +326,108 @@ async fn resume_flow() {
         .collect();
     assert_eq!(snap_names, pre_names, "stessi nomi giocatori dopo resume");
 }
+
+/// Test F3: resume con ordine di re-join invertito (Bob prima di Alice).
+/// I playerId e i colori devono restare quelli salvati.
+#[tokio::test]
+async fn resume_inverted_order() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+
+    let game = create_game_with_seed(&server.base_url, "ResumeInverted", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", Some("RED")).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", Some("BLUE")).await;
+    start_game(&server.base_url, &game.game_id, &game.host_token).await;
+
+    let a_ws = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+    let b_ws = WsClient::connect(&server, &game.game_id, &pb.player_id, &pb.token).await;
+
+    let mut a = Player::new(a_ws);
+    let mut b = Player::new(b_ws);
+    let mut public: Option<ttr_proto::PublicState> = None;
+
+    // Consuma SNAPSHOT iniziali.
+    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
+    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+
+    // Draft entrambi.
+    let draft_a = decide(&a.player_id, &mut a.client.as_mut().unwrap().view, public.as_ref().unwrap(), &map, &mut a.drafted).unwrap().unwrap();
+    a.client.as_mut().unwrap().send(&draft_a).await;
+    let draft_b = decide(&b.player_id, &mut b.client.as_mut().unwrap().view, public.as_ref().unwrap(), &map, &mut b.drafted).unwrap().unwrap();
+    b.client.as_mut().unwrap().send(&draft_b).await;
+
+    // Consuma post-draft.
+    loop {
+        let msg_a = a.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg_a, &mut a, &mut public);
+        let msg_b = b.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg_b, &mut b, &mut public);
+        let p = public.as_ref().unwrap();
+        if matches!(p.state, GameState::PlayerTurn | GameState::LastRound) {
+            break;
+        }
+    }
+
+    // Gioca il primo turno di A.
+    loop {
+        let msg = a.client.as_mut().unwrap().recv().await;
+        let fresh = apply_msg(&msg, &mut a, &mut public);
+        let p = public.as_ref().unwrap();
+        if matches!(p.state, GameState::GameOver) { break; }
+        if fresh && p.current_turn_player_id.as_deref() == Some(&a.player_id) {
+            let a_c = a.client.as_mut().unwrap();
+            let a_act = decide(&a.player_id, &mut a_c.view, p, &map, &mut a.drafted).unwrap();
+            if let Some(act) = a_act { a_c.send(&act).await; }
+            break;
+        }
+    }
+
+    // Aspetta save.
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
+    assert!(save_path.exists(), "save file mid-game esiste");
+
+    // Usa il PublicState per i conteggi (più affidabile della view privata).
+    let ps = public.as_ref().expect("public state pre-resume");
+    let a_name_pre: u32 = ps.players_summary.iter().find(|s| s.name == "Alice").map(|s| s.tickets_count).unwrap_or(0);
+    let b_name_pre: u32 = ps.players_summary.iter().find(|s| s.name == "Bob").map(|s| s.tickets_count).unwrap_or(0);
+
+    // Resume.
+    let (resumed_id, resumed_host_token) =
+        ttr_server::resume_game(&server.state, &save_path).await.expect("resume_game");
+
+    // F3: re-join in ordine invertito: prima Bob, poi Alice.
+    let resumed_pb = join_game(&server.base_url, &resumed_id, "Bob", None).await;
+    let resumed_pa = join_game(&server.base_url, &resumed_id, "Alice", None).await;
+
+    // I playerId devono essere quelli originali salvati.
+    assert_eq!(resumed_pa.player_id, pa.player_id, "Alice: stesso playerId dopo resume");
+    assert_eq!(resumed_pb.player_id, pb.player_id, "Bob: stesso playerId dopo resume");
+
+    start_game(&server.base_url, &resumed_id, &resumed_host_token).await;
+
+    let ra_ws = WsClient::connect(&server, &resumed_id, &resumed_pa.player_id, &resumed_pa.token).await;
+    let rb_ws = WsClient::connect(&server, &resumed_id, &resumed_pb.player_id, &resumed_pb.token).await;
+
+    let mut ra = Player::new(ra_ws);
+    let mut rb = Player::new(rb_ws);
+    let mut resumed_public: Option<ttr_proto::PublicState> = None;
+
+    apply_msg(&ra.client.as_mut().unwrap().recv().await, &mut ra, &mut resumed_public);
+    apply_msg(&rb.client.as_mut().unwrap().recv().await, &mut rb, &mut resumed_public);
+
+    let snap = resumed_public.expect("SNAPSHOT dopo resume invertito");
+
+    // Verifica che i nomi siano nell'ordine originale (Alice indice 0, Bob indice 1).
+    assert_eq!(snap.players_summary[0].name, "Alice", "Alice primo giocatore (indice motore 0)");
+    assert_eq!(snap.players_summary[1].name, "Bob", "Bob secondo giocatore (indice motore 1)");
+    assert_eq!(snap.players_summary[0].color, ttr_proto::PlayerColor::Red, "Alice colore Red");
+    assert_eq!(snap.players_summary[1].color, ttr_proto::PlayerColor::Blue, "Bob colore Blue");
+
+    // Verifica che i biglietti siano preservati.
+    let ra_tickets = ra.client.as_ref().unwrap().view.tickets.len() as u32;
+    let rb_tickets = rb.client.as_ref().unwrap().view.tickets.len() as u32;
+    assert_eq!(ra_tickets, a_name_pre, "Alice: stessi biglietti dopo resume invertito");
+    assert_eq!(rb_tickets, b_name_pre, "Bob: stessi biglietti dopo resume invertito");
+}

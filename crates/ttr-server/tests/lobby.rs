@@ -239,5 +239,44 @@ async fn seq_monotono() {
     );
 }
 
-// Tutti gli helper (Player, decide, apply_msg, run_game, WsClient, …)
-// sono importati via `use common::driver::*` e `use common::*`.
+/// Test F4: dopo 2 join, `GET /api/games` mostra `players_joined == 2`
+/// e `GET /api/games/{id}` elenca entrambi i giocatori con i colori corretti.
+#[tokio::test]
+async fn lobby_players_after_join() {
+    let server = TestServer::start().await;
+
+    let game = create_game(&server.base_url, "F4LobbyTest").await;
+    let _pa = join_game(&server.base_url, &game.game_id, "Alice", Some("RED")).await;
+    let _pb = join_game(&server.base_url, &game.game_id, "Bob", Some("BLUE")).await;
+
+    // Lascia tempo all'attore di processare i join.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    // Verifica GET /api/games → players_joined == 2.
+    let client = reqwest::Client::new();
+    let list_resp = client
+        .get(format!("{}/api/games", server.base_url))
+        .send()
+        .await
+        .expect("GET /api/games");
+    assert_eq!(list_resp.status(), 200);
+    let list_json: serde_json::Value = list_resp.json().await.expect("parse list");
+    let games = list_json["games"].as_array().expect("games array");
+    let g = games.iter().find(|g| g["gameId"].as_str() == Some(&game.game_id)).expect("game presente");
+    assert_eq!(g["playersJoined"].as_u64().unwrap_or(0), 2, "players_joined == 2");
+    assert!(!g["started"].as_bool().unwrap_or(true), "started == false");
+
+    // Verifica GET /api/games/{id} → entrambi i giocatori.
+    let detail_resp = client
+        .get(format!("{}/api/games/{}", server.base_url, game.game_id))
+        .send()
+        .await
+        .expect("GET /api/games/{id}");
+    assert_eq!(detail_resp.status(), 200);
+    let detail_json: serde_json::Value = detail_resp.json().await.expect("parse detail");
+    let players = detail_json["players"].as_array().expect("players array");
+    assert_eq!(players.len(), 2, "2 giocatori nel dettaglio");
+    let names: Vec<&str> = players.iter().map(|p| p["name"].as_str().unwrap()).collect();
+    assert!(names.contains(&"Alice"), "Alice presente");
+    assert!(names.contains(&"Bob"), "Bob presente");
+}

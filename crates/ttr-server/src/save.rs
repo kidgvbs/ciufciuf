@@ -70,15 +70,27 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
         "in_progress"
     };
 
-    let players: Vec<SavePlayer> = session
-        .players
-        .iter()
-        .map(|p| SavePlayer {
-            id: session_player_id(session, p),
-            name: p.name.clone(),
-            color: format!("{:?}", p.color).to_uppercase(),
-        })
-        .collect();
+    // Costruisce i dati giocatore in ordine di join deterministico
+    // (F3: usa player_index ordinato, non ptr::eq).
+    let players: Vec<SavePlayer> = {
+        let mut ordered: Vec<(usize, &String)> = session
+            .player_index
+            .iter()
+            .map(|(id, &idx)| (idx, id))
+            .collect();
+        ordered.sort_by_key(|(idx, _)| *idx);
+        ordered
+            .into_iter()
+            .map(|(idx, id)| {
+                let p = &session.players[idx];
+                SavePlayer {
+                    id: id.clone(),
+                    name: p.name.clone(),
+                    color: format!("{:?}", p.color).to_uppercase(),
+                }
+            })
+            .collect()
+    };
 
     SaveData {
         format_version: 1,
@@ -94,18 +106,6 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
         created_at: now.clone(),
         updated_at: now,
     }
-}
-
-fn session_player_id(session: &GameSession, player: &crate::session::SessionPlayer) -> String {
-    session
-        .player_index
-        .iter()
-        .find(|&(_, idx)| {
-            *idx < session.players.len()
-                && std::ptr::eq(&session.players[*idx] as *const _, player as *const _)
-        })
-        .map(|(id, _)| id.clone())
-        .unwrap_or_default()
 }
 
 /// Scrive i dati in modo atomico: scrive su file temporaneo e rinomina.

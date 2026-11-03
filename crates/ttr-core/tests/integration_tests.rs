@@ -764,6 +764,82 @@ fn golden_initial_draft_parallel() {
     assert_eq!(eng.phase(), GamePhase::PlayerTurn);
 }
 
+/// F8 / E10: dopo un claim che connette alcune città, un
+/// `DrawTickets` + `ChooseTickets` mid-game deve marcare ogni biglietto
+/// tenuto con `completed: Some(_)` — mai `None` (E10 fix).
+#[test]
+fn golden_mid_game_ticket_completed_not_none() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(64, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+
+    // Dai a P0 carte sufficienti per un claim: A_B_1 (len=1, Gray).
+    eng.set_player_hand(0, vec![CardColor::Red, CardColor::Red]);
+
+    // Claim A_B_1 → i biglietti dummy A→B saranno completati se pescati.
+    eng.apply(Action::ClaimRoute {
+        player_index: 0,
+        route_id: "A_B_1".into(),
+        cards_discarded: vec![CardColor::Red],
+    })
+    .unwrap();
+
+    // Resetta treni per evitare last round.
+    eng.set_player_trains(0, 40);
+
+    // Dopo il claim di P0 il turno passa a P1.
+    // Fai pescare biglietti a P1 per avanzare il turno e tornare a P0.
+    eng.apply(Action::DrawTickets { player_index: 1 }).unwrap();
+    let p1_offered = eng.pending_tickets().to_vec();
+    let p1_keep = vec![p1_offered[0].clone()];
+    eng.apply(Action::ChooseTickets {
+        player_index: 1,
+        keep: p1_keep,
+    })
+    .unwrap();
+
+    // DrawTickets mid-game (turno di P0).
+    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    assert_eq!(eng.phase(), GamePhase::TicketChoice);
+
+    let pending = eng.pending_tickets().to_vec();
+    assert!(!pending.is_empty(), "ci devono essere biglietti in pending");
+
+    // Scegli tutti i biglietti offerti per testarli tutti.
+    let keep = pending.clone();
+    eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: keep.clone(),
+    })
+    .unwrap();
+
+    // Invariante E10: ogni biglietto tenuto ha completed.is_some()
+    // (Some(true) se completato, Some(false) altrimenti — mai None).
+    let player = eng.player(0).unwrap();
+    for tid in &keep {
+        let ts = player
+            .tickets
+            .get(tid)
+            .unwrap_or_else(|| panic!("biglietto {} non trovato nel giocatore", tid));
+        assert!(
+            ts.completed.is_some(),
+            "E10: biglietto '{}' ha completed = {:?}, atteso Some(_)",
+            tid,
+            ts.completed
+        );
+    }
+
+    // Se tra i biglietti tenuti c'è un dummy A→B, deve essere Some(true).
+    let dummy_completed = keep
+        .iter()
+        .filter(|tid| tid.starts_with("dummy_"))
+        .any(|tid| player.tickets[tid].completed == Some(true));
+    assert!(
+        dummy_completed,
+        "E10: almeno un dummy A→B deve risultare completed dopo ChooseTickets (A_B_1 claimato)"
+    );
+}
+
 // ============================================================
 // Sezione 2.5 — legalMoves gate + §3.3 test gap closures
 // ============================================================

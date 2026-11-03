@@ -109,21 +109,26 @@ fn game_phase_to_game_state(phase: GamePhase) -> GameState {
 }
 
 fn build_players_summary(session: &GameSession) -> Vec<PlayerSummary> {
+    // Usa l'indice del motore (SessionPlayer.index) quando disponibile;
+    // altrimenti la posizione in self.players (idx) come fallback pre-start.
     let mut ordered: Vec<(usize, &String, &SessionPlayer)> = session
         .player_index
         .iter()
-        .filter_map(|(pid, &idx)| session.players.get(idx).map(|p| (idx, pid, p)))
+        .filter_map(|(pid, &idx)| session.players.get(idx).map(|p| {
+            let engine_idx = p.index.unwrap_or(idx);
+            (engine_idx, pid, p)
+        }))
         .collect();
-    ordered.sort_by_key(|(idx, _, _)| *idx);
+    ordered.sort_by_key(|(ei, _, _)| *ei);
 
     let max_trains: u32 = 45; // USA default
 
     ordered
         .into_iter()
-        .map(|(idx, pid, p)| {
+        .map(|(engine_idx, pid, p)| {
             let (trains, score, hand_count, tickets_count) =
                 if let Some(ref engine) = session.engine {
-                    let player = engine.player(idx);
+                    let player = engine.player(engine_idx);
                     (
                         player.map(|pl| pl.trains_remaining).unwrap_or(max_trains),
                         player.map(|pl| pl.score).unwrap_or(0),
@@ -261,11 +266,19 @@ fn build_offered_tickets(
 pub(crate) fn build_final_scores(
     final_scores: &[ttr_core::event::FinalScore],
     _longest_path_players: &[usize],
-    _players: &[SessionPlayer],
+    players: &[SessionPlayer],
     player_index: &BTreeMap<String, usize>,
 ) -> Vec<FinalScoreInfo> {
-    let index_to_id: BTreeMap<usize, &String> =
-        player_index.iter().map(|(id, &idx)| (idx, id)).collect();
+    // F3: mappa engine_index → player_id usando SessionPlayer.index.
+    let index_to_id: BTreeMap<usize, &String> = player_index
+        .iter()
+        .filter_map(|(id, &session_pos)| {
+            players
+                .get(session_pos)
+                .and_then(|p| p.index)
+                .map(|ei| (ei, id))
+        })
+        .collect();
 
     final_scores
         .iter()
