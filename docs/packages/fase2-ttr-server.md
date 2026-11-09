@@ -132,8 +132,8 @@ Outbound (unico socket per client):
 {"type":"SNAPSHOT","payload":{"protocolVersion":1,"public":{…},"private":{…o null…}}}
 ```
 
-Inbound = `InboundAction` §7.1, con `clientSeq` opzionale in ogni payload:
-`{"actionType":"DRAW_TICKETS","playerId":"p1","clientSeq":42}`.
+Inbound = `InboundAction` §7.1, con `client_seq` opzionale in ogni payload:
+`{"actionType":"DRAW_TICKETS","player_id":"p1","client_seq":42}`.
 
 `actionRef` per ERROR: `"CLAIM_ROUTE denver_phoenix_1"`, `"DRAW_TRAIN_CARD deck"` o
 `"… faceUp[2]"`, `"DRAW_TICKETS"`, `"CHOOSE_TICKETS …"`, `"REQUEST_SNAPSHOT"`.
