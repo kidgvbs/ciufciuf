@@ -35,7 +35,7 @@ impl Engine {
     /// Il client è "scemo": non deve mai vedere mosse che il motore
     /// rifiuterebbe con `WrongState` o `NotYourTurn`.
     pub fn legal_moves(&self, player_index: usize) -> LegalMoves {
-        if player_index >= self.players.len() {
+        if player_index >= self.players.len() || player_index != self.current_player_index {
             return LegalMoves::empty();
         }
 
@@ -94,28 +94,10 @@ impl Engine {
         let color_counts = count_colors(hand);
 
         for route in &self.map.routes {
+            if !self.route_open_for(player_index, route) {
+                continue;
+            }
             let rid = &route.id;
-
-            if self.claimed_routes.contains_key(rid) {
-                continue;
-            }
-            if self.players[player_index].trains_remaining < route.len {
-                continue;
-            }
-
-            if route.double {
-                let sister_id = find_sister_for_legal(rid, &self.routes_by_id);
-                if let Some(sid) = &sister_id
-                    && let Some(cri) = self.claimed_routes.get(sid)
-                {
-                    if cri.claimed_by == player_index {
-                        continue;
-                    }
-                    if self.players.len() < self.ruleset.double_route_min_players as usize {
-                        continue;
-                    }
-                }
-            }
 
             let can_pay = self.can_pay_route(
                 hand,
@@ -129,6 +111,44 @@ impl Engine {
             }
         }
         result
+    }
+
+    /// Vero se il giocatore può reclamare la rotta, a prescindere dalle carte.
+    fn route_open_for(&self, player_index: usize, route: &Route) -> bool {
+        let rid = &route.id;
+
+        if self.claimed_routes.contains_key(rid) {
+            return false;
+        }
+        if self.players[player_index].trains_remaining < route.len {
+            return false;
+        }
+
+        if route.double {
+            let sister_id = find_sister_for_legal(rid, &self.routes_by_id);
+            if let Some(sid) = &sister_id
+                && let Some(cri) = self.claimed_routes.get(sid)
+            {
+                if cri.claimed_by == player_index {
+                    return false;
+                }
+                if self.players.len() < self.ruleset.double_route_min_players as usize {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Vero se almeno un giocatore ha ancora una rotta aperta, a prescindere
+    /// dalle carte (D28).
+    pub(crate) fn any_route_claimable_by_anyone(&self) -> bool {
+        (0..self.players.len()).any(|player_index| {
+            self.map
+                .routes
+                .iter()
+                .any(|route| self.route_open_for(player_index, route))
+        })
     }
 
     fn can_pay_route(
@@ -162,7 +182,11 @@ impl Engine {
     }
 
     fn can_draw_from_deck(&self) -> bool {
-        !self.draw_pile.is_empty() || !self.train_discards.is_empty()
+        // Con mazzo e scarti vuoti la pesca crea un mazzo nuovo (D27).
+        !self.draw_pile.is_empty()
+            || !self.train_discards.is_empty()
+            || self.ruleset.deck.per_color > 0
+            || self.ruleset.deck.locomotives > 0
     }
 
     fn can_draw_tickets(&self) -> bool {

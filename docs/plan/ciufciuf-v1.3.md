@@ -90,7 +90,7 @@ Fonte: PDF ufficiali Days of Wonder (EN e IT disponibili, v. §13). BGA come rif
    - Una **locomotiva scoperta conta come pescata intera**: il turno di pesca termina. Non si può prendere una locomotiva scoperta come *seconda* carta.
    - Una locomotiva pescata dal mazzo coperto è una pescata normale.
    - Se a un qualsiasi momento **≥3 locomotive** sono scoperte: scartare tutte le 5, rivelarne 5 nuove.
-   - Mazzo esaurito → rimescolare gli scarti. Se anche gli scarti sono esauriti: la pescata si completa con quel che c'è (**il turno non si perde** — si può comunque reclamare o pescare biglietti).
+   - Mazzo esaurito → rimescolare gli scarti. Se anche gli scarti sono esauriti (**D27**): si crea un mazzo completo nuovo con la composizione del ruleset, lo si mescola e si continua a pescare; le carte in mano restano dove sono, quindi il totale in gioco può superare 110.
 2. **Reclamare una rotta**: pagare carte pari alla lunghezza, del colore della rotta (rotte grigie: qualsiasi colore, ma tutte uguali); le locomotive sostituiscono qualsiasi colore. Punti immediati (tabella sotto). Piazzare i treni.
 3. **Pescare 3 biglietti destinazione**, tenerne **almeno 1** (fino a 3). Scarti in fondo al mazzo in ordine. I biglietti tenuti non si scartano più.
 
@@ -99,7 +99,7 @@ Fonte: PDF ufficiali Days of Wonder (EN e IT disponibili, v. §13). BGA come rif
 - 2–3 giocatori: reclamarne una **blocca** l'altra per tutti.
 - 4–5 giocatori: due giocatori diversi possono reclamarle entrambe.
 
-**Fine partita:** quando a fine turno un giocatore ha **≤2 treni**, si annuncia l'ultimo giro: **ogni giocatore, incluso chi ha innescato, fa un ultimo turno** (D11). Il server memorizza `lastRoundTriggerPlayer = Pi`; si prosegue in ordine di turno e, dopo il turno finale di `Pi`, si passa a `GAME_OVER`. Poi rivelazione biglietti e punteggio finale.
+**Fine partita:** quando a fine turno un giocatore ha **≤2 treni**, oppure quando **nessun giocatore può più reclamare alcuna rotta**, a prescindere dalle carte (**D28**: rotte già prese, sorelle bloccate o più lunghe dei treni rimasti), si annuncia l'ultimo giro: **ogni giocatore, incluso chi ha innescato, fa un ultimo turno** (D11). Il server memorizza `lastRoundTriggerPlayer = Pi`; si prosegue in ordine di turno e, dopo il turno finale di `Pi`, si passa a `GAME_OVER`. Poi rivelazione biglietti e punteggio finale.
 
 **Punteggio:**
 
@@ -138,7 +138,7 @@ Fonte: PDF ufficiali Days of Wonder (EN e IT disponibili, v. §13). BGA come rif
 
 - [ ] Locomotiva scoperta: pescata unica; mai come seconda carta
 - [ ] Reset pool a **≥3** locomotive scoperte (vale anche per 4-5)
-- [ ] Rimescolamento scarti; esaurimento totale → pescata parziale, nessun turno perso
+- [ ] Rimescolamento scarti; esaurimento totale → mazzo nuovo dal ruleset (D27), nessun turno perso
 - [ ] Biglietti scartati → fondo del mazzo **in ordine**
 - [ ] Rotte doppie: blocco a 2–3 giocatori; mai entrambe allo stesso giocatore
 - [ ] Ultimo giro: **tutti**, incluso chi innesca (flag ruleset); fine dopo il turno di chi ha innescato

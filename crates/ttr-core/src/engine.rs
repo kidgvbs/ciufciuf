@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use ttr_proto::CardColor;
 
 use crate::action::Action;
-use crate::engine_deck::{check_and_reset_loco_threshold, draw_from_deck};
+use crate::engine_deck::{build_train_deck, check_and_reset_loco_threshold};
 use crate::error::{EngineError, GamePhase};
 use crate::event::GameEvent;
 use crate::rng::SeededRng;
@@ -84,25 +84,7 @@ impl Engine {
         let mut rng = SeededRng::new(seed);
 
         // --- Train deck ---
-        let mut train_cards: Vec<CardColor> = Vec::with_capacity(110);
-        let colors = [
-            CardColor::Red,
-            CardColor::Orange,
-            CardColor::Yellow,
-            CardColor::Green,
-            CardColor::Blue,
-            CardColor::Purple,
-            CardColor::Black,
-            CardColor::White,
-        ];
-        for &color in &colors {
-            for _ in 0..ruleset.deck.per_color {
-                train_cards.push(color);
-            }
-        }
-        for _ in 0..ruleset.deck.locomotives {
-            train_cards.push(CardColor::Locomotive);
-        }
+        let mut train_cards = build_train_deck(&ruleset.deck);
         rng.shuffle(&mut train_cards);
 
         let mut face_up: Vec<Option<CardColor>> = Vec::with_capacity(FACE_UP_COUNT);
@@ -116,6 +98,7 @@ impl Engine {
             &mut train_cards,
             &mut train_discards,
             &mut rng,
+            &ruleset.deck,
         );
 
         // --- Ticket deck ---
@@ -146,7 +129,7 @@ impl Engine {
         for i in 0..num_players {
             let mut hand: Vec<CardColor> = Vec::new();
             for _ in 0..4 {
-                if let Some(c) = draw_from_deck(&mut train_cards, &mut vec![], &mut rng) {
+                if let Some(c) = train_cards.pop() {
                     hand.push(c);
                 }
             }

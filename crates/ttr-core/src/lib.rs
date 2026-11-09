@@ -38,6 +38,16 @@ pub use event::GameEvent;
 pub use legal::LegalMoves;
 pub use types::{MapData, Ruleset};
 
+/// Versione delle regole del motore, registrata nei save.
+///
+/// Va incrementata quando una modifica alle regole o alla pesca cambia l'esito
+/// del replay di una partita esistente.
+///
+/// Eccezione accettata: D27 e D28 non l'hanno incrementata. Cambiano il replay
+/// solo dei save che avevano esaurito mazzo e scarti o non avevano più rotte
+/// reclamabili; alzarla avrebbe rifiutato anche tutti i save rimasti identici.
+pub const RULES_VERSION: u32 = 1;
+
 /// Carica mappa e ruleset da stringhe JSON (funzione di convenienza).
 pub fn load_map_from_json(json: &str) -> Result<MapData, serde_json::Error> {
     serde_json::from_str(json)

@@ -888,8 +888,67 @@ fn golden_legal_moves_ticket_choice_empty() {
     assert!(!lm.can_draw_tickets, "no ticket draw in TicketChoice");
 }
 
-/// R4.1: Esaurimento totale mazzo+scarti: la pescata si completa
-/// parzialmente e il turno NON si perde.
+fn has_no_moves(lm: &ttr_core::LegalMoves) -> bool {
+    lm.routes.is_empty()
+        && lm.draw_face_up.is_empty()
+        && !lm.can_draw_deck
+        && !lm.can_draw_tickets
+}
+
+/// legalMoves solo a chi è di turno: chi aspetta non vede mosse e il motore
+/// continua a rifiutarle con `NotYourTurn`.
+#[test]
+fn golden_legal_moves_only_for_current_player() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(63, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+    assert_eq!(eng.current_player(), 0);
+
+    let current = eng.legal_moves(0);
+    assert!(current.can_draw_deck, "chi è di turno può pescare");
+    assert!(!current.draw_face_up.is_empty(), "chi è di turno vede le scoperte");
+    assert!(has_no_moves(&eng.legal_moves(1)), "PlayerTurn: chi aspetta");
+
+    let claim = eng.apply(Action::ClaimRoute {
+        player_index: 1,
+        route_id: "A_B_1".into(),
+        cards_discarded: eng.player(1).unwrap().hand[..1].to_vec(),
+    });
+    assert!(matches!(claim, Err(EngineError::NotYourTurn { .. })));
+    let draw = eng.apply(Action::DrawTrainCard {
+        player_index: 1,
+        source: DrawSource::Deck,
+    });
+    assert!(matches!(draw, Err(EngineError::NotYourTurn { .. })));
+
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    })
+    .unwrap();
+    assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+
+    assert!(eng.legal_moves(0).can_draw_deck, "seconda pescata di chi è di turno");
+    assert!(has_no_moves(&eng.legal_moves(1)), "SecondCardDraw: chi aspetta");
+    let draw = eng.apply(Action::DrawTrainCard {
+        player_index: 1,
+        source: DrawSource::Deck,
+    });
+    assert!(matches!(draw, Err(EngineError::NotYourTurn { .. })));
+
+    // A turno finito le mosse passano all'altro giocatore.
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    })
+    .unwrap();
+    assert_eq!(eng.current_player(), 1);
+    assert!(has_no_moves(&eng.legal_moves(0)), "turno passato: chi ha giocato");
+    assert!(eng.legal_moves(1).can_draw_deck, "turno passato: nuovo di turno");
+}
+
+/// R4.1 / D27: con mazzo e scarti esauriti si può ancora reclamare e pescare
+/// biglietti, e la pescata dal mazzo riesce con un mazzo nuovo.
 #[test]
 fn golden_total_deck_exhaustion_no_turn_loss() {
     let (ids, names, colors) = two_players();
@@ -898,16 +957,6 @@ fn golden_total_deck_exhaustion_no_turn_loss() {
 
     // Svuota mazzo E scarti
     eng.clear_deck_and_discards();
-
-    // La pescata dal mazzo dovrebbe fallire perché non ci sono carte
-    let r = eng.apply(Action::DrawTrainCard {
-        player_index: 0,
-        source: DrawSource::Deck,
-    });
-    assert!(
-        matches!(r, Err(EngineError::DeckEmpty)),
-        "deck+discards vuoti → DeckEmpty"
-    );
 
     // Il giocatore può comunque reclamare una rotta
     eng.set_player_hand(0, vec![CardColor::Red]);
@@ -930,6 +979,23 @@ fn golden_total_deck_exhaustion_no_turn_loss() {
         "può pescare biglietti dopo esaurimento deck: {:?}",
         ev2.err()
     );
+    let keep = vec![eng.pending_tickets()[0].clone()];
+    eng.apply(Action::ChooseTickets {
+        player_index: 1,
+        keep,
+    })
+    .unwrap();
+
+    // La pescata dal mazzo riesce con un mazzo nuovo
+    eng.clear_deck_and_discards();
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    })
+    .unwrap();
+    assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+    assert_eq!(eng.draw_pile_len(), 109);
+    assert_eq!(eng.discards_len(), 0);
 }
 
 /// R4.2: Rotta doppia bloccata a 3 giocatori.
@@ -1204,151 +1270,354 @@ fn build_payment(hand: &[CardColor], route_color: &str, len: usize) -> Option<Ve
     }
 }
 
-/// Gioca una partita self-play casuale. Restituisce (azioni_eseguite, stato).
-fn play_random_game(seed: u64, num_players: usize) -> (usize, Engine) {
-    use rand::rngs::StdRng;
-    use rand::{Rng, SeedableRng};
+/// Politiche di bot del fuzz.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BotPolicy {
+    Random,
+    ClaimAsap,
+    /// Reclama raramente: esaurisce mazzo e scarti e fa scattare D27.
+    Hoarder,
+}
 
-    let (ids, names, colors) = match num_players {
-        2 => {
-            let ids: Vec<_> = (0..2).map(|i| format!("p{}", i + 1)).collect();
-            let names: Vec<_> = (0..2).map(|i| format!("P{}", i + 1)).collect();
-            (
-                ids,
-                names,
-                vec![ttr_proto::PlayerColor::Red, ttr_proto::PlayerColor::Blue],
-            )
+const BOT_POLICIES: [BotPolicy; 3] = [BotPolicy::Random, BotPolicy::ClaimAsap, BotPolicy::Hoarder];
+
+/// Limite di azioni delle partite che devono arrivare a `GameOver`.
+const FUZZ_MAX_ACTIONS: usize = 2000;
+/// Limite delle partite "accumula carte", che non possono finire da sole.
+const FUZZ_MAX_ACTIONS_HOARDER: usize = 400;
+/// Il bot "accumula carte" reclama in media una volta su tante occasioni.
+const HOARDER_CLAIM_ONE_IN: u32 = 40;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum FuzzMove {
+    Deck,
+    FaceUp(usize),
+    Tickets,
+    Route(String),
+}
+
+/// Partita di fuzz conclusa.
+struct FuzzOutcome {
+    engine: Engine,
+    actions: usize,
+    /// Quante volte è stato creato un mazzo nuovo (D27).
+    fresh_decks: usize,
+}
+
+#[derive(Debug, Default)]
+struct FuzzStats {
+    games: usize,
+    actions: usize,
+    fresh_decks: usize,
+    hoarder_fresh_decks: usize,
+    /// Partite in cui l'ultimo giro è partito per D28.
+    no_route_last_rounds: usize,
+    replays: usize,
+}
+
+fn fuzz_players(n: usize) -> (Vec<String>, Vec<String>, Vec<ttr_proto::PlayerColor>) {
+    (
+        (0..n).map(|i| format!("p{}", i + 1)).collect(),
+        (0..n).map(|i| format!("P{}", i + 1)).collect(),
+        ttr_core::default_player_colors(n),
+    )
+}
+
+fn total_train_cards(eng: &Engine) -> usize {
+    eng.draw_pile_len()
+        + eng.face_up_cards().iter().flatten().count()
+        + eng.discards_len()
+        + (0..eng.num_players())
+            .map(|pi| eng.player(pi).unwrap().hand.len())
+            .sum::<usize>()
+}
+
+/// Invarianti da verificare dopo ogni azione. Ritorna il totale delle carte.
+fn check_fuzz_invariants(
+    eng: &Engine,
+    trains_per_player: u32,
+    deck_size: usize,
+    previous_trains: &mut [u32],
+    previous_total: usize,
+    ctx: &dyn Fn() -> String,
+) -> usize {
+    let total = total_train_cards(eng);
+    assert!(
+        total >= previous_total && total.is_multiple_of(deck_size),
+        "{}: carte in gioco {} (prima {}), attesi multipli di {}",
+        ctx(),
+        total,
+        previous_total,
+        deck_size
+    );
+
+    assert!(
+        eng.face_up_cards().iter().all(Option::is_some),
+        "{}: slot scoperto vuoto {:?}",
+        ctx(),
+        eng.face_up_cards()
+    );
+
+    for (pi, previous) in previous_trains.iter_mut().enumerate() {
+        let trains = eng.player(pi).unwrap().trains_remaining;
+        assert!(
+            trains <= *previous && trains <= trains_per_player,
+            "{}: P{} treni {} (prima {}, massimo {})",
+            ctx(),
+            pi,
+            trains,
+            previous,
+            trains_per_player
+        );
+        *previous = trains;
+
+        if pi != eng.current_player() {
+            assert!(
+                has_no_moves(&eng.legal_moves(pi)),
+                "{}: P{} non è di turno ma ha mosse {:?}",
+                ctx(),
+                pi,
+                eng.legal_moves(pi)
+            );
         }
-        3 => {
-            let ids: Vec<_> = (0..3).map(|i| format!("p{}", i + 1)).collect();
-            let names: Vec<_> = (0..3).map(|i| format!("P{}", i + 1)).collect();
-            (
-                ids,
-                names,
-                vec![
-                    ttr_proto::PlayerColor::Red,
-                    ttr_proto::PlayerColor::Blue,
-                    ttr_proto::PlayerColor::Green,
-                ],
-            )
+    }
+    total
+}
+
+/// Sceglie la mossa secondo la politica, tra quelle dichiarate legali.
+fn pick_fuzz_move(
+    policy: BotPolicy,
+    lm: &ttr_core::LegalMoves,
+    rng: &mut rand::rngs::StdRng,
+) -> Option<FuzzMove> {
+    use rand::Rng;
+
+    let mut draws: Vec<FuzzMove> = lm.draw_face_up.iter().copied().map(FuzzMove::FaceUp).collect();
+    if lm.can_draw_deck {
+        draws.push(FuzzMove::Deck);
+    }
+    let routes: Vec<FuzzMove> = lm.routes.iter().cloned().map(FuzzMove::Route).collect();
+
+    let preferred = match policy {
+        BotPolicy::Random => {
+            let mut all = draws.clone();
+            all.extend(routes.iter().cloned());
+            if lm.can_draw_tickets {
+                all.push(FuzzMove::Tickets);
+            }
+            all
         }
-        _ => {
-            let ids: Vec<_> = (0..4).map(|i| format!("p{}", i + 1)).collect();
-            let names: Vec<_> = (0..4).map(|i| format!("P{}", i + 1)).collect();
-            (
-                ids,
-                names,
-                vec![
-                    ttr_proto::PlayerColor::Red,
-                    ttr_proto::PlayerColor::Blue,
-                    ttr_proto::PlayerColor::Green,
-                    ttr_proto::PlayerColor::Yellow,
-                ],
-            )
+        BotPolicy::ClaimAsap if !routes.is_empty() => routes.clone(),
+        BotPolicy::Hoarder if !routes.is_empty() && rng.gen_ratio(1, HOARDER_CLAIM_ONE_IN) => {
+            routes.clone()
         }
+        BotPolicy::ClaimAsap | BotPolicy::Hoarder => draws.clone(),
     };
 
-    let mut eng = Engine::new(seed, usa_ruleset(), usa_map(), ids, names, colors, 0);
+    let candidates = if !preferred.is_empty() {
+        preferred
+    } else if !draws.is_empty() {
+        draws
+    } else if !routes.is_empty() {
+        routes
+    } else if lm.can_draw_tickets {
+        vec![FuzzMove::Tickets]
+    } else {
+        return None;
+    };
+    let idx = rng.gen_range(0..candidates.len());
+    Some(candidates[idx].clone())
+}
+
+/// Gioca una partita sulla mappa USA reale. Ogni blocco fa fallire il test.
+fn play_fuzz_game(
+    seed: u64,
+    num_players: usize,
+    policy: BotPolicy,
+    ruleset: &Ruleset,
+    map: &MapData,
+) -> FuzzOutcome {
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    let max_actions = match policy {
+        BotPolicy::Hoarder => FUZZ_MAX_ACTIONS_HOARDER,
+        BotPolicy::Random | BotPolicy::ClaimAsap => FUZZ_MAX_ACTIONS,
+    };
+    let deck_size = (ruleset.deck.per_color * 8 + ruleset.deck.locomotives) as usize;
+
+    let (ids, names, colors) = fuzz_players(num_players);
+    let mut eng = Engine::new(seed, ruleset.clone(), map.clone(), ids, names, colors, 0);
     complete_initial_draft(&mut eng);
 
     let mut rng = StdRng::seed_from_u64(seed ^ 0xDEADBEEF);
-    let mut action_count = 0;
-    let max_actions = 2000;
+    let mut previous_trains: Vec<u32> = (0..num_players)
+        .map(|pi| eng.player(pi).unwrap().trains_remaining)
+        .collect();
+    let mut total = total_train_cards(&eng);
+    assert_eq!(total, deck_size, "seed {}: carte dopo il setup", seed);
+    let mut actions = 0;
 
-    while action_count < max_actions {
-        if eng.phase() == GamePhase::GameOver {
-            break;
-        }
-
+    while actions < max_actions && eng.phase() != GamePhase::GameOver {
         let pi = eng.current_player();
+        let phase = eng.phase();
+        let step = actions;
+        let ctx = || {
+            format!("seed={seed} politica={policy:?} giocatori={num_players} azione={step} fase={phase:?} giocatore={pi}")
+        };
 
-        match eng.phase() {
-            GamePhase::PlayerTurn | GamePhase::LastRound => {
+        let action = match phase {
+            GamePhase::PlayerTurn | GamePhase::LastRound | GamePhase::SecondCardDraw => {
                 let lm = eng.legal_moves(pi);
-                let mut choices: Vec<Action> = Vec::new();
-
-                if lm.can_draw_deck {
-                    choices.push(Action::DrawTrainCard {
+                let Some(chosen) = pick_fuzz_move(policy, &lm, &mut rng) else {
+                    panic!("{}: nessuna mossa legale", ctx());
+                };
+                match chosen {
+                    FuzzMove::Deck => Action::DrawTrainCard {
                         player_index: pi,
                         source: DrawSource::Deck,
-                    });
-                }
-                for &idx in &lm.draw_face_up {
-                    choices.push(Action::DrawTrainCard {
+                    },
+                    FuzzMove::FaceUp(index) => Action::DrawTrainCard {
                         player_index: pi,
-                        source: DrawSource::FaceUp { index: idx },
-                    });
-                }
-                if lm.can_draw_tickets {
-                    choices.push(Action::DrawTickets { player_index: pi });
-                }
-                for rid in lm.routes.iter().take(10) {
-                    if let Some(route) = eng.get_route(rid) {
-                        let hand = eng.player(pi).unwrap().hand.clone();
-                        if let Some(cards) = build_payment(&hand, &route.color, route.len as usize)
-                        {
-                            choices.push(Action::ClaimRoute {
-                                player_index: pi,
-                                route_id: rid.clone(),
-                                cards_discarded: cards,
-                            });
+                        source: DrawSource::FaceUp { index },
+                    },
+                    FuzzMove::Tickets => Action::DrawTickets { player_index: pi },
+                    FuzzMove::Route(route_id) => {
+                        let route = eng.get_route(&route_id).unwrap();
+                        let hand = &eng.player(pi).unwrap().hand;
+                        let Some(cards_discarded) =
+                            build_payment(hand, &route.color, route.len as usize)
+                        else {
+                            panic!("{}: rotta {} legale ma non pagabile", ctx(), route_id);
+                        };
+                        Action::ClaimRoute {
+                            player_index: pi,
+                            route_id,
+                            cards_discarded,
                         }
                     }
                 }
-
-                if choices.is_empty() {
-                    break;
-                }
-                let idx = rng.gen_range(0..choices.len());
-                if eng.apply(choices[idx].clone()).is_err() {
-                    break;
-                }
-                action_count += 1;
-            }
-            GamePhase::SecondCardDraw => {
-                let lm = eng.legal_moves(pi);
-                let mut choices: Vec<Action> = Vec::new();
-                if lm.can_draw_deck {
-                    choices.push(Action::DrawTrainCard {
-                        player_index: pi,
-                        source: DrawSource::Deck,
-                    });
-                }
-                for &idx in &lm.draw_face_up {
-                    choices.push(Action::DrawTrainCard {
-                        player_index: pi,
-                        source: DrawSource::FaceUp { index: idx },
-                    });
-                }
-                if choices.is_empty() {
-                    break;
-                }
-                let idx = rng.gen_range(0..choices.len());
-                if eng.apply(choices[idx].clone()).is_err() {
-                    break;
-                }
-                action_count += 1;
             }
             GamePhase::TicketChoice => {
-                let offered = eng.pending_tickets().to_vec();
                 let keep_min = eng.ticket_draw_keep_min() as usize;
-                let keep: Vec<String> = offered.iter().take(keep_min).cloned().collect();
-                if eng
-                    .apply(Action::ChooseTickets {
-                        player_index: pi,
-                        keep,
-                    })
-                    .is_err()
-                {
-                    break;
+                Action::ChooseTickets {
+                    player_index: pi,
+                    keep: eng.pending_tickets().iter().take(keep_min).cloned().collect(),
                 }
-                action_count += 1;
             }
-            _ => break,
+            GamePhase::InitialDraft | GamePhase::GameOver => {
+                panic!("{}: fase inattesa", ctx())
+            }
+        };
+
+        if let Err(e) = eng.apply(action.clone()) {
+            panic!("{}: mossa legale {:?} rifiutata: {:?}", ctx(), action, e);
         }
+        actions += 1;
+        total = check_fuzz_invariants(
+            &eng,
+            ruleset.trains_per_player,
+            deck_size,
+            &mut previous_trains,
+            total,
+            &ctx,
+        );
     }
 
-    (action_count, eng)
+    FuzzOutcome {
+        fresh_decks: total / deck_size - 1,
+        engine: eng,
+        actions,
+    }
+}
+
+/// Ricostruisce la partita da seed e `action_log` e confronta lo stato.
+fn assert_replay_matches(
+    original: &Engine,
+    policy: BotPolicy,
+    ruleset: &Ruleset,
+    map: &MapData,
+) {
+    let seed = original.seed();
+    let (ids, names, colors) = fuzz_players(original.num_players());
+    let mut replayed = Engine::new(seed, ruleset.clone(), map.clone(), ids, names, colors, 0);
+    for (i, record) in original.action_log().iter().enumerate() {
+        if let Err(e) = replayed.apply(record.action.clone()) {
+            panic!("seed={seed} politica={policy:?}: replay azione {i}: {e:?}");
+        }
+    }
+    assert_eq!(
+        replayed.serialize_state(),
+        original.serialize_state(),
+        "seed={seed} politica={policy:?}: replay divergente"
+    );
+    // Lo stato serializzato non include l'ordine del mazzo: gli eventi sì.
+    assert_eq!(
+        serde_json::to_string(replayed.action_log()).unwrap(),
+        serde_json::to_string(original.action_log()).unwrap(),
+        "seed={seed} politica={policy:?}: eventi del replay divergenti"
+    );
+}
+
+/// Gioca `num_games` partite ruotando politiche e numero di giocatori (2-5).
+fn run_fuzz(num_games: usize, base_seed: u64) -> FuzzStats {
+    let ruleset = usa_ruleset();
+    let map = usa_map();
+    let mut stats = FuzzStats::default();
+
+    for game_idx in 0..num_games {
+        let seed = base_seed + game_idx as u64;
+        let policy = BOT_POLICIES[game_idx % BOT_POLICIES.len()];
+        let np = 2 + (game_idx / BOT_POLICIES.len()) % 4;
+        let FuzzOutcome {
+            engine: eng,
+            actions,
+            fresh_decks,
+        } = play_fuzz_game(seed, np, policy, &ruleset, &map);
+        let label = format!("seed={seed} politica={policy:?} giocatori={np} azioni={actions}");
+
+        let mut seen = std::collections::BTreeSet::new();
+        for rid in eng.claimed_route_ids() {
+            assert!(seen.insert(rid.clone()), "{label}: rotta {rid} duplicata");
+        }
+
+        match policy {
+            BotPolicy::Random | BotPolicy::ClaimAsap => {
+                assert_eq!(
+                    eng.phase(),
+                    GamePhase::GameOver,
+                    "{label}: partita non terminata"
+                );
+                for pi in 0..eng.num_players() {
+                    assert!(
+                        eng.player(pi).unwrap().score >= 0,
+                        "{label}: P{pi} punteggio negativo"
+                    );
+                }
+            }
+            // Ogni azione aggiunge una carta alle mani: oltre il mazzo intero
+            // D27 deve essere scattato per forza.
+            BotPolicy::Hoarder => {
+                assert!(fresh_decks > 0, "{label}: D27 non è mai scattata");
+                stats.hoarder_fresh_decks += fresh_decks;
+            }
+        }
+
+        let triggered_by_no_routes = eng.action_log().iter().any(|record| {
+            record.events.iter().any(|e| {
+                matches!(e, GameEvent::LastRoundAnnounced { trains_remaining, .. } if *trains_remaining > 2)
+            })
+        });
+        stats.no_route_last_rounds += usize::from(triggered_by_no_routes);
+
+        assert_replay_matches(&eng, policy, &ruleset, &map);
+        stats.replays += 1;
+        stats.games += 1;
+        stats.actions += actions;
+        stats.fresh_decks += fresh_decks;
+    }
+    println!("fuzz: {stats:?}");
+    stats
 }
 
 #[test]
@@ -1357,69 +1626,8 @@ fn fuzzing_200_games_invariants() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(200);
-
-    for game_idx in 0..num_games {
-        let seed = 1000 + game_idx as u64;
-        let np = match game_idx % 3 {
-            0 => 2,
-            1 => 3,
-            _ => 4,
-        };
-        let (actions, eng) = play_random_game(seed, np);
-
-        // Invariante 1: conservazione carte (110)
-        let total_cards: usize = eng.draw_pile_len()
-            + eng.face_up_cards().iter().filter(|c| c.is_some()).count()
-            + eng.discards_len()
-            + (0..eng.num_players())
-                .map(|pi| eng.player(pi).unwrap().hand.len())
-                .sum::<usize>();
-        assert_eq!(
-            total_cards, 110,
-            "game {} (seed {}) conservazione carte: {} != 110",
-            game_idx, seed, total_cards
-        );
-
-        // Invariante 2: nessuna rotta reclamata due volte
-        let mut seen = std::collections::BTreeSet::new();
-        for rid in eng.claimed_route_ids() {
-            assert!(
-                seen.insert(rid.clone()),
-                "game {} rotta {} duplicata",
-                game_idx,
-                rid
-            );
-        }
-
-        // Invariante 3: punteggi non negativi
-        for pi in 0..eng.num_players() {
-            assert!(
-                eng.player(pi).unwrap().score >= 0,
-                "game {} P{} punteggio negativo",
-                game_idx,
-                pi
-            );
-        }
-
-        // Invariante 4: termine entro il limite
-        assert!(
-            actions < 2000,
-            "game {} (seed {}) bloccata a {} azioni",
-            game_idx,
-            seed,
-            actions
-        );
-
-        // Invariante 5: se è terminata normalmente, fase = GameOver
-        assert_eq!(
-            eng.phase(),
-            GamePhase::GameOver,
-            "game {} terminata con fase {:?} (azioni {})",
-            game_idx,
-            eng.phase(),
-            actions
-        );
-    }
+    let stats = run_fuzz(num_games, 1000);
+    assert_eq!(stats.games, num_games);
 }
 
 #[test]
@@ -1431,31 +1639,8 @@ fn fuzzing_1000_games_explicit() {
     if num_games == 0 {
         return;
     }
-
-    for game_idx in 0..num_games {
-        let seed = 2000 + game_idx as u64;
-        let np = match game_idx % 4 {
-            0 => 2,
-            1 => 3,
-            _ => 4,
-        };
-        let (actions, eng) = play_random_game(seed, np);
-
-        let total_cards: usize = eng.draw_pile_len()
-            + eng.face_up_cards().iter().filter(|c| c.is_some()).count()
-            + eng.discards_len()
-            + (0..eng.num_players())
-                .map(|pi| eng.player(pi).unwrap().hand.len())
-                .sum::<usize>();
-        assert_eq!(total_cards, 110, "game {} carte", game_idx);
-        assert!(actions < 2000, "game {} bloccata", game_idx);
-        assert_eq!(
-            eng.phase(),
-            GamePhase::GameOver,
-            "game {} non finita",
-            game_idx
-        );
-    }
+    let stats = run_fuzz(num_games, 2000);
+    assert_eq!(stats.games, num_games);
 }
 
 #[test]
@@ -1634,12 +1819,190 @@ fn loco_reset_deadend_only_locos_terminates() {
     assert_eq!(deck_fingerprint(&eng), "LLLLL/8/0");
 }
 
-/// Pool con meno di 5 carte: gli slot senza carta restano vuoti.
+/// Pool con meno di 5 carte durante la riscoperta: le carte mancanti arrivano
+/// dal mazzo nuovo (D27) e il loop si ferma dopo quella passata.
 #[test]
-fn loco_reset_deadend_small_pool_terminates() {
-    let mut eng = deck_fixture(7, vec![], [RED, LOCO, LOCO, LOCO, None]);
+fn loco_reset_deadend_small_pool_uses_fresh_deck_and_terminates() {
+    for seed in 0..20u64 {
+        let mut eng = deck_fixture(seed, vec![L], [RED, LOCO, LOCO, LOCO, None]);
+        draw_face_up_0(&mut eng);
+        assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+        assert_eq!(face_up_count(&eng), 5, "seed {}", seed);
+        assert!(loco_count(&eng) >= 4, "seed {}: {}", seed, deck_fingerprint(&eng));
+        assert_eq!(eng.draw_pile_len(), 109, "seed {}", seed);
+        assert_eq!(eng.discards_len(), 0, "seed {}", seed);
+    }
+}
+
+/// D27: mazzo e scarti vuoti, la pesca dal mazzo riesce e il mazzo si riempie.
+#[test]
+fn deck_draw_with_empty_pool_builds_fresh_deck() {
+    let mut eng = deck_fixture(42, vec![], [RED, RED, GREEN, GREEN, RED]);
+    let hand_before = eng.player_hand(0).unwrap().len();
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    })
+    .unwrap();
+    assert_eq!(eng.player_hand(0).unwrap().len(), hand_before + 1);
+    assert_eq!(eng.draw_pile_len(), 109);
+    assert_eq!(eng.discards_len(), 0);
+    assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+}
+
+/// D27: la sostituzione di una scoperta con pool vuoto non lascia lo slot vuoto.
+#[test]
+fn face_up_replacement_with_empty_pool_fills_slot() {
+    let mut eng = deck_fixture(42, vec![], [RED, RED, GREEN, GREEN, RED]);
     draw_face_up_0(&mut eng);
-    assert_eq!(deck_fingerprint(&eng), "LLL--/0/0");
+    assert_eq!(face_up_count(&eng), 5);
+    assert_eq!(eng.draw_pile_len(), 109);
+    assert_eq!(eng.discards_len(), 0);
+}
+
+/// D27: in `SecondCardDraw` con sole locomotive scoperte e pool vuoto resta
+/// disponibile la pesca dal mazzo.
+#[test]
+fn second_draw_with_only_locos_and_empty_pool_can_draw_deck() {
+    let mut eng = deck_fixture(42, vec![L; 20], [RED, RED, GREEN, GREEN, RED]);
+    draw_face_up_0(&mut eng);
+    assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+    eng.clear_deck_and_discards();
+    for i in 0..5 {
+        eng.set_face_up_card(i, LOCO);
+    }
+
+    let lm = eng.legal_moves(0);
+    assert!(lm.draw_face_up.is_empty());
+    assert!(lm.can_draw_deck);
+
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    })
+    .unwrap();
+    assert_eq!(eng.current_player(), 1);
+    assert_eq!(eng.draw_pile_len(), 109);
+}
+
+/// `DeckEmpty` resta raggiungibile solo con un ruleset senza carte.
+#[test]
+fn deck_draw_with_empty_ruleset_is_deck_empty() {
+    let mut ruleset = mini_ruleset();
+    ruleset.deck = DeckConfig {
+        per_color: 0,
+        locomotives: 0,
+    };
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(42, ruleset, mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+
+    assert!(!eng.legal_moves(0).can_draw_deck);
+    let r = eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::Deck,
+    });
+    assert!(matches!(r, Err(EngineError::DeckEmpty)), "{:?}", r);
+}
+
+/// Mappa con una doppia, una rotta corta e una da 6, con 5 treni a testa e
+/// 3 giocatori. P0 e P1 reclamano la doppia e la rotta corta: restano la
+/// sorella bloccata e la rotta troppo lunga, tranne per chi conserva 6 treni.
+fn no_routes_left_fixture(extra_train_player: Option<usize>) -> (Engine, Vec<GameEvent>) {
+    let mut map = double_route_map();
+    map.routes.push(route("C_D_1", "C", "D", 6, "Gray", false));
+    map.cities.push(city("D"));
+    let (ids, names, colors) = three_players();
+    let mut eng = Engine::new(71, strict_double_ruleset(), map, ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+    for pi in 0..3 {
+        eng.set_player_trains(pi, 5);
+    }
+    if let Some(pi) = extra_train_player {
+        // Gli restano 6 treni anche dopo la rotta che reclama nel fixture.
+        eng.set_player_trains(pi, 6 + [2, 1, 0][pi]);
+    }
+
+    eng.set_player_hand(0, vec![CardColor::Red; 2]);
+    eng.apply(Action::ClaimRoute {
+        player_index: 0,
+        route_id: "A_B_1".into(),
+        cards_discarded: vec![CardColor::Red; 2],
+    })
+    .unwrap();
+    eng.set_player_hand(1, vec![CardColor::Blue]);
+    let events = eng
+        .apply(Action::ClaimRoute {
+            player_index: 1,
+            route_id: "B_C_1".into(),
+            cards_discarded: vec![CardColor::Blue],
+        })
+        .unwrap();
+    (eng, events)
+}
+
+fn draw_two_from_deck(eng: &mut Engine, player_index: usize) -> Vec<GameEvent> {
+    let draw = Action::DrawTrainCard {
+        player_index,
+        source: DrawSource::Deck,
+    };
+    eng.apply(draw.clone()).unwrap();
+    eng.apply(draw).unwrap()
+}
+
+/// D28: nessuna rotta reclamabile da nessuno, parte l'ultimo giro e ognuno,
+/// incluso chi lo innesca, fa un ultimo turno.
+#[test]
+fn golden_last_round_when_no_route_is_claimable() {
+    let (mut eng, events) = no_routes_left_fixture(None);
+
+    assert!(
+        events.iter().any(|e| matches!(
+            e,
+            GameEvent::LastRoundAnnounced {
+                trigger_player: 1,
+                trains_remaining: 4,
+            }
+        )),
+        "{:?}",
+        events
+    );
+    assert_eq!(eng.last_round_trigger_player(), Some(1));
+    assert_eq!(eng.phase(), GamePhase::LastRound);
+    assert_eq!(eng.current_player(), 2);
+
+    for pi in [2, 0] {
+        let events = draw_two_from_deck(&mut eng, pi);
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, GameEvent::LastRoundAnnounced { .. })),
+            "annuncio ripetuto: {:?}",
+            events
+        );
+        assert_eq!(eng.phase(), GamePhase::LastRound);
+    }
+    let events = draw_two_from_deck(&mut eng, 1);
+    assert!(events.iter().any(|e| matches!(e, GameEvent::GameOver { .. })));
+    assert_eq!(eng.phase(), GamePhase::GameOver);
+}
+
+/// D28: basta una rotta aperta per un solo giocatore e l'ultimo giro non parte.
+#[test]
+fn no_last_round_while_one_player_can_still_claim() {
+    for pi in 0..3 {
+        let (eng, events) = no_routes_left_fixture(Some(pi));
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, GameEvent::LastRoundAnnounced { .. })),
+            "a P{} restano 6 treni: {:?}",
+            pi,
+            events
+        );
+        assert!(!eng.last_round(), "P{}", pi);
+        assert_eq!(eng.phase(), GamePhase::PlayerTurn, "P{}", pi);
+    }
 }
 
 #[test]

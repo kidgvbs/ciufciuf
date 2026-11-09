@@ -205,9 +205,12 @@ impl Engine {
     pub(crate) fn advance_turn(&mut self, events: &mut Vec<GameEvent>) {
         let prev_player = self.current_player_index;
 
-        // Controlla fine partita: giocatore con ≤2 treni
+        // Controlla fine partita: giocatore con ≤2 treni oppure, per D28,
+        // nessun giocatore può più reclamare alcuna rotta.
         let trains_remaining = self.players[self.current_player_index].trains_remaining;
-        let just_triggered = !self.last_round && trains_remaining <= LAST_ROUND_TRAIN_THRESHOLD;
+        let just_triggered = !self.last_round
+            && (trains_remaining <= LAST_ROUND_TRAIN_THRESHOLD
+                || !self.any_route_claimable_by_anyone());
         if just_triggered {
             self.last_round = true;
             self.last_round_trigger_player = Some(self.current_player_index);

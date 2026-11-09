@@ -728,3 +728,136 @@ async fn resume_accepts_saved_names_outside_lobby_limits() {
     let (rid, _) = ttr_server::resume_game(&server.state, &save).await.unwrap();
     join_game(&server.base_url, &rid, &long_name, None).await;
 }
+
+// ── Validazione dei save ─────────────────────────────────────────────
+
+fn save_player(id: &str, name: &str, color: &str) -> ttr_server::save::SavePlayer {
+    ttr_server::save::SavePlayer { id: id.into(), name: name.into(), color: color.into() }
+}
+
+fn valid_save() -> ttr_server::save::SaveData {
+    ttr_server::save::SaveData {
+        format_version: 1,
+        rules_version: ttr_core::RULES_VERSION,
+        game_id: uuid::Uuid::new_v4().to_string(),
+        game_name: "Validazione".into(),
+        map_id: "usa".into(),
+        ruleset_id: "usa_v2".into(),
+        seed: 42,
+        first_player: 0,
+        players: vec![save_player("p1", "Alice", "RED"), save_player("p2", "Bob", "BLUE")],
+        actions: vec![],
+        status: "in_progress".into(),
+        created_at: "2026-01-01T00:00:00Z".into(),
+        updated_at: "2026-01-01T00:00:00Z".into(),
+    }
+}
+
+fn replay(save: &ttr_server::save::SaveData) -> Result<ttr_core::Engine, String> {
+    ttr_server::save::replay_engine(save, &usa_map(), &load_usa_ruleset())
+}
+
+fn assert_rejected(save: ttr_server::save::SaveData, expected: &str) {
+    let err = replay(&save).err().expect("il save deve essere rifiutato");
+    assert!(err.contains(expected), "errore {:?}, atteso {:?}", err, expected);
+}
+
+#[test]
+fn valid_save_is_accepted() {
+    assert!(replay(&valid_save()).is_ok());
+}
+
+#[test]
+fn save_with_unknown_format_version_is_rejected() {
+    let mut save = valid_save();
+    save.format_version = 2;
+    assert_rejected(save, "formato del save");
+}
+
+#[test]
+fn save_with_other_rules_version_is_rejected() {
+    let mut save = valid_save();
+    save.rules_version = ttr_core::RULES_VERSION + 1;
+    let expected = format!(
+        "save {}, server {}",
+        ttr_core::RULES_VERSION + 1,
+        ttr_core::RULES_VERSION
+    );
+    assert_rejected(save, &expected);
+}
+
+#[test]
+fn save_with_too_few_players_is_rejected() {
+    let mut save = valid_save();
+    save.players.truncate(1);
+    assert_rejected(save, "numero di giocatori");
+}
+
+#[test]
+fn save_with_too_many_players_is_rejected() {
+    let mut save = valid_save();
+    save.players = (0..6)
+        .map(|i| save_player(&format!("p{i}"), &format!("N{i}"), "RED"))
+        .collect();
+    assert_rejected(save, "numero di giocatori");
+}
+
+#[test]
+fn save_with_first_player_out_of_range_is_rejected() {
+    let mut save = valid_save();
+    save.first_player = save.players.len();
+    assert_rejected(save, "primo giocatore");
+}
+
+#[test]
+fn save_with_duplicate_player_id_is_rejected() {
+    let mut save = valid_save();
+    save.players[1].id = save.players[0].id.clone();
+    assert_rejected(save, "id giocatore duplicato");
+}
+
+#[test]
+fn save_with_names_equal_ignoring_case_is_rejected() {
+    let mut save = valid_save();
+    save.players[1].name = "aLICE".into();
+    assert_rejected(save, "nome giocatore duplicato");
+}
+
+/// I save precedenti a `COLOR_TAKEN` possono avere colori ripetuti.
+#[test]
+fn save_with_duplicate_color_is_accepted() {
+    let mut save = valid_save();
+    save.players[0].color = "RED".into();
+    save.players[1].color = "RED".into();
+    assert!(replay(&save).is_ok());
+}
+
+#[test]
+fn save_with_unknown_color_is_rejected() {
+    let mut save = valid_save();
+    save.players[0].color = "PINK".into();
+    save.players[1].color = "PINK".into();
+    assert_rejected(save, "colore sconosciuto");
+}
+
+#[test]
+fn save_without_rules_version_is_accepted() {
+    let mut raw = serde_json::to_value(valid_save()).expect("serializzazione save");
+    raw.as_object_mut().unwrap().remove("rulesVersion").expect("campo rulesVersion");
+    let save: ttr_server::save::SaveData = serde_json::from_value(raw).expect("parse SaveData");
+    assert_eq!(save.rules_version, 1);
+    assert!(replay(&save).is_ok());
+}
+
+#[tokio::test]
+async fn server_writes_rules_version_in_save() {
+    let server = TestServer::start().await;
+    let g = create_game_with_seed(&server.base_url, "RulesVersion", Some(5)).await;
+    join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let save = read_save(&server.saves_dir.join(format!("{}.json", g.game_id)));
+    assert_eq!(save["rulesVersion"], 1);
+}

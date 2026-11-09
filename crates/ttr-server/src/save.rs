@@ -2,6 +2,7 @@
 //! replay da save.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -15,6 +16,9 @@ const MAX_BACKUP_ATTEMPTS: u32 = 1000;
 pub struct SaveData {
     #[serde(rename = "formatVersion")]
     pub format_version: u32,
+    /// Assente nei save scritti prima dell'introduzione del campo.
+    #[serde(rename = "rulesVersion", default = "legacy_rules_version")]
+    pub rules_version: u32,
     #[serde(rename = "gameId")]
     pub game_id: String,
     #[serde(rename = "gameName")]
@@ -33,6 +37,11 @@ pub struct SaveData {
     pub created_at: String,
     #[serde(rename = "updatedAt")]
     pub updated_at: String,
+}
+
+/// I save senza `rulesVersion` sono compatibili con le regole della versione 1.
+fn legacy_rules_version() -> u32 {
+    1
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -98,6 +107,7 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
 
     SaveData {
         format_version: 1,
+        rules_version: ttr_core::RULES_VERSION,
         game_id: session.game_id.clone(),
         game_name: session.game_name.clone(),
         map_id: session.ruleset_id.replace("_v2", ""), // "usa_v2" → "usa"
@@ -184,6 +194,8 @@ pub fn replay_engine(
     map: &ttr_core::MapData,
     ruleset: &ttr_core::Ruleset,
 ) -> Result<ttr_core::Engine, String> {
+    validate_save(save, ruleset)?;
+
     let player_ids: Vec<String> = save.players.iter().map(|p| p.id.clone()).collect();
     let player_names: Vec<String> = save.players.iter().map(|p| p.name.clone()).collect();
     let player_colors: Vec<ttr_proto::PlayerColor> = save
@@ -209,6 +221,53 @@ pub fn replay_engine(
     }
 
     Ok(engine)
+}
+
+/// Rifiuta i save che il motore non può riprodurre o che il resume non può
+/// associare ai giocatori (roster indicizzato per nome minuscolo).
+fn validate_save(save: &SaveData, ruleset: &ttr_core::Ruleset) -> Result<(), String> {
+    if save.format_version != 1 {
+        return Err(format!(
+            "formato del save non supportato: {}",
+            save.format_version
+        ));
+    }
+    if save.rules_version != ttr_core::RULES_VERSION {
+        return Err(format!(
+            "versione delle regole incompatibile: save {}, server {}",
+            save.rules_version,
+            ttr_core::RULES_VERSION
+        ));
+    }
+
+    let count = save.players.len();
+    let (min, max) = (ruleset.players.min as usize, ruleset.players.max as usize);
+    if !(min..=max).contains(&count) {
+        return Err(format!(
+            "numero di giocatori non valido: {} (ammessi da {} a {})",
+            count, min, max
+        ));
+    }
+    if save.first_player >= count {
+        return Err(format!(
+            "primo giocatore non valido: {} su {} giocatori",
+            save.first_player, count
+        ));
+    }
+
+    let mut ids = HashSet::new();
+    let mut names = HashSet::new();
+    for player in &save.players {
+        if !ids.insert(player.id.as_str()) {
+            return Err(format!("id giocatore duplicato: {}", player.id));
+        }
+        if !names.insert(player.name.to_lowercase()) {
+            return Err(format!("nome giocatore duplicato: {}", player.name));
+        }
+        parse_color(&player.color)?;
+    }
+
+    Ok(())
 }
 
 pub fn parse_color(s: &str) -> Result<ttr_proto::PlayerColor, String> {
@@ -292,6 +351,7 @@ mod tests {
     fn test_save_roundtrip() {
         let data = SaveData {
             format_version: 1,
+            rules_version: ttr_core::RULES_VERSION,
             game_id: "g1".into(),
             game_name: "Test".into(),
             map_id: "usa".into(),

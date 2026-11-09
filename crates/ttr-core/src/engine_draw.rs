@@ -31,9 +31,13 @@ impl Engine {
 
         match source {
             DrawSource::Deck => {
-                let card =
-                    draw_from_deck(&mut self.draw_pile, &mut self.train_discards, &mut self.rng)
-                        .ok_or(EngineError::DeckEmpty)?;
+                let card = draw_from_deck(
+                    &mut self.draw_pile,
+                    &mut self.train_discards,
+                    &mut self.rng,
+                    &self.ruleset.deck,
+                )
+                .ok_or(EngineError::DeckEmpty)?;
 
                 let is_loco = card == ttr_proto::CardColor::Locomotive;
                 self.players[player_index].hand.push(card);
@@ -77,6 +81,7 @@ impl Engine {
                     &mut self.draw_pile,
                     &mut self.train_discards,
                     &mut self.rng,
+                    &self.ruleset.deck,
                 )
                 .ok_or(EngineError::CardNotAvailable { index })?;
 
