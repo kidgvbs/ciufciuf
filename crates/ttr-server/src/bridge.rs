@@ -2,7 +2,7 @@
 //!
 //! Regole di conversione dal pacchetto Fase 2 §7.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use ttr_core::error::{EngineError, GamePhase};
 use ttr_proto::{
@@ -14,7 +14,10 @@ use crate::session::{GameSession, SessionPlayer};
 
 // ── PublicState ──────────────────────────────────────────────────────
 
-pub(crate) fn build_public_state(session: &GameSession) -> ttr_proto::PublicState {
+pub(crate) fn build_public_state(
+    session: &GameSession,
+    connected_player_ids: &HashSet<String>,
+) -> ttr_proto::PublicState {
     let state = if session.started {
         if let Some(ref engine) = session.engine {
             game_phase_to_game_state(engine.phase())
@@ -56,6 +59,13 @@ pub(crate) fn build_public_state(session: &GameSession) -> ttr_proto::PublicStat
         .map(|e| e.face_up_cards().to_vec())
         .unwrap_or_default();
 
+    // Numero di carte nel mazzo coperto (0 pre-start, Engine non ancora costruito).
+    let deck_size = session
+        .engine
+        .as_ref()
+        .map(|e| e.deck_size())
+        .unwrap_or(0);
+
     let claimed_routes: Vec<ClaimedRoute> = if let Some(ref engine) = session.engine {
         let mut claimed: Vec<ClaimedRoute> = Vec::new();
         for (pid, &idx) in &session.player_index {
@@ -78,7 +88,7 @@ pub(crate) fn build_public_state(session: &GameSession) -> ttr_proto::PublicStat
         Vec::new()
     };
 
-    let players_summary = build_players_summary(session);
+    let players_summary = build_players_summary(session, connected_player_ids);
 
     ttr_proto::PublicState {
         game_id: session.game_id.clone(),
@@ -88,6 +98,7 @@ pub(crate) fn build_public_state(session: &GameSession) -> ttr_proto::PublicStat
         last_round,
         last_round_trigger_player_id,
         visible_deck,
+        deck_size,
         claimed_routes,
         players_summary,
         tunnel_reveal: None,
@@ -108,7 +119,10 @@ fn game_phase_to_game_state(phase: GamePhase) -> GameState {
     }
 }
 
-fn build_players_summary(session: &GameSession) -> Vec<PlayerSummary> {
+fn build_players_summary(
+    session: &GameSession,
+    connected_player_ids: &HashSet<String>,
+) -> Vec<PlayerSummary> {
     // Usa l'indice del motore (SessionPlayer.index) quando disponibile;
     // altrimenti la posizione in self.players (idx) come fallback pre-start.
     let mut ordered: Vec<(usize, &String, &SessionPlayer)> = session
@@ -148,6 +162,7 @@ fn build_players_summary(session: &GameSession) -> Vec<PlayerSummary> {
                 score,
                 cards_hand_count: hand_count,
                 tickets_count,
+                connected: connected_player_ids.contains(pid),
             }
         })
         .collect()

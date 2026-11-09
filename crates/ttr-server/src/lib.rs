@@ -1,10 +1,10 @@
-//! CiufCiuf! — Server Axum: WebSocket, lobby, QR, persistenza.
+//! CiufCiuf! — Server Axum: WebSocket, lobby, QR, persistenza, statici.
 //!
-//! Fornisce `build_router(state)` per costruire il router Axum testabile,
+//! Fornisce `build_router(state, client_dist)` per costruire il router Axum testabile,
 //! e `resume_game(state, path)` per il resume da save (D18 §8).
 
 use axum::Router;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 mod bridge;
 mod lobby;
@@ -16,10 +16,13 @@ mod ws;
 pub use state::AppState;
 
 /// Costruisce il router Axum con tutti gli endpoint.
-pub fn build_router(state: AppState) -> Router {
+///
+/// Se `client_dist` esiste come directory, vi serve i file statici del client
+/// con fallback SPA a `index.html` per le rotte `/` e `/controller`.
+pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
     use axum::routing::{get, post};
 
-    Router::new()
+    let api_router = Router::new()
         .route("/api/lan", get(lobby::lan_info))
         .route("/qr", get(lobby::qr_code))
         .route(
@@ -29,8 +32,25 @@ pub fn build_router(state: AppState) -> Router {
         .route("/api/games/{id}", get(lobby::get_game))
         .route("/api/games/{id}/join", post(lobby::join_game))
         .route("/api/games/{id}/start", post(lobby::start_game))
-        .route("/ws/{game_id}", get(ws::ws_handler))
-        .with_state(state)
+        .route("/ws/{game_id}", get(ws::ws_handler));
+
+    // Serving statici del client con fallback SPA (Fase 3b)
+    if client_dist.exists() {
+        use tower_http::services::{ServeDir, ServeFile};
+        let serve_dir = ServeDir::new(&client_dist)
+            .fallback(ServeFile::new(client_dist.join("index.html")));
+
+        Router::new()
+            .merge(api_router)
+            .fallback_service(serve_dir)
+            .with_state(state)
+    } else {
+        tracing::warn!(
+            "Directory client-dist {:?} non trovata — statici non serviti (usa --client-dist)",
+            client_dist
+        );
+        api_router.with_state(state)
+    }
 }
 
 /// Ripristina una partita da un file di salvataggio (D18 §8).

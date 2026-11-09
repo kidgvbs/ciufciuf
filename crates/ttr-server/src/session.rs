@@ -607,11 +607,23 @@ impl GameSession {
         let conn_id = self.next_conn_id;
         self.next_conn_id += 1;
 
+        // Presence: registra la soglia 0→1 (prima connessione attiva) per decidere
+        // se broadcastare lo stato pubblico aggiornato. Gli spettatori non contano.
+        let mut became_connected = false;
         if let Some(ref pid) = player_id {
+            // F1 (review 3e): una connessione è "attiva" solo se il canale è
+            // ancora aperto — un task ws abortito senza Disconnect (iOS che
+            // uccide la tab in background) non deve lasciare il player
+            // online per sempre.
+            let was_connected = self
+                .connections
+                .get(pid)
+                .is_some_and(|v| v.iter().any(|(_, tx)| !tx.is_closed()));
             self.connections
                 .entry(pid.clone())
                 .or_default()
                 .push((conn_id, tx.clone()));
+            became_connected = !was_connected;
         } else {
             self.spectators.push((conn_id, tx.clone()));
         }
@@ -623,16 +635,29 @@ impl GameSession {
         if let Some(msg) = snap {
             let _ = tx.send(msg);
         }
+
+        // Solo al passaggio offline→online: tutti vedono `connected` aggiornato.
+        // Una seconda connessione dello stesso player (dedup/reconnect) non broadcasta.
+        if became_connected {
+            self.broadcast_public_state();
+        }
     }
 
     fn handle_disconnect(&mut self, player_id: Option<String>, conn_id: u64) {
+        // Presenza: true se il giocatore passa da N→0 connessioni attive (online→offline).
+        let mut became_disconnected = false;
+
         // F6: rimuove la singola connessione per conn_id, non tutte del giocatore.
         if let Some(ref pid) = player_id {
             if let Some(senders) = self.connections.get_mut(pid) {
+                let before = !senders.is_empty();
                 senders.retain(|(cid, _)| *cid != conn_id);
                 // Se il giocatore non ha più connessioni, non rimuoviamo l'entry:
                 // il giocatore esiste ancora e può riconnettersi.
+                became_disconnected = before && senders.is_empty();
             }
+            // `pid` non registrato (es. Connect finito in Unauthorized, socket chiuso
+            // subito): nessuna connessione da rimuovere → nessun broadcast, nessun panic.
         } else {
             self.spectators.retain(|(cid, _)| *cid != conn_id);
         }
@@ -641,12 +666,29 @@ impl GameSession {
         for senders in self.connections.values_mut() {
             senders.retain(|(_, tx)| !tx.is_closed());
         }
+
+        // Solo al passaggio online→offline: tutti vedono `connected` aggiornato.
+        if became_disconnected {
+            self.broadcast_public_state();
+        }
     }
 
     // ── Broadcast e push ─────────────────────────────────────────
 
+    /// Set dei `player_id` con ≥1 connessione WS attiva (presence runtime).
+    /// Gli spettatori non hanno `player_id` e non compaiono qui.
+    fn connected_player_ids(&self) -> std::collections::HashSet<String> {
+        self.connections
+            .iter()
+            // F1 (review 3e): conta solo i canali ancora aperti.
+            .filter(|(_, senders)| senders.iter().any(|(_, tx)| !tx.is_closed()))
+            .map(|(pid, _)| pid.clone())
+            .collect()
+    }
+
     fn broadcast_public_state(&self) {
-        let public = bridge::build_public_state(self);
+        let connected = self.connected_player_ids();
+        let public = bridge::build_public_state(self, &connected);
         let msg = ServerMessage::PublicState(public);
 
         for (_cid, tx) in &self.spectators {
@@ -714,7 +756,8 @@ impl GameSession {
     // ── Snapshot ─────────────────────────────────────────────────
 
     fn build_snapshot(&mut self, player_id: Option<&str>) -> Option<ServerMessage> {
-        let public = bridge::build_public_state(self);
+        let connected = self.connected_player_ids();
+        let public = bridge::build_public_state(self, &connected);
         let private = player_id.and_then(|pid| {
             // F3: risolvi l'indice del motore via SessionPlayer.index.
             let engine_idx = self

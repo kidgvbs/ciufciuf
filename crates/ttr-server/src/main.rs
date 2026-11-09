@@ -15,6 +15,7 @@ struct Args {
     port: u16,
     data_dir: PathBuf,
     saves_dir: PathBuf,
+    client_dist: PathBuf,
     resume: Option<PathBuf>,
 }
 
@@ -23,6 +24,7 @@ fn parse_args() -> Args {
     let mut port = 8080u16;
     let mut data_dir = PathBuf::from("data");
     let mut saves_dir = PathBuf::from("saves");
+    let mut client_dist = PathBuf::from("../client/dist");
     let mut resume = None;
 
     let mut i = 1;
@@ -40,6 +42,10 @@ fn parse_args() -> Args {
                 i += 1;
                 saves_dir = PathBuf::from(&args[i]);
             }
+            "--client-dist" => {
+                i += 1;
+                client_dist = PathBuf::from(&args[i]);
+            }
             "--resume" => {
                 i += 1;
                 resume = Some(PathBuf::from(&args[i]));
@@ -53,6 +59,7 @@ fn parse_args() -> Args {
         port,
         data_dir,
         saves_dir,
+        client_dist,
         resume,
     }
 }
@@ -101,7 +108,7 @@ async fn main() {
         }
     }
 
-    let router = build_router(state);
+    let router = build_router(state, args.client_dist);
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
 
     let listener = match tokio::net::TcpListener::bind(addr).await {

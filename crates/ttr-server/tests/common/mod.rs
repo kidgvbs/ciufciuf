@@ -64,8 +64,19 @@ impl TestServer {
 
     /// Avvia un server axum da un `AppState` già costruito (es. test resume).
     pub async fn start_with_state(state: ttr_server::AppState, saves: PathBuf) -> Self {
+        Self::start_with_client_dist(state, saves, PathBuf::new()).await
+    }
+
+    /// Avvia un server axum servendo i statici del client da `client_dist`
+    /// (Fase 3b: fallback SPA a index.html).
+    #[allow(dead_code)]
+    pub async fn start_with_client_dist(
+        state: ttr_server::AppState,
+        saves: PathBuf,
+        client_dist: PathBuf,
+    ) -> Self {
         let state_clone = state.clone();
-        let router = ttr_server::build_router(state);
+        let router = ttr_server::build_router(state, client_dist);
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -314,6 +325,16 @@ impl WsClient {
             .send(Message::Text(json))
             .await
             .expect("send action");
+    }
+
+    /// Invia testo grezzo (es. REQUEST_SNAPSHOT dello spettatore senza
+    /// `player_id`, che non è rappresentabile come `InboundAction` — N1).
+    #[allow(dead_code)]
+    pub async fn send_raw(&mut self, text: &str) {
+        self.write
+            .send(Message::Text(text.to_string()))
+            .await
+            .expect("send raw");
     }
 
     /// Chiude la connessione (drop dello split sink → chiusura socket).

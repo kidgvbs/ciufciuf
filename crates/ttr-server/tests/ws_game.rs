@@ -484,6 +484,62 @@ async fn spectator_public_only() {
     );
 }
 
+/// Test N1 (Fase 3b): lo spettatore può chiedere REQUEST_SNAPSHOT.
+///
+/// Il client TV/spettatore non ha `player_id`, quindi il suo
+/// `{"actionType":"REQUEST_SNAPSHOT","client_seq":null}` non è
+/// deserializzabile come `InboundAction` (payload proto con player_id
+/// obbligatorio): il server lo gestisce con una sonda su `actionType`.
+/// Anche un REQUEST_SNAPSHOT ben formato con player_id fasullo deve
+/// produrre uno snapshot solo-pubblico (l'identità è della connessione).
+#[tokio::test]
+async fn spectator_request_snapshot() {
+    let server = TestServer::start().await;
+
+    let game = create_game_with_seed(&server.base_url, "SpecSnap", Some(42)).await;
+    let _pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+
+    let mut spec = WsClient::connect_spectator(&server, &game.game_id).await;
+
+    // SNAPSHOT iniziale alla connessione.
+    let first = spec.recv().await;
+    assert!(
+        matches!(first, ServerMessage::Snapshot(_)),
+        "spettatore riceve SNAPSHOT iniziale"
+    );
+
+    // 1. REQUEST_SNAPSHOT raw senza player_id (come lo manda il client TV).
+    spec.send_raw(r#"{"actionType":"REQUEST_SNAPSHOT","client_seq":null}"#)
+        .await;
+    let msg = spec.recv().await;
+    match msg {
+        ServerMessage::Snapshot(ref s) => {
+            assert!(s.private.is_none(), "spettatore: private None");
+            assert!(
+                matches!(s.public.state, GameState::WaitingForPlayers),
+                "snapshot in lobby, trovato {:?}",
+                s.public.state
+            );
+        }
+        other => panic!("atteso SNAPSHOT per spettatore, trovato {:?}", other),
+    }
+
+    // 2. REQUEST_SNAPSHOT ben formato con player_id fasullo: l'identità
+    // resta quella della connessione (None) → snapshot solo-pubblico.
+    spec.send(&ttr_proto::InboundAction::RequestSnapshot(
+        ttr_proto::RequestSnapshotPayload {
+            player_id: "chiunque".into(),
+            client_seq: None,
+        },
+    ))
+    .await;
+    let msg = spec.recv().await;
+    assert!(
+        matches!(msg, ServerMessage::Snapshot(ref s) if s.private.is_none()),
+        "REQUEST_SNAPSHOT da spettatore con player_id fasullo → SNAPSHOT pubblico"
+    );
+}
+
 /// Test F2: token errato → socket chiuso dal server.
 #[tokio::test]
 async fn wrong_token_closes_socket() {
@@ -651,5 +707,277 @@ async fn client_seq_zero_dedup() {
     assert!(
         hand_after_first != hand_before,
         "prima applicazione con client_seq Some(0) deve funzionare"
+    );
+}
+
+// ── Helper per i test presence ────────────────────────────────────────
+
+/// Estrae il flag `connected` di un giocatore da `PlayerSummary`.
+fn connected(ps: &ttr_proto::PublicState, player_id: &str) -> bool {
+    ps.players_summary
+        .iter()
+        .find(|s| s.player_id == player_id)
+        .map(|s| s.connected)
+        .unwrap_or(false)
+}
+
+/// Test F3e-presence: `connected` in `PlayerSummary` riflette le
+/// connessioni WS attive. In lobby (no start) per evitare interferenze
+/// del motore; verifica soglie 0→1 e N→0 broadcast.
+#[tokio::test]
+async fn presence_connected_flag() {
+    let server = TestServer::start().await;
+
+    let game = create_game_with_seed(&server.base_url, "Presence", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", None).await;
+    // NO start_game: lobby test.
+
+    // ── A connects (0→1) ──────────────────────────────────────────
+    let mut a1 = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+
+    let snap_a = a1.recv().await;
+    assert!(
+        matches!(snap_a, ServerMessage::Snapshot(_)),
+        "A: SNAPSHOT iniziale"
+    );
+    if let ServerMessage::Snapshot(ref s) = snap_a {
+        assert!(
+            connected(&s.public, &pa.player_id),
+            "A connected nel proprio SNAPSHOT"
+        );
+        assert!(
+            !connected(&s.public, &pb.player_id),
+            "B non ancora connesso"
+        );
+    }
+
+    // 0→1 scatena broadcast PublicState.
+    let ps_a = a1.recv().await;
+    assert!(
+        matches!(ps_a, ServerMessage::PublicState(_)),
+        "A: PublicState broadcast dopo 0→1"
+    );
+
+    // ── B connects (0→1) ──────────────────────────────────────────
+    let mut b = WsClient::connect(&server, &game.game_id, &pb.player_id, &pb.token).await;
+
+    let snap_b = b.recv().await;
+    assert!(matches!(snap_b, ServerMessage::Snapshot(_)));
+    if let ServerMessage::Snapshot(ref s) = snap_b {
+        assert!(connected(&s.public, &pa.player_id), "A connected per B");
+        assert!(connected(&s.public, &pb.player_id), "B connected per B");
+    }
+
+    // B: broadcast PublicState per il proprio 0→1.
+    let ps_b = b.recv().await;
+    assert!(matches!(ps_b, ServerMessage::PublicState(_)));
+
+    // A riceve il broadcast di B (presence di B ora visibile).
+    let ps_a2 = a1.recv().await;
+    assert!(
+        matches!(ps_a2, ServerMessage::PublicState(_)),
+        "A riceve broadcast presenza di B"
+    );
+    if let ServerMessage::PublicState(ref ps) = ps_a2 {
+        assert!(connected(ps, &pb.player_id), "A vede B connected");
+    }
+
+    // ── A seconda connessione (già online → NO broadcast) ─────────
+    let mut a2 = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+    let snap_a2 = a2.recv().await;
+    assert!(matches!(snap_a2, ServerMessage::Snapshot(_)));
+    if let ServerMessage::Snapshot(ref s) = snap_a2 {
+        assert!(connected(&s.public, &pa.player_id));
+        assert!(connected(&s.public, &pb.player_id));
+    }
+
+    // ── Chiudi a2 (non ultima → NO broadcast) ─────────────────────
+    a2.disconnect().await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    // B chiede SNAPSHOT: A deve risultare ancora connected.
+    b.send(&ttr_proto::InboundAction::RequestSnapshot(
+        ttr_proto::RequestSnapshotPayload {
+            player_id: pb.player_id.clone(),
+            client_seq: None,
+        },
+    ))
+    .await;
+    let snap_b2 = b.recv().await;
+    assert!(
+        matches!(snap_b2, ServerMessage::Snapshot(_)),
+        "B: SNAPSHOT dopo chiusura a2"
+    );
+    if let ServerMessage::Snapshot(ref s) = snap_b2 {
+        assert!(
+            connected(&s.public, &pa.player_id),
+            "A ancora connected (a1 rimasta)"
+        );
+    }
+
+    // ── Chiudi a1 (ultima → broadcast N→0) ────────────────────────
+    a1.disconnect().await;
+
+    // B riceve PublicState con A disconnected.
+    let ps_b2 = tokio::time::timeout(std::time::Duration::from_secs(5), b.recv())
+        .await
+        .expect("timeout: B attende PublicState dopo disconnect A");
+    assert!(
+        matches!(ps_b2, ServerMessage::PublicState(_)),
+        "B: PublicState dopo disconnect A"
+    );
+    if let ServerMessage::PublicState(ref ps) = ps_b2 {
+        assert!(
+            !connected(ps, &pa.player_id),
+            "A disconnected dopo chiusura a1"
+        );
+        assert!(connected(ps, &pb.player_id), "B ancora connected");
+    }
+}
+
+/// Test F3e-deck_size: `deck_size` in `PublicState` parte da 0 pre-start,
+/// è >0 dopo start, e diminuisce dopo una pescata dal mazzo.
+#[tokio::test]
+async fn deck_size_reported_and_decreases() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+
+    let game = create_game_with_seed(&server.base_url, "DeckSize", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", None).await;
+
+    // ── Spettatore pre-start: deck_size == 0 ──────────────────────
+    let mut spec = WsClient::connect_spectator(&server, &game.game_id).await;
+    let snap_spec = spec.recv().await;
+    assert!(matches!(snap_spec, ServerMessage::Snapshot(_)));
+    if let ServerMessage::Snapshot(ref s) = snap_spec {
+        assert_eq!(s.public.state, GameState::WaitingForPlayers);
+        assert_eq!(s.public.deck_size, 0, "deck_size 0 pre-start");
+    }
+
+    start_game(&server.base_url, &game.game_id, &game.host_token).await;
+
+    let a_ws = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+    let b_ws = WsClient::connect(&server, &game.game_id, &pb.player_id, &pb.token).await;
+
+    let mut a = Player::new(a_ws);
+    let mut b = Player::new(b_ws);
+    let mut public: Option<ttr_proto::PublicState> = None;
+
+    // ── SNAPSHOT A: cattura deck_size iniziale d0 ─────────────────
+    apply_msg(
+        &a.client.as_mut().unwrap().recv().await,
+        &mut a,
+        &mut public,
+    );
+    let d0 = public.as_ref().unwrap().deck_size;
+    assert!(d0 > 0, "deck_size > 0 dopo start, trovato {}", d0);
+    assert!(d0 <= 105, "deck_size <= 105 dopo start, trovato {}", d0);
+
+    // SNAPSHOT B
+    apply_msg(
+        &b.client.as_mut().unwrap().recv().await,
+        &mut b,
+        &mut public,
+    );
+
+    // ── Draft entrambi (non tocca il mazzo treno) ─────────────────
+    let draft_a = decide(
+        &a.player_id,
+        &mut a.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut a.drafted,
+    )
+    .unwrap()
+    .unwrap();
+    a.client.as_mut().unwrap().send(&draft_a).await;
+
+    let draft_b = decide(
+        &b.player_id,
+        &mut b.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut b.drafted,
+    )
+    .unwrap()
+    .unwrap();
+    b.client.as_mut().unwrap().send(&draft_b).await;
+
+    // Consuma post-draft fino a PlayerTurn.
+    loop {
+        let msg_a = a.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg_a, &mut a, &mut public);
+        let msg_b = b.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg_b, &mut b, &mut public);
+        let p = public.as_ref().unwrap();
+        if p.state == GameState::GameOver {
+            panic!("game over troppo presto");
+        }
+        if p.state == GameState::PlayerTurn || p.state == GameState::LastRound {
+            break;
+        }
+    }
+
+    assert_eq!(
+        public.as_ref().unwrap().deck_size,
+        d0,
+        "deck_size invariato dopo draft"
+    );
+
+    // ── A pesca dal mazzo ─────────────────────────────────────────
+    // Consuma fino al PrivateState fresco di A (suo turno).
+    loop {
+        let msg = a.client.as_mut().unwrap().recv().await;
+        let fresh = apply_msg(&msg, &mut a, &mut public);
+        let p = public.as_ref().unwrap();
+        if p.state == GameState::GameOver {
+            panic!("game over troppo presto");
+        }
+        if fresh && p.current_turn_player_id.as_deref() == Some(&a.player_id) {
+            break;
+        }
+    }
+
+    let draw = InboundAction::DrawTrainCard(ttr_proto::DrawCardPayload {
+        player_id: a.player_id.clone(),
+        source: ttr_proto::DrawSource::Deck,
+        client_seq: None,
+    });
+    a.client.as_mut().unwrap().send(&draw).await;
+
+    // Consuma messaggi post-pescata finché PublicState mostra deck_size == d0 - 1.
+    loop {
+        let msg = a.client.as_mut().unwrap().recv().await;
+        apply_msg(&msg, &mut a, &mut public);
+        let p = public.as_ref().unwrap();
+        if p.deck_size == d0 - 1 {
+            break;
+        }
+        if p.state == GameState::GameOver {
+            break;
+        }
+    }
+
+    assert_eq!(
+        public.as_ref().unwrap().deck_size,
+        d0 - 1,
+        "deck_size diminuito di 1 dopo pescata dal mazzo"
+    );
+
+    // Lo spettatore riceve i PublicState broadcast; l'ultimo deve avere
+    // deck_size == d0 - 1.
+    let mut spec_deck = d0;
+    while let Ok(msg) =
+        tokio::time::timeout(std::time::Duration::from_millis(200), spec.recv()).await
+    {
+        if let ServerMessage::PublicState(ps) = msg {
+            spec_deck = ps.deck_size;
+        }
+    }
+    assert_eq!(
+        spec_deck, d0 - 1,
+        "spettatore vede deck_size aggiornato dopo pescata"
     );
 }

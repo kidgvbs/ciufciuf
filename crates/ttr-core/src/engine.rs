@@ -258,6 +258,10 @@ impl Engine {
     pub fn draw_pile_len(&self) -> usize {
         self.draw_pile.len()
     }
+    /// Numero di carte nel mazzo coperto (solo la pila pesca, NON gli scarti).
+    pub fn deck_size(&self) -> u32 {
+        self.draw_pile.len() as u32
+    }
     pub fn discards_len(&self) -> usize {
         self.train_discards.len()
     }

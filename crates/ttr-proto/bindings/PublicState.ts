@@ -14,7 +14,11 @@ export type PublicState = { game_id: string, protocol_version: number, state: Ga
 /**
  * Carte scoperte: `None` = slot vuoto (E5). Gli indici di `drawFaceUp` restano allineati.
  */
-visible_deck: Array<CardColor | null>, claimed_routes: Array<ClaimedRoute>, players_summary: Array<PlayerSummary>, 
+visible_deck: Array<CardColor | null>, 
+/**
+ * Numero di carte nel mazzo coperto (solo la pila pesca, NON gli scarti).
+ */
+deck_size: number, claimed_routes: Array<ClaimedRoute>, players_summary: Array<PlayerSummary>, 
 /**
  * Europe: in `TUNNEL_RESOLUTION`, le carte rivelate e costo extra.
  */

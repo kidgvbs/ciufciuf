@@ -143,32 +143,34 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
 
                         match &connection_identity {
                             None => {
-                                // Spettatore: nessuna azione inbound consentita (F1).
-                                let _ = tx.send(ttr_proto::ServerMessage::Error(
-                                    ttr_proto::ErrorPayload {
-                                        seq: 0,
-                                        reason: ttr_proto::ErrorReason::Unauthorized,
-                                        action_ref: None,
-                                    },
-                                ));
+                                // Spettatore (F1): solo REQUEST_SNAPSHOT è consentita;
+                                // l'identità resta quella della connessione (None).
+                                if matches!(
+                                    inbound,
+                                    ttr_proto::InboundAction::RequestSnapshot(_)
+                                ) {
+                                    forward_snapshot_request(&handle, &tx, None).await;
+                                } else {
+                                    let _ = tx.send(ttr_proto::ServerMessage::Error(
+                                        ttr_proto::ErrorPayload {
+                                            seq: 0,
+                                            reason: ttr_proto::ErrorReason::Unauthorized,
+                                            action_ref: None,
+                                        },
+                                    ));
+                                }
                             }
                             Some(pid) => {
                                 if matches!(
                                     inbound,
                                     ttr_proto::InboundAction::RequestSnapshot(_)
                                 ) {
-                                    let (snap_tx, snap_rx) =
-                                        tokio::sync::oneshot::channel();
-                                    let _ = handle
-                                        .tx
-                                        .send(GameCommand::RequestSnapshot {
-                                            player_id: Some(pid.clone()),
-                                            reply: snap_tx,
-                                        })
-                                        .await;
-                                    if let Ok(Some(snap)) = snap_rx.await {
-                                        let _ = tx.send(snap);
-                                    }
+                                    forward_snapshot_request(
+                                        &handle,
+                                        &tx,
+                                        Some(pid.clone()),
+                                    )
+                                    .await;
                                 } else {
                                     let _ = handle
                                         .tx
@@ -183,7 +185,14 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
                         }
                     }
                     Err(_) => {
-                        // Messaggio malformato: ignora silenziosamente
+                        // N1: uno spettatore non può produrre un `InboundAction`
+                        // valido per REQUEST_SNAPSHOT, perché nel payload proto
+                        // `player_id` è obbligatorio e lo spettatore non ce l'ha.
+                        // Sonda leggera su `actionType` prima di scartare.
+                        if connection_identity.is_none() && is_snapshot_request_probe(&text) {
+                            forward_snapshot_request(&handle, &tx, None).await;
+                        }
+                        // altrimenti: messaggio malformato, ignora silenziosamente
                     }
                 }
             }
@@ -202,6 +211,36 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
         .await;
 
     outbound_task.abort();
+}
+
+/// Inoltra una REQUEST_SNAPSHOT all'attore e risponde sul canale della connessione.
+/// `player_id: None` produce uno snapshot solo-pubblico (spettatori, N1).
+async fn forward_snapshot_request(
+    handle: &crate::session::GameHandle,
+    tx: &tokio::sync::mpsc::UnboundedSender<ttr_proto::ServerMessage>,
+    player_id: Option<String>,
+) {
+    let (snap_tx, snap_rx) = tokio::sync::oneshot::channel();
+    let _ = handle
+        .tx
+        .send(GameCommand::RequestSnapshot {
+            player_id,
+            reply: snap_tx,
+        })
+        .await;
+    if let Ok(Some(snap)) = snap_rx.await {
+        let _ = tx.send(snap);
+    }
+}
+
+/// Sonda leggera: il messaggio è un REQUEST_SNAPSHOT?
+/// Usata solo per gli spettatori, il cui REQUEST_SNAPSHOT senza `player_id`
+/// non è deserializzabile come `InboundAction` (N1).
+fn is_snapshot_request_probe(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|v| v.get("actionType")?.as_str().map(|s| s == "REQUEST_SNAPSHOT"))
+        .unwrap_or(false)
 }
 
 fn extract_client_seq(inbound: &ttr_proto::InboundAction) -> Option<u64> {

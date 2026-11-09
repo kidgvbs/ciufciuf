@@ -195,6 +195,8 @@ pub struct PublicState {
     pub last_round_trigger_player_id: Option<String>,
     /// Carte scoperte: `None` = slot vuoto (E5). Gli indici di `drawFaceUp` restano allineati.
     pub visible_deck: Vec<Option<CardColor>>,
+    /// Numero di carte nel mazzo coperto (solo la pila pesca, NON gli scarti).
+    pub deck_size: u32,
     pub claimed_routes: Vec<ClaimedRoute>,
     pub players_summary: Vec<PlayerSummary>,
     /// Europe: in `TUNNEL_RESOLUTION`, le carte rivelate e costo extra.
@@ -225,6 +227,8 @@ pub struct PlayerSummary {
     pub score: i32,
     pub cards_hand_count: u32,
     pub tickets_count: u32,
+    /// `true` se il giocatore ha ≥1 connessione WS attiva (presence runtime).
+    pub connected: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -480,6 +484,7 @@ mod tests {
                 Some(CardColor::Blue),
                 Some(CardColor::Locomotive),
             ],
+            deck_size: 0,
             claimed_routes: vec![],
             players_summary: vec![],
             tunnel_reveal: None,
@@ -504,6 +509,7 @@ mod tests {
             last_round: false,
             last_round_trigger_player_id: None,
             visible_deck: vec![],
+            deck_size: 0,
             claimed_routes: vec![],
             players_summary: vec![],
             tunnel_reveal: None,
@@ -535,6 +541,7 @@ mod tests {
             last_round: false,
             last_round_trigger_player_id: None,
             visible_deck: vec![Some(CardColor::Red), None, Some(CardColor::Blue)],
+            deck_size: 0,
             claimed_routes: vec![],
             players_summary: vec![],
             tunnel_reveal: None,
@@ -605,6 +612,7 @@ mod tests {
             last_round: false,
             last_round_trigger_player_id: None,
             visible_deck: vec![],
+            deck_size: 0,
             claimed_routes: vec![],
             players_summary: vec![],
             tunnel_reveal: None,
@@ -655,6 +663,7 @@ mod tests {
                 last_round: false,
                 last_round_trigger_player_id: None,
                 visible_deck: vec![],
+                deck_size: 0,
                 claimed_routes: vec![],
                 players_summary: vec![],
                 tunnel_reveal: None,
@@ -698,6 +707,7 @@ mod tests {
                 last_round: false,
                 last_round_trigger_player_id: None,
                 visible_deck: vec![],
+                deck_size: 0,
                 claimed_routes: vec![],
                 players_summary: vec![],
                 tunnel_reveal: None,
