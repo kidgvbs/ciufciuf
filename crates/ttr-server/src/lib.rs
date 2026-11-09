@@ -64,6 +64,12 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
 
     let save_data = save::read_save(save_path)?;
 
+    // `game_id` finisce in un percorso su disco: solo la forma canonica è ammessa.
+    let canonical_id = Uuid::parse_str(&save_data.game_id).map(|id| id.to_string());
+    if canonical_id.as_deref() != Ok(save_data.game_id.as_str()) {
+        return Err(format!("gameId non valido nel save: {:?}", save_data.game_id));
+    }
+
     let ruleset = state
         .ruleset(&save_data.ruleset_id)
         .ok_or_else(|| format!("ruleset '{}' sconosciuto", save_data.ruleset_id))?
@@ -81,6 +87,7 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
     let max_players = ruleset.players.max;
 
     let save_path = state.saves_dir.join(format!("{}.json", game_id));
+    save::backup_before_resume(&save_path)?;
     let (tx, rx) = mpsc::channel(256);
 
     let saved_player_entries: Vec<(String, String, ttr_proto::PlayerColor)> = save_data

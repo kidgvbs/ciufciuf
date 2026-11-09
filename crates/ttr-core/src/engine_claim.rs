@@ -79,17 +79,16 @@ impl Engine {
 
         // Verifica che il giocatore abbia le carte
         let mut hand = self.players[player_index].hand.clone();
-        let mut used_indices: Vec<usize> = Vec::with_capacity(len);
+        let mut removed: Vec<CardColor> = Vec::with_capacity(len);
         for card in cards_discarded {
             let pos = hand.iter().position(|c| c == card);
             if let Some(idx) = pos {
-                hand.remove(idx);
-                used_indices.push(idx);
+                removed.push(hand.remove(idx));
             } else {
                 // Prova con locomotiva come jolly
                 let loco_pos = hand.iter().position(|c| *c == CardColor::Locomotive);
                 if let Some(idx) = loco_pos {
-                    hand.remove(idx);
+                    removed.push(hand.remove(idx));
                 } else {
                     return Err(EngineError::InsufficientCards {
                         route_id: route_id.to_string(),
@@ -150,7 +149,7 @@ impl Engine {
         self.players[player_index].hand = hand;
 
         // Metti carte negli scarti
-        self.train_discards.extend_from_slice(cards_discarded);
+        self.train_discards.extend_from_slice(&removed);
 
         // Calcola punti
         let len_key = len.to_string();
@@ -191,7 +190,7 @@ impl Engine {
         let mut events = vec![GameEvent::RouteClaimed {
             route_id: route_id.to_string(),
             player_index,
-            cards_used: cards_discarded.to_vec(),
+            cards_used: removed,
             points,
             trains_placed: len as u32,
         }];

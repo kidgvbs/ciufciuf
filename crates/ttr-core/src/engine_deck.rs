@@ -28,7 +28,7 @@ pub fn draw_from_deck(
 /// La sostituisce dal mazzo. Controlla la soglia locomotive dopo.
 pub fn draw_from_face_up(
     index: usize,
-    face_up: &mut Vec<Option<CardColor>>,
+    face_up: &mut [Option<CardColor>],
     draw_pile: &mut Vec<CardColor>,
     discards: &mut Vec<CardColor>,
     rng: &mut SeededRng,
@@ -58,22 +58,44 @@ pub fn loco_count_face_up(face_up: &[Option<CardColor>]) -> usize {
         .count()
 }
 
-/// Se ≥3 locomotive scoperte, scarta tutte e 5 e rivela 5 nuove.
+/// Se ≥3 locomotive scoperte, scarta tutte e 5 e rivela 5 nuove, ripetendo
+/// finché le scoperte scendono sotto soglia.
+///
+/// Caso senza uscita (non coperto dal piano §3.1): se dopo lo scarto mazzo e
+/// scarti contengono al massimo 2 carte non-locomotiva, nessuna nuova scoperta
+/// può scendere sotto soglia. Gli scarti tornano nel mazzo, si rimescola una
+/// volta, si riscoprono 5 carte e ci si ferma anche con ≥3 locomotive. Il pool
+/// contiene sempre le ≥3 locomotive appena scartate, quindi questo ramo scatta
+/// solo negli stati che prima non terminavano: i replay esistenti non cambiano.
+///
 /// Ritorna true se è avvenuto un reset.
 pub fn check_and_reset_loco_threshold(
-    face_up: &mut Vec<Option<CardColor>>,
+    face_up: &mut [Option<CardColor>],
     draw_pile: &mut Vec<CardColor>,
     discards: &mut Vec<CardColor>,
     rng: &mut SeededRng,
 ) -> bool {
-    let loco_count = loco_count_face_up(face_up);
-    if loco_count >= LOCO_RESET_THRESHOLD {
+    let mut reset = false;
+    while loco_count_face_up(face_up) >= LOCO_RESET_THRESHOLD {
+        reset = true;
         // Scarta tutte le 5
         for slot in face_up.iter_mut() {
             if let Some(card) = slot.take() {
                 discards.push(card);
             }
         }
+
+        let non_locos = draw_pile
+            .iter()
+            .chain(discards.iter())
+            .filter(|c| **c != CardColor::Locomotive)
+            .count();
+        let dead_end = non_locos <= 2;
+        if dead_end {
+            draw_pile.append(discards);
+            rng.shuffle(draw_pile);
+        }
+
         // Rivela 5 nuove
         for slot in face_up.iter_mut() {
             if let Some(card) = draw_from_deck(draw_pile, discards, rng) {
@@ -81,13 +103,12 @@ pub fn check_and_reset_loco_threshold(
             }
             // else: mazzo esaurito, slot resta None
         }
-        // Ricorsione: se ancora ≥3 locos, reset again
-        if loco_count_face_up(face_up) >= LOCO_RESET_THRESHOLD {
-            check_and_reset_loco_threshold(face_up, draw_pile, discards, rng);
+
+        if dead_end {
+            break;
         }
-        return true;
     }
-    false
+    reset
 }
 
 /// Numero di carte rimaste (mazzo + scarti + scoperte).

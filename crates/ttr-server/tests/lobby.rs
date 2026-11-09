@@ -280,3 +280,92 @@ async fn lobby_players_after_join() {
     assert!(names.contains(&"Alice"), "Alice presente");
     assert!(names.contains(&"Bob"), "Bob presente");
 }
+
+// ── Regressioni review di robustezza (9/11/2026) ─────────────────────
+
+async fn post_join(base: &str, game_id: &str, body: serde_json::Value) -> (u16, serde_json::Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{}/api/games/{}/join", base, game_id))
+        .json(&body)
+        .send()
+        .await
+        .expect("POST join");
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap_or(serde_json::Value::Null))
+}
+
+fn assert_rejected(res: &(u16, serde_json::Value), status: u16, code: &str) {
+    assert_eq!(res.0, status, "status inatteso per {}: {}", code, res.1);
+    assert_eq!(res.1["error"], code, "codice errore inatteso: {}", res.1);
+    assert!(
+        res.1["detail"].as_str().is_some_and(|d| !d.is_empty()),
+        "{} deve avere un detail leggibile: {}",
+        code,
+        res.1
+    );
+}
+
+#[tokio::test]
+async fn r4_lobby_input_validation() {
+    let server = TestServer::start().await;
+    let g = create_game_with_seed(&server.base_url, "R4", None).await;
+    let base = server.base_url.as_str();
+    let id = g.game_id.as_str();
+
+    let ok = post_join(base, id, serde_json::json!({"name":"Alice","color":"RED"})).await;
+    assert_eq!(ok.0, 200, "primo join valido: {}", ok.1);
+
+    let dup_color = post_join(base, id, serde_json::json!({"name":"Bob","color":"RED"})).await;
+    assert_rejected(&dup_color, 409, "COLOR_TAKEN");
+
+    for name in [String::new(), "   ".to_string(), "x".repeat(25), "x".repeat(1_000_000)] {
+        let res = post_join(base, id, serde_json::json!({ "name": name })).await;
+        assert_rejected(&res, 400, "INVALID_NAME");
+    }
+
+    // Il limite conta i caratteri, non i byte.
+    let accents = post_join(base, id, serde_json::json!({"name":"è".repeat(24)})).await;
+    assert_eq!(accents.0, 200, "24 caratteri accentati sono validi: {}", accents.1);
+
+    // Il nome viene salvato senza spazi esterni e il duplicato lo vede.
+    let padded = post_join(base, id, serde_json::json!({"name":"  Carol  "})).await;
+    assert_eq!(padded.0, 200, "nome con spazi esterni: {}", padded.1);
+    let dup_name = post_join(base, id, serde_json::json!({"name":"carol"})).await;
+    assert_eq!(dup_name.0, 409, "duplicato dopo il trim: {}", dup_name.1);
+    assert_eq!(dup_name.1["error"], "NAME_TAKEN");
+
+    let detail = get_game_detail(base, id).await;
+    let players = detail["players"].as_array().expect("players");
+    assert_eq!(players.len(), 3, "solo i join validi entrano: {}", detail);
+    assert!(players.iter().any(|p| p["name"] == "Carol"), "{}", detail);
+}
+
+#[tokio::test]
+async fn r4_create_game_name_validation() {
+    let server = TestServer::start().await;
+    let client = reqwest::Client::new();
+    let create = |name: String| {
+        client
+            .post(format!("{}/api/games", server.base_url))
+            .json(&serde_json::json!({"rulesetId":"usa_v2","name":name}))
+            .send()
+    };
+
+    let too_long = create("x".repeat(41)).await.expect("POST create");
+    assert_eq!(too_long.status(), 400, "nome partita oltre 40 caratteri");
+    let body: serde_json::Value = too_long.json().await.expect("body errore");
+    assert_eq!(body["error"], "BAD_REQUEST");
+
+    let at_limit = create("x".repeat(40)).await.expect("POST create");
+    assert_eq!(at_limit.status(), 201, "40 caratteri sono validi");
+
+    let blank = create("   ".to_string()).await.expect("POST create");
+    assert_eq!(blank.status(), 201, "nome vuoto usa il default");
+    let created: serde_json::Value = blank.json().await.expect("body create");
+    let detail = get_game_detail(
+        &server.base_url,
+        created["gameId"].as_str().expect("gameId"),
+    )
+    .await;
+    assert_eq!(detail["name"], "Partita");
+}

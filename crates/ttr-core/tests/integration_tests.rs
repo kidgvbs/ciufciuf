@@ -1492,3 +1492,252 @@ fn golden_union_find_connectivity() {
     assert!(uf.connected("A", "C"));
     assert!(!uf.connected("A", "D"));
 }
+
+// ============================================================
+// Regressioni review di robustezza (9/11/2026)
+// ============================================================
+
+const L: CardColor = CardColor::Locomotive;
+
+/// Motore post-draft con mazzo vuoto e scarti/scoperte imposti dal test.
+fn deck_fixture(
+    seed: u64,
+    discards: Vec<CardColor>,
+    face_up: [Option<CardColor>; 5],
+) -> Engine {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(seed, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+    eng.drain_draw_pile();
+    eng.set_discards(discards);
+    for (i, card) in face_up.into_iter().enumerate() {
+        eng.set_face_up_card(i, card);
+    }
+    eng
+}
+
+fn draw_face_up_0(eng: &mut Engine) {
+    eng.apply(Action::DrawTrainCard {
+        player_index: 0,
+        source: DrawSource::FaceUp { index: 0 },
+    })
+    .unwrap();
+}
+
+fn face_up_count(eng: &Engine) -> usize {
+    eng.face_up_cards().iter().flatten().count()
+}
+
+fn loco_count(eng: &Engine) -> usize {
+    eng.face_up_cards().iter().flatten().filter(|c| **c == L).count()
+}
+
+/// Scoperte, mazzo e scarti in forma compatta, per i valori di riferimento.
+fn deck_fingerprint(eng: &Engine) -> String {
+    let cards: String = eng
+        .face_up_cards()
+        .iter()
+        .map(|c| match c {
+            Some(CardColor::Red) => 'R',
+            Some(CardColor::Orange) => 'O',
+            Some(CardColor::Yellow) => 'Y',
+            Some(CardColor::Green) => 'G',
+            Some(CardColor::Blue) => 'B',
+            Some(CardColor::Purple) => 'P',
+            Some(CardColor::Black) => 'K',
+            Some(CardColor::White) => 'W',
+            Some(CardColor::Locomotive) => 'L',
+            None => '-',
+        })
+        .collect();
+    format!("{}/{}/{}", cards, eng.draw_pile_len(), eng.discards_len())
+}
+
+const RED: Option<CardColor> = Some(CardColor::Red);
+const GREEN: Option<CardColor> = Some(CardColor::Green);
+const LOCO: Option<CardColor> = Some(L);
+
+/// Caso normale: la sequenza RNG deve restare quella della vecchia ricorsione.
+/// I valori attesi sono stati catturati eseguendo il codice ricorsivo.
+#[test]
+fn loco_reset_normal_case_matches_recursive_rng_sequence() {
+    let mut pool = vec![L; 12];
+    pool.extend([
+        CardColor::Red,
+        CardColor::Blue,
+        CardColor::Yellow,
+        CardColor::Purple,
+        CardColor::White,
+        CardColor::Black,
+    ]);
+    let got: Vec<String> = (0..16u64)
+        .map(|seed| {
+            let mut eng = deck_fixture(seed, pool.clone(), [RED, LOCO, LOCO, LOCO, GREEN]);
+            draw_face_up_0(&mut eng);
+            deck_fingerprint(&eng)
+        })
+        .collect();
+    let expected: [&str; 16] = [
+        "LKLPW/12/5", "BLPYL/12/5", "LLKBP/2/15", "PLKWY/12/5", "WLLPR/12/5", "RBLYL/2/15",
+        "RKLPY/2/15", "LLYKR/12/5", "KWRGP/7/10", "LPWGY/2/15", "LRGYL/17/0", "LYBLW/12/5",
+        "PKLWL/7/10", "PLLWK/7/10", "RLWKL/7/10", "YLWGL/2/15",
+    ];
+    assert_eq!(got, expected);
+}
+
+/// Stessi input, stesso esito: il reset non introduce non determinismo.
+#[test]
+fn loco_reset_normal_case_is_deterministic() {
+    let mut pool = vec![L; 10];
+    pool.extend([CardColor::Blue, CardColor::Yellow, CardColor::White]);
+    for seed in 0..20u64 {
+        let mut a = deck_fixture(seed, pool.clone(), [RED, LOCO, LOCO, LOCO, GREEN]);
+        let mut b = deck_fixture(seed, pool.clone(), [RED, LOCO, LOCO, LOCO, GREEN]);
+        draw_face_up_0(&mut a);
+        draw_face_up_0(&mut b);
+        assert_eq!(a.serialize_state(), b.serialize_state(), "seed {}", seed);
+        assert_eq!(deck_fingerprint(&a), deck_fingerprint(&b), "seed {}", seed);
+    }
+}
+
+/// Esattamente 3 non-locomotive nel pool: non e' un caso senza uscita, il
+/// reset continua finche' le scoperte scendono sotto soglia.
+#[test]
+fn loco_reset_three_non_locos_ends_below_threshold() {
+    let mut pool = vec![L; 9];
+    pool.extend([CardColor::Blue, CardColor::Yellow]);
+    for seed in 0..20u64 {
+        let mut eng = deck_fixture(seed, pool.clone(), [RED, LOCO, LOCO, LOCO, GREEN]);
+        draw_face_up_0(&mut eng);
+        assert!(loco_count(&eng) < 3, "seed {}: {}", seed, deck_fingerprint(&eng));
+    }
+}
+
+/// Pool con 2 non-locomotive: un solo rimescolamento, poi ci si ferma.
+#[test]
+fn loco_reset_deadend_two_non_locos_terminates() {
+    for seed in 0..20u64 {
+        let mut eng = deck_fixture(seed, vec![L; 10], [RED, LOCO, LOCO, RED, RED]);
+        draw_face_up_0(&mut eng);
+        assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
+        assert_eq!(face_up_count(&eng), 5, "seed {}", seed);
+        assert_eq!(eng.draw_pile_len(), 9, "seed {}", seed);
+        assert_eq!(eng.discards_len(), 0, "seed {}", seed);
+    }
+}
+
+/// Pool di sole locomotive: le scoperte restano tutte locomotive.
+#[test]
+fn loco_reset_deadend_only_locos_terminates() {
+    let mut eng = deck_fixture(7, vec![L; 9], [RED, LOCO, LOCO, LOCO, LOCO]);
+    draw_face_up_0(&mut eng);
+    assert_eq!(deck_fingerprint(&eng), "LLLLL/8/0");
+}
+
+/// Pool con meno di 5 carte: gli slot senza carta restano vuoti.
+#[test]
+fn loco_reset_deadend_small_pool_terminates() {
+    let mut eng = deck_fixture(7, vec![], [RED, LOCO, LOCO, LOCO, None]);
+    draw_face_up_0(&mut eng);
+    assert_eq!(deck_fingerprint(&eng), "LLL--/0/0");
+}
+
+#[test]
+fn choose_tickets_rejects_duplicates_in_initial_draft() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let offered = eng.initial_tickets_for(0).unwrap().to_vec();
+
+    let res = eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: vec![offered[0].clone(), offered[0].clone()],
+    });
+    assert!(
+        matches!(res, Err(EngineError::InvalidPayload { .. })),
+        "duplicati nel draft iniziale devono essere rifiutati: {:?}",
+        res
+    );
+
+    // Il rifiuto non consuma il draft: la scelta corretta passa ancora.
+    eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: vec![offered[0].clone(), offered[1].clone()],
+    })
+    .unwrap();
+}
+
+#[test]
+fn choose_tickets_rejects_duplicates_mid_game() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    let offered = eng.pending_tickets().to_vec();
+
+    let res = eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: vec![offered[0].clone(), offered[0].clone()],
+    });
+    assert!(
+        matches!(res, Err(EngineError::InvalidPayload { .. })),
+        "duplicati a meta' partita devono essere rifiutati: {:?}",
+        res
+    );
+    assert_eq!(eng.phase(), GamePhase::TicketChoice);
+}
+
+/// Claim di `C_D_1` (grigia, 3) con la mano e la dichiarazione indicate.
+fn claim_c_d(eng: &mut Engine, hand: Vec<CardColor>, declared: Vec<CardColor>) -> Vec<CardColor> {
+    eng.set_player_hand(0, hand);
+    let events = eng
+        .apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: "C_D_1".into(),
+            cards_discarded: declared,
+        })
+        .unwrap();
+    events
+        .iter()
+        .find_map(|e| match e {
+            GameEvent::RouteClaimed { cards_used, .. } => Some(cards_used.clone()),
+            _ => None,
+        })
+        .expect("evento RouteClaimed")
+}
+
+#[test]
+fn claim_records_locomotives_actually_removed() {
+    let mut eng = deck_fixture(42, vec![], [RED, RED, RED, GREEN, GREEN]);
+    eng.set_player_hand(1, vec![]);
+
+    let used = claim_c_d(&mut eng, vec![L; 3], vec![CardColor::Red; 3]);
+    assert_eq!(used, vec![L; 3], "cards_used deve riportare le carte vere");
+    assert_eq!(eng.player_hand(0).unwrap(), &[] as &[CardColor]);
+
+    // Gli scarti non hanno un getter: si ripescano. Il mazzo e' vuoto, quindi
+    // le uniche carte disponibili sono quelle appena scartate.
+    let deck_draw = |eng: &mut Engine, player_index: usize| {
+        eng.apply(Action::DrawTrainCard {
+            player_index,
+            source: DrawSource::Deck,
+        })
+        .unwrap();
+    };
+    deck_draw(&mut eng, 1);
+    deck_draw(&mut eng, 1);
+    deck_draw(&mut eng, 0);
+    assert_eq!(eng.player_hand(1).unwrap(), &[L, L]);
+    assert_eq!(eng.player_hand(0).unwrap(), &[L]);
+}
+
+#[test]
+fn claim_records_mixed_payment_in_declaration_order() {
+    let mut eng = deck_fixture(42, vec![], [RED, RED, RED, GREEN, GREEN]);
+    let used = claim_c_d(
+        &mut eng,
+        vec![L, CardColor::Red, L],
+        vec![CardColor::Red; 3],
+    );
+    assert_eq!(used, vec![CardColor::Red, L, L]);
+    assert_eq!(eng.discards_len(), 3);
+}

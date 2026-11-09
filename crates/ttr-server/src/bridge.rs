@@ -69,7 +69,9 @@ pub(crate) fn build_public_state(
     let claimed_routes: Vec<ClaimedRoute> = if let Some(ref engine) = session.engine {
         let mut claimed: Vec<ClaimedRoute> = Vec::new();
         for (pid, &idx) in &session.player_index {
-            if let Some(player) = engine.player(idx) {
+            // `idx` è la posizione in `session.players`, non l'indice del motore.
+            let engine_idx = session.players.get(idx).and_then(|p| p.index);
+            if let Some(player) = engine_idx.and_then(|ei| engine.player(ei)) {
                 for route_id in player.claimed_routes.keys() {
                     claimed.push(ClaimedRoute {
                         route_id: route_id.clone(),

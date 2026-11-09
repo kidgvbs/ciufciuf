@@ -95,6 +95,13 @@ impl Engine {
         let offered = &self.pending_initial_tickets[player_index];
         let keep_min = self.ruleset.initial_tickets.keep_min as usize;
 
+        let keep_set: std::collections::BTreeSet<&str> = keep.iter().map(|s| s.as_str()).collect();
+        if keep_set.len() != keep.len() {
+            return Err(EngineError::InvalidPayload {
+                reason: "biglietti duplicati nella scelta".into(),
+            });
+        }
+
         if keep.len() < keep_min {
             return Err(EngineError::TicketChoiceBelowMin {
                 kept: keep.len(),
@@ -111,7 +118,6 @@ impl Engine {
         // Validazione: tutti i keep devono essere tra gli offerti
         let offered_set: std::collections::BTreeSet<&str> =
             offered.iter().map(|s| s.as_str()).collect();
-        let keep_set: std::collections::BTreeSet<&str> = keep.iter().map(|s| s.as_str()).collect();
         if !keep_set.is_subset(&offered_set) {
             let bad: Vec<_> = keep_set.difference(&offered_set).collect();
             return Err(EngineError::TicketNotOffered {
@@ -188,6 +194,13 @@ impl Engine {
         let offered = &self.pending_tickets;
         let keep_min = self.ruleset.ticket_draw.keep_min as usize;
 
+        let keep_set: std::collections::BTreeSet<&str> = keep.iter().map(|s| s.as_str()).collect();
+        if keep_set.len() != keep.len() {
+            return Err(EngineError::InvalidPayload {
+                reason: "biglietti duplicati nella scelta".into(),
+            });
+        }
+
         if keep.len() < keep_min {
             return Err(EngineError::TicketChoiceBelowMin {
                 kept: keep.len(),
@@ -203,7 +216,6 @@ impl Engine {
 
         let offered_set: std::collections::BTreeSet<&str> =
             offered.iter().map(|s| s.as_str()).collect();
-        let keep_set: std::collections::BTreeSet<&str> = keep.iter().map(|s| s.as_str()).collect();
         if !keep_set.is_subset(&offered_set) {
             let bad: Vec<_> = keep_set.difference(&offered_set).collect();
             return Err(EngineError::TicketNotOffered {

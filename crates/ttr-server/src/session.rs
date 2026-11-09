@@ -91,6 +91,8 @@ pub struct JoinResponse {
     pub token: String,
 }
 
+const MAX_PLAYER_NAME_CHARS: usize = 24;
+
 /// Ordine di assegnazione automatica dei colori (pacchetto §5).
 const COLOR_ORDER: [PlayerColor; 5] = [
     PlayerColor::Red,
@@ -335,7 +337,15 @@ impl GameSession {
             });
         }
 
-        // Modalità normale: primo join = nuovo playerId
+        // Modalità normale: i limiti valgono solo qui, i nomi di un save
+        // esistente restano accettati così come sono.
+        let name = name.trim().to_string();
+        if name.is_empty() || name.chars().count() > MAX_PLAYER_NAME_CHARS {
+            return Err("INVALID_NAME".into());
+        }
+        let name_lower = name.to_lowercase();
+
+        // Primo join = nuovo playerId
         if self.players.len() >= self.max_players as usize {
             return Err("GAME_FULL".into());
         }
@@ -345,6 +355,11 @@ impl GameSession {
             .any(|p| p.name.to_lowercase() == name_lower)
         {
             return Err("NAME_TAKEN".into());
+        }
+        if let Some(requested) = color
+            && self.players.iter().any(|p| p.color == requested)
+        {
+            return Err("COLOR_TAKEN".into());
         }
 
         let idx = self.players.len();
@@ -383,6 +398,15 @@ impl GameSession {
             return Err("UNAUTHORIZED".into());
         }
 
+        // Il controllo precede `take()`: un rifiuto non deve consumare il motore.
+        // Confronto col motore: `saved_roster` ha chiavi lowercase, quindi può
+        // contenere meno voci dei giocatori di un save manomesso.
+        if let Some(engine) = &self.resumed_engine
+            && self.player_index.len() != engine.num_players()
+        {
+            return Err("ROSTER_INCOMPLETE".into());
+        }
+
         // Resume mode: usa il motore pre-replay (D18 §8)
         if let Some(engine) = self.resumed_engine.take() {
             let map_data = self.resumed_map_data.take().unwrap_or(map);
@@ -390,7 +414,6 @@ impl GameSession {
             self.engine = Some(engine);
             self.map_data = Some(map_data);
             self.started = true;
-            self.write_save();
             self.broadcast_public_state();
             self.push_private_states();
             return Ok(());
@@ -821,9 +844,10 @@ impl GameSession {
     // ── Helper: mappa indice giocatore → player_id ───────────────
 
     pub(crate) fn player_id_for_index(&self, index: usize) -> Option<&str> {
+        let session_pos = self.players.iter().position(|p| p.index == Some(index))?;
         self.player_index
             .iter()
-            .find(|&(_, i)| *i == index)
+            .find(|&(_, i)| *i == session_pos)
             .map(|(id, _)| id.as_str())
     }
 }

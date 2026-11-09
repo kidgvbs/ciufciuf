@@ -20,6 +20,7 @@
     type StoredIdentity,
   } from '../lib/lobby';
   import { createGameConnection, type GameConnection } from '../lib/ws';
+  import { createActionGate } from '../lib/action-gate';
   import type { Snapshot, PublicState, PrivateState, ErrorPayload, InboundAction, PlayerColor } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import JoinScreen from '../lib/components/JoinScreen.svelte';
@@ -36,6 +37,14 @@
   let connection: GameConnection | null = $state(null);
   let view: 'join' | 'waiting' | 'game' | 'gameover' = $state('join');
   let joinError = $state('');
+
+  // Anti doppio tap sulle pescate (ogni tap consumerebbe una pescata del turno).
+  let drawBusy = $state(false);
+  const drawGate = createActionGate({
+    minMs: 350,
+    maxMs: 3000,
+    onChange: (locked) => { drawBusy = locked; },
+  });
 
   // ── Derived ────────────────────────────────────────────────────
   const gameState = $derived(publicStore.state);
@@ -114,20 +123,24 @@
             privateStore.apply(snap.private);
           }
           connectionStore.reconnecting = false;
+          drawGate.settle();
         },
         onPublicState(ps: PublicState) {
           publicStore.apply(ps);
         },
         onPrivateState(ps: PrivateState) {
           privateStore.apply(ps);
+          drawGate.settle();
         },
         onError(err: ErrorPayload) {
           connectionStore.lastError = err;
+          drawGate.settle();
         },
         onConnectionChange(connected: boolean) {
           connectionStore.connected = connected;
           if (!connected) {
             connectionStore.reconnecting = true;
+            drawGate.settle();
           }
         },
       },
@@ -136,7 +149,8 @@
   }
 
   // F1: chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
-  $effect(() => () => { connection?.close(); connection = null; connectionKey = null; });
+  // dispose dopo close: close() notifica onConnectionChange(false) → settle().
+  $effect(() => () => { connection?.close(); connection = null; connectionKey = null; drawGate.dispose(); });
 
   // ── Join ───────────────────────────────────────────────────────
   async function onJoin(name: string, gid: string, color?: PlayerColor) {
@@ -157,6 +171,10 @@
 
   // ── Azioni ─────────────────────────────────────────────────────
   function sendAction(action: InboundAction) {
+    if (action.actionType === 'DRAW_TRAIN_CARD') {
+      if (!connection?.connected) return;
+      if (!drawGate.tryAcquire()) return;
+    }
     connection?.send(action);
   }
 
@@ -292,7 +310,7 @@
     </div>
 
   {:else}
-    <ControllerGameView {playerId} {sendAction} {onLeave} />
+    <ControllerGameView {playerId} {sendAction} {onLeave} {drawBusy} />
   {/if}
 </div>
 

@@ -3,6 +3,7 @@
 //! Con `--client-dist` presente, il server serve `index.html` per `/` e per
 //! le rotte client-side (`/controller`), senza oscurare le API.
 
+#[allow(dead_code)]
 mod common;
 
 use common::*;

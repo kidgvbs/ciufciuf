@@ -36,13 +36,17 @@ impl ErrorResponse {
         let e = self.error.as_str();
         if e == "GAME_NOT_FOUND" {
             StatusCode::NOT_FOUND
-        } else if e == "GAME_FULL" || e == "GAME_STARTED" {
+        } else if e == "GAME_FULL"
+            || e == "GAME_STARTED"
+            || e == "ROSTER_INCOMPLETE"
+            || e == "COLOR_TAKEN"
+        {
             StatusCode::CONFLICT
         } else if e == "UNAUTHORIZED" {
             StatusCode::UNAUTHORIZED
         } else if e == "NAME_TAKEN" || e == "NAME_NOT_IN_SAVE" {
             StatusCode::CONFLICT
-        } else if e == "BAD_REQUEST" || e.starts_with("MIN_PLAYERS") {
+        } else if e == "BAD_REQUEST" || e == "INVALID_NAME" || e.starts_with("MIN_PLAYERS") {
             StatusCode::BAD_REQUEST
         } else {
             StatusCode::INTERNAL_SERVER_ERROR
@@ -53,6 +57,17 @@ impl ErrorResponse {
         let status = self.status();
         (status, Json(self)).into_response()
     }
+}
+
+/// Testo per l'utente dei codici di errore della lobby che lo prevedono.
+fn reason_detail(reason: &str) -> Option<String> {
+    let detail = match reason {
+        "INVALID_NAME" => "Il nome deve avere da 1 a 24 caratteri.",
+        "COLOR_TAKEN" => "Questo colore è già stato scelto da un altro giocatore.",
+        "ROSTER_INCOMPLETE" => "Non tutti i giocatori della partita salvata sono rientrati.",
+        _ => return None,
+    };
+    Some(detail.to_string())
 }
 
 // ── /api/lan ───────────────────────────────────────────────────────
@@ -166,6 +181,8 @@ struct CreateGameResponse {
     max_players: u32,
 }
 
+const MAX_GAME_NAME_CHARS: usize = 40;
+
 /// POST /api/games — crea una nuova partita in lobby.
 pub async fn create_game(
     State(state): State<AppState>,
@@ -182,10 +199,27 @@ pub async fn create_game(
         }
     };
 
+    let game_name = body
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .unwrap_or("Partita")
+        .to_string();
+    if game_name.chars().count() > MAX_GAME_NAME_CHARS {
+        return ErrorResponse::new(
+            "BAD_REQUEST",
+            Some(format!(
+                "Il nome della partita può avere al massimo {} caratteri.",
+                MAX_GAME_NAME_CHARS
+            )),
+        )
+        .into_response();
+    }
+
     let game_id = Uuid::new_v4().to_string();
     let host_token = Uuid::new_v4().to_string();
     let max_players = ruleset.players.max;
-    let game_name = body.name.unwrap_or_else(|| "Partita".into());
 
     let save_path = state.saves_dir.join(format!("{}.json", game_id));
     let (tx, rx) = mpsc::channel(256);
@@ -424,7 +458,7 @@ pub async fn join_game(
             ws_url: format!("/ws/{}", game_id),
         })
         .into_response(),
-        Ok(Err(reason)) => ErrorResponse::new(&reason, None).into_response(),
+        Ok(Err(reason)) => ErrorResponse::new(&reason, reason_detail(&reason)).into_response(),
         Err(_) => ErrorResponse::new("GAME_NOT_FOUND", Some("timeout risposta attore".into()))
             .into_response(),
     }
@@ -493,7 +527,7 @@ pub async fn start_game(
 
     match reply_rx.await {
         Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
-        Ok(Err(reason)) => ErrorResponse::new(&reason, None).into_response(),
+        Ok(Err(reason)) => ErrorResponse::new(&reason, reason_detail(&reason)).into_response(),
         Err(_) => ErrorResponse::new("GAME_NOT_FOUND", Some("timeout risposta attore".into()))
             .into_response(),
     }

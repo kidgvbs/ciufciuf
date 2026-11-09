@@ -2,9 +2,13 @@
 //! replay da save.
 
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
 use crate::session::GameSession;
+
+/// Tentativi di nome per i backup creati nello stesso secondo.
+const MAX_BACKUP_ATTEMPTS: u32 = 1000;
 
 /// Dati di salvataggio di una partita.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,15 +74,15 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
         "in_progress"
     };
 
-    // Costruisce i dati giocatore in ordine di join deterministico
-    // (F3: usa player_index ordinato, non ptr::eq).
+    // Costruisce i dati giocatore in ordine di indice del motore: `replay_engine`
+    // passa `save.players` a `Engine::new` in quest'ordine.
     let players: Vec<SavePlayer> = {
         let mut ordered: Vec<(usize, &String)> = session
             .player_index
             .iter()
             .map(|(id, &idx)| (idx, id))
             .collect();
-        ordered.sort_by_key(|(idx, _)| *idx);
+        ordered.sort_by_key(|(idx, _)| session.players[*idx].index.unwrap_or(*idx));
         ordered
             .into_iter()
             .map(|(idx, id)| {
@@ -123,6 +127,47 @@ pub(crate) fn write_atomic(path: &Path, data: &SaveData) -> Result<(), String> {
     std::fs::rename(&tmp_path, path).map_err(|e| format!("rename: {}", e))?;
 
     Ok(())
+}
+
+/// Copia il save in `{id}.resume-{unix}.bak` prima di un resume, senza mai
+/// sovrascrivere un backup esistente. Ritorna il percorso del backup, o `None`
+/// se il save non esiste. `path` deve avere uno stem già validato.
+pub(crate) fn backup_before_resume(path: &Path) -> Result<Option<PathBuf>, String> {
+    let mut source = match std::fs::File::open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(format!("lettura {:?} per backup: {}", path, e)),
+    };
+
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    for attempt in 0..MAX_BACKUP_ATTEMPTS {
+        let extension = if attempt == 0 {
+            format!("resume-{}.bak", unix)
+        } else {
+            format!("resume-{}-{}.bak", unix, attempt)
+        };
+        let backup_path = path.with_extension(extension);
+        let mut backup = match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&backup_path)
+        {
+            Ok(file) => file,
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("creazione backup {:?}: {}", backup_path, e)),
+        };
+        if let Err(e) = std::io::copy(&mut source, &mut backup) {
+            let _ = std::fs::remove_file(&backup_path);
+            return Err(format!("copia backup {:?}: {}", backup_path, e));
+        }
+        return Ok(Some(backup_path));
+    }
+
+    Err(format!("troppi backup esistenti per {:?}", path))
 }
 
 /// Legge un save file.

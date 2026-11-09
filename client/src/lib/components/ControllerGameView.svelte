@@ -35,10 +35,11 @@
     return m[color] ?? null;
   }
 
-  let { playerId, onLeave, sendAction }: {
+  let { playerId, onLeave, sendAction, drawBusy }: {
     playerId: string;
     onLeave: () => void;
     sendAction: (a: InboundAction) => void;
+    drawBusy: boolean;
   } = $props();
 
   // ── Derived ────────────────────────────────────────────────────
@@ -442,7 +443,7 @@
       <h3>Azioni</h3>
 
       {#if legalMoves.can_draw_deck}
-        <button onclick={drawDeck} class="btn action-btn draw-deck">
+        <button onclick={drawDeck} class="btn action-btn draw-deck" disabled={drawBusy}>
           🃏 Pesca dal mazzo
         </button>
       {/if}
@@ -454,6 +455,7 @@
             <button
               onclick={() => drawFaceUp(idx)}
               class="btn action-btn face-up"
+              disabled={drawBusy}
               aria-label={card ? `Pesca carta ${card}` : 'Pesca carta scoperta'}
             >
               {#if card}
