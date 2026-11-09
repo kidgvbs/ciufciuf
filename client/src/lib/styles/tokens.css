@@ -1,0 +1,107 @@
+/* CiufCiuf! — Design token condivisi (Fase 3d).
+ *
+ * Tema: "tavolo da gioco" — legno caldo scuro per il chrome, pergamena per
+ * board e carte. Tutta la grafica è originale (CSS/SVG inline): zero asset
+ * esterni, zero font esterni (regola d'oro 2).
+ *
+ * Le dimensioni delle carte sono aspect-ratio di riferimento (piano §8.1):
+ * carta treno 2:3 (~100×150), biglietto 3:2 (~120×80) — espresse in unità
+ * relative, mai come vincolo di px assoluti su schermi diversi.
+ */
+
+:root {
+  /* ── Tavolo (chrome scuro caldo, contrasto notturno) ───────────── */
+  --chrome-bg-0: #171008; /* fondo pagina — noce profondo */
+  --chrome-bg-1: #241a0e; /* pannelli */
+  --chrome-bg-2: #332515; /* superfici sollevate (card, input) */
+  --chrome-line: #57432a; /* bordi */
+  --chrome-text: #f1e7d2; /* testo principale */
+  --chrome-muted: #b7a587; /* testo secondario */
+  --chrome-faint: #a08d6d; /* testo terziario/hint (≥4.5:1 su chrome-bg, review 3d) */
+
+  /* Vene del legno (texture procedurale, nessuna immagine) */
+  --table-felt:
+    radial-gradient(ellipse 120% 90% at 50% 0%, rgba(255, 214, 140, 0.05), transparent 60%),
+    repeating-linear-gradient(93deg, rgba(255, 220, 160, 0.016) 0 2px, transparent 2px 7px),
+    repeating-linear-gradient(88deg, rgba(0, 0, 0, 0.05) 0 1px, transparent 1px 11px);
+
+  /* ── Oro / accento ─────────────────────────────────────────────── */
+  --gold: #e8a83e;
+  --gold-bright: #f6c25e;
+  --gold-deep: #a97a1f;
+
+  /* Testo errore su chrome scuro (contrasto ≥ 4.5:1) */
+  --danger: #ff8a75;
+
+  /* ── Pergamena (board e carte) ─────────────────────────────────── */
+  --board-1: #f6ebd0; /* carta chiara */
+  --board-2: #e9d6ad; /* carta ombreggiata */
+  --board-edge: #b3945e; /* bordo carta */
+  --board-ink: #453416; /* testo scuro su pergamena (contrasto ≥ 7:1) */
+  --board-ink-soft: #6d5731; /* testo secondario su pergamena (≥ 4.5:1) */
+  --wood-frame-1: #8a6a3b; /* cornice legno chiara */
+  --wood-frame-2: #5d4423; /* cornice legno scura */
+
+  /* ── Carte ─────────────────────────────────────────────────────── */
+  --card-face: #fbf6e9;
+  --card-radius: 8px;
+  --card-shadow:
+    0 2px 5px rgba(23, 16, 8, 0.45),
+    0 0 0 1px rgba(69, 52, 22, 0.25);
+
+  /* ── Bottoni tattili (chunky) ──────────────────────────────────── */
+  --btn-radius: 10px;
+
+  /* ── Ombre ─────────────────────────────────────────────────────── */
+  --shadow-panel: 0 4px 14px rgba(0, 0, 0, 0.45);
+  --shadow-board:
+    0 18px 44px rgba(0, 0, 0, 0.55),
+    0 3px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Bottoni tattili condivisi ──────────────────────────────────────
+ * `.btn` = corpo chunky con bordo inferiore spesso; `:active` affonda.
+ * Le varianti colore restano nei componenti (background custom). */
+.btn {
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  border-radius: var(--btn-radius);
+  box-shadow:
+    0 4px 0 rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+  font-weight: 700;
+  transition:
+    transform 0.06s ease,
+    box-shadow 0.06s ease,
+    filter 0.12s ease;
+}
+.btn:hover:not(:disabled) {
+  filter: brightness(1.09);
+}
+.btn:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.btn:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.35) brightness(0.75);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* ── Reset minimo ────────────────────────────────────────────────── */
+body {
+  margin: 0;
+}
+
+/* ── Accessibilità: animazioni non essenziali ────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

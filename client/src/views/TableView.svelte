@@ -1,0 +1,520 @@
+<script lang="ts">
+  // Table view (TV, browser HDMI): mappa condivisa + lobby + game over.
+  // Connessione spettatore senza playerId (N1).
+
+  import { onMount } from 'svelte';
+  import { publicStore, connectionStore, applySnapshot, resetStores } from '../lib/stores.svelte.ts';
+  import {
+    LobbyClient,
+    saveLastGame,
+    loadLastGame,
+    clearLastGame,
+    type LanCandidate,
+    type GameDetailPlayer,
+    type GameListItem,
+  } from '../lib/lobby';
+  import { createGameConnection, type GameConnection } from '../lib/ws';
+  import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
+  import { PLAYER_COLOR_CSS } from '../lib/colors';
+  import { RULESETS, DEFAULT_RULESET_ID } from '../lib/rulesets';
+  import MapSvg from '../lib/components/MapSvg.svelte';
+  import MapCard from '../lib/components/MapCard.svelte';
+  import TrainCard from '../lib/components/TrainCard.svelte';
+  import TrainIcon from '../lib/components/TrainIcon.svelte';
+  import DeckCard from '../lib/components/DeckCard.svelte';
+  import type { CardColor } from '../lib/proto';
+
+  // Default: stesso server che serve la pagina (statics da ttr-server).
+  // Override per sviluppo: `/?server=http://<ip>:8080`.
+  let host = $state<string>(
+    new URLSearchParams(window.location.search).get('server') ?? window.location.origin,
+  );
+  let gameId = $state<string>('');
+  let connection: GameConnection | null = $state(null);
+  let hostToken = $state<string>('');
+  let gameNameInput = $state<string>('CiufCiuf!');
+  let seedInput = $state<string>('');
+  let rulesetId = $state<string>(DEFAULT_RULESET_ID);
+  let lanCandidates = $state<LanCandidate[]>([]);
+  let lanFallback = $state<string>('');
+  let lobbyPlayers = $state<GameDetailPlayer[]>([]);
+  let lanPort = $state<number>(8080);
+  let availableGames = $state<GameListItem[]>([]);
+
+  const lobby = $derived(new LobbyClient(host));
+  const gameState = $derived(publicStore.state);
+  const isLobby = $derived(gameState === 'WAITING_FOR_PLAYERS');
+  const isGameOver = $derived(gameState === 'GAME_OVER');
+  const isInGame = $derived(!isLobby && !isGameOver && publicStore.gameId !== '');
+
+  async function loadLan() {
+    try {
+      const info = await lobby.getLan();
+      lanCandidates = info.candidates; lanFallback = info.fallback; lanPort = info.port;
+    } catch { /* ignorato */ }
+  }
+
+  async function createGame() {
+    try {
+      const seed = seedInput ? parseInt(seedInput, 10) : undefined;
+      const result = await lobby.createGame(rulesetId, gameNameInput, seed);
+      gameId = result.gameId; hostToken = result.hostToken;
+      // Ricorda l'ultima partita: una TV ricaricata si riaggancia da sola
+      // (hostToken serve a riprendere il bottone Start dopo un reload in lobby).
+      saveLastGame({ gameId: result.gameId, hostToken: result.hostToken });
+      updateUrlGame(result.gameId);
+      await refreshLobby(); connectSpectator();
+    } catch (e) { console.error('Creazione fallita:', e); }
+  }
+
+  async function refreshLobby() {
+    if (!gameId) return;
+    try { const d = await lobby.getGame(gameId); lobbyPlayers = d.players; } catch {}
+  }
+
+  async function refreshGames() {
+    try { availableGames = await lobby.listGames(); } catch { /* ignorato */ }
+  }
+
+  async function startGame() {
+    if (!gameId || !hostToken) return;
+    try { await lobby.startGame(gameId, hostToken); } catch (e) { console.error('Start:', e); }
+  }
+
+  // Aggancia la TV a una partita esistente (lista "Partite in LAN").
+  function followGame(g: GameListItem) {
+    const saved = loadLastGame();
+    gameId = g.gameId;
+    hostToken = saved && saved.gameId === g.gameId ? saved.hostToken : '';
+    gameNameInput = g.name;
+    saveLastGame({ gameId: g.gameId, hostToken });
+    updateUrlGame(g.gameId);
+    void refreshLobby();
+    connectSpectator();
+  }
+
+  // Stacca la TV dalla partita corrente e torna alla lista.
+  function leaveGame() {
+    if (connection) { connection.close(); connection = null; }
+    clearLastGame();
+    updateUrlGame('');
+    gameId = '';
+    hostToken = '';
+    lobbyPlayers = [];
+    resetStores();
+    void refreshGames();
+  }
+
+  // Sincronizza ?game=<id> nell'URL (così un reload si riaggancia da solo).
+  function updateUrlGame(id: string) {
+    const params = new URLSearchParams(window.location.search);
+    if (id) params.set('game', id); else params.delete('game');
+    const qs = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
+  }
+
+  function connectSpectator() {
+    if (!gameId) return;
+    if (connection) connection.close();
+    connection = createGameConnection({
+      host, gameId,
+      callbacks: {
+        onSnapshot(snap: Snapshot, _isReconnect: boolean) {
+          applySnapshot(snap);
+        },
+        onPublicState(state: PublicState) { publicStore.apply(state); },
+        onPrivateState() {},
+        onError(err: ErrorPayload) { connectionStore.lastError = err; },
+        onConnectionChange(connected: boolean) { connectionStore.connected = connected; },
+      },
+    });
+  }
+
+  // Attach iniziale (una sola volta, fuori dalla reattività):
+  // priorità ?game=<id> > localStorage ciufciuf-last-game > lista partite.
+  onMount(() => {
+    void loadLan();
+    void (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const paramGame = params.get('game');
+      const saved = loadLastGame();
+      const candidate = paramGame ?? saved?.gameId ?? '';
+      if (candidate) {
+        try {
+          const detail = await lobby.getGame(candidate);
+          gameId = candidate;
+          hostToken = saved && saved.gameId === candidate ? saved.hostToken : '';
+          gameNameInput = detail.name;
+          lobbyPlayers = detail.players;
+          updateUrlGame(candidate);
+          connectSpectator();
+          return;
+        } catch {
+          // Partita non più esistente (es. server riavviato): dimenticala
+          if (saved?.gameId === candidate) clearLastGame();
+          if (paramGame) updateUrlGame('');
+        }
+      }
+      await refreshGames();
+    })();
+  });
+
+  // F1: chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
+  $effect(() => () => { connection?.close(); connection = null; });
+
+  // Helpers
+  function isCurrentPlayer(pid: string) { return publicStore.currentTurnPlayerId === pid; }
+
+  // Presence (Fase 3e-server): giocatori senza WebSocket attiva, solo a
+  // partita avviata (in lobby il QR c'è già; a game over non serve).
+  const offlinePlayers = $derived(
+    isInGame ? publicStore.playersSummary.filter((p) => !p.connected) : [],
+  );
+  const offlineNames = $derived(offlinePlayers.map((p) => p.name).join(', '));
+
+  // URL di rientro per il QR: stesso della lobby (controller su host LAN).
+  const rejoinUrl = $derived.by(() => {
+    const cand = lanCandidates.find((c) => c.preferred) ?? lanCandidates.at(0);
+    if (cand) return cand.url + '/controller';
+    return lanFallback ? lanFallback + '/controller' : '';
+  });
+
+  // Lista giocatori in lobby: preferisci lo stato live dal WS (broadcast su ogni
+  // join), con fallback sul polling REST finché il primo PUBLIC_STATE non arriva.
+  const lobbyList = $derived(
+    publicStore.playersSummary.length > 0
+      ? publicStore.playersSummary.map((p) => ({ key: p.player_id, name: p.name, color: p.color }))
+      : lobbyPlayers.map((p) => ({ key: p.playerId, name: p.name, color: p.color })),
+  );
+
+  // Polling lista giocatori in lobby
+  $effect(() => {
+    if (isLobby && gameId) {
+      const interval = setInterval(refreshLobby, 3000);
+      return () => clearInterval(interval);
+    }
+  });
+</script>
+
+<div class="tv-root">
+  {#if isLobby}
+    <div class="lobby">
+      <h1>🚂 CiufCiuf!</h1>
+      <div class="lobby-layout">
+        <div class="lobby-left">
+          <h2>Connettiti</h2>
+          {#if lanCandidates.length > 0}
+            <div class="qr-list">
+              {#each lanCandidates as cand}
+                {@const controllerUrl = cand.url + '/controller'}
+                <div class="qr-item" class:preferred={cand.preferred}>
+                  <img src={lobby.qrUrl(controllerUrl)} alt="QR {cand.ip}" class="qr-img" />
+                  <div class="qr-label">{cand.ip}:{lanPort}{cand.preferred ? ' ⭐' : ''}</div>
+                </div>
+              {/each}
+            </div>
+          {:else}
+            <div class="qr-fallback"><p>Apri sul telefono:</p><code>{lanFallback}/controller</code></div>
+          {/if}
+        </div>
+        <div class="lobby-right">
+          {#if !gameId}
+            <div class="create-game">
+              <h2>Nuova partita</h2>
+              <div class="map-cards">
+                {#each RULESETS as rs}
+                  <MapCard
+                    ruleset={rs}
+                    selected={rulesetId === rs.id}
+                    onSelect={(id) => (rulesetId = id)}
+                  />
+                {/each}
+              </div>
+              <label>Nome: <input bind:value={gameNameInput} /></label>
+              <label>Seed (opzionale — partita ripetibile per test): <input bind:value={seedInput} type="number" placeholder="casuale" /></label>
+              <button class="btn" onclick={createGame}>Crea partita</button>
+            </div>
+            {#if availableGames.length > 0}
+              <div class="existing-games">
+                <h2>Partite in LAN</h2>
+                {#each availableGames as g (g.gameId)}
+                  <div class="game-row">
+                    <div class="game-row-info">
+                      <strong>{g.name}</strong>
+                      <span class="game-meta">
+                        {g.rulesetId} · {g.playersJoined}/{g.maxPlayers} giocatori
+                        · {g.started ? 'in corso' : 'in lobby'}
+                      </span>
+                    </div>
+                    <button class="btn follow-btn" onclick={() => followGame(g)}>Segui</button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+          {:else}
+            <div class="game-info">
+              <h2>{gameNameInput}</h2>
+              <p>Giocatori: {lobbyList.length}</p>
+              <div class="player-list">
+                {#each lobbyList as p (p.key)}
+                  <div class="player-chip" style="border-color:{PLAYER_COLOR_CSS[p.color]}">
+                    <span class="chip-dot" style="background:{PLAYER_COLOR_CSS[p.color]}"></span> {p.name}
+                  </div>
+                {/each}
+              </div>
+              {#if hostToken && lobbyList.length >= 2}
+                <button class="btn start-btn" onclick={startGame}>🚀 Start!</button>
+              {:else if hostToken}
+                <p class="hint">Minimo 2 giocatori</p>
+              {/if}
+              <button class="btn leave-game-btn" onclick={leaveGame}>✕ Cambia partita</button>
+            </div>
+          {/if}
+        </div>
+      </div>
+    </div>
+
+  {:else if isGameOver}
+    <div class="game-over">
+      <h1>🏁 Fine partita!</h1>
+      {#if publicStore.finalScores}
+        <table>
+          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th><th>Bonus</th><th>Totale</th></tr></thead>
+          <tbody>
+            {#each publicStore.finalScores as fs}
+              {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
+              <tr class:winner={publicStore.longestPathPlayerIds?.includes(fs.playerId)}>
+                <td><span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span> {p?.name ?? fs.playerId}</td>
+                <td>{fs.routePoints}</td><td>+{fs.ticketCompleted}</td>
+                <td>{fs.ticketFailed < 0 ? fs.ticketFailed : '0'}</td>
+                <td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>
+                <td class="total">{fs.total}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if publicStore.longestPathPlayerIds}
+          <div class="longest-path">🏆 Longest Path: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
+        {/if}
+      {/if}
+      <!-- F2 (review 3c): via d'uscita dalla schermata di fine partita
+           (l'attach automatico riaggancia questa partita a ogni reload). -->
+      <button class="btn leave-game-btn" onclick={leaveGame}>✕ Cambia partita</button>
+    </div>
+
+  {:else if isInGame}
+    <div class="game-layout">
+      <div class="sidebar">
+        <h2>Segnapunti</h2>
+        {#each publicStore.playersSummary as p}
+          <div class="player-card" class:current-turn={isCurrentPlayer(p.player_id)}
+            class:offline={!p.connected}
+            style="border-left:4px solid {PLAYER_COLOR_CSS[p.color]}">
+            <div class="player-name">
+              <span class="pawn" style="--pawn:{PLAYER_COLOR_CSS[p.color]}">
+                <TrainIcon color={p.color as CardColor} uid="tv-{p.player_id.slice(0, 6)}" />
+              </span>
+              {p.name}
+              {#if !p.connected}<span class="offline-tag">⚡ offline</span>{/if}
+              {#if isCurrentPlayer(p.player_id)}<span class="turn-tag">turno</span>{/if}
+            </div>
+            <div class="score-line"><span class="score-num">{p.score}</span><span class="score-label">punti</span></div>
+            <div class="player-stats"><span>🚂 {p.trains_remaining}</span><span>🃏 {p.cards_hand_count}</span><span>🎫 {p.tickets_count}</span></div>
+          </div>
+        {/each}
+        <!-- QR di rientro: qualcuno è caduto, il telefono ritrova la partita
+             da solo (identità in localStorage). Area dedicata in plancia,
+             non copre la mappa. -->
+        {#if offlinePlayers.length > 0}
+          <div class="offline-strip" role="status">
+            <div class="offline-strip-text">
+              <strong>{offlineNames}</strong>
+              {offlinePlayers.length === 1 ? 'è offline' : 'sono offline'}
+              <span class="offline-sub">QR per rientrare — la partita si riprende da sola</span>
+            </div>
+            {#if rejoinUrl}
+              <img class="offline-qr" src={lobby.qrUrl(rejoinUrl)} alt="QR per rientrare in partita" />
+            {/if}
+          </div>
+        {/if}
+        <div class="visible-deck">
+          <h3>Carte scoperte</h3>
+          <div class="cards-row">
+            {#each publicStore.visibleDeck as card}
+              {#if card}
+                <div class="face-up-cell">
+                  <TrainCard color={card} small />
+                </div>
+              {:else}
+                <div class="mini-card empty">—</div>
+              {/if}
+            {/each}
+            <!-- Mazzo coperto con conteggio (deck_size dal server) -->
+            <div class="face-up-cell deck-cell">
+              <DeckCard count={publicStore.deckSize} small />
+            </div>
+          </div>
+        </div>
+        {#if publicStore.lastRound}
+          <div class="last-round-banner">⚠️ ULTIMO GIRO</div>
+        {/if}
+      </div>
+      <MapSvg />
+    </div>
+  {/if}
+</div>
+
+<style>
+  /* ── Tavolo (TV): legno caldo scuro, texture procedurale ─────────── */
+  .tv-root {
+    width:100vw; height:100vh; overflow:hidden;
+    background: var(--chrome-bg-0);
+    background-image: var(--table-felt);
+    color: var(--chrome-text);
+    font-family: system-ui, sans-serif;
+  }
+  h1 { font-size:2.5rem; color:var(--gold); margin:0; text-shadow:0 2px 6px rgba(0,0,0,0.5); }
+  h2 { font-size:1.3rem; color:var(--gold); margin:0 0 0.5rem; }
+  h3 { font-size:1rem; color:var(--gold); margin:0.5rem 0; }
+
+  /* Lobby */
+  .lobby { padding:2rem; }
+  .lobby-layout { display:flex; gap:2rem; margin-top:1.5rem; }
+  .lobby-left { flex:1; }
+  .lobby-right { flex:1; }
+  .qr-list { display:flex; gap:1rem; flex-wrap:wrap; }
+  .qr-item {
+    text-align:center; padding:0.5rem;
+    background: var(--chrome-bg-1);
+    border:2px solid var(--chrome-line); border-radius:12px;
+    box-shadow: var(--shadow-panel);
+  }
+  .qr-item.preferred { border-color:var(--gold); }
+  .qr-img { width:140px; height:140px; border-radius:6px; background:#fff; }
+  .qr-label { font-size:0.8rem; margin-top:0.25rem; color:var(--chrome-muted); }
+  .qr-fallback { padding:1rem; }
+  .qr-fallback code { background:var(--chrome-bg-2); border:1px solid var(--chrome-line); padding:0.5rem 1rem; border-radius:6px; font-size:1.2rem; }
+
+  .create-game, .existing-games {
+    background: var(--chrome-bg-1);
+    border:1px solid var(--chrome-line);
+    padding:1rem; border-radius:12px;
+    box-shadow: var(--shadow-panel);
+  }
+  .existing-games { margin-top:1rem; }
+  .create-game label { display:block; margin:0.5rem 0; font-size:0.9rem; }
+  .create-game input {
+    margin-left:0.5rem; background:var(--chrome-bg-2); border:1px solid var(--chrome-line);
+    color:var(--chrome-text); padding:0.3rem 0.5rem; border-radius:6px;
+  }
+  .map-cards { display:flex; gap:1rem; flex-wrap:wrap; margin:0.75rem 0; }
+  .game-row { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:0.5rem 0; border-bottom:1px solid var(--chrome-line); }
+  .game-row:last-child { border-bottom:none; }
+  .game-row-info { display:flex; flex-direction:column; gap:0.15rem; }
+  .game-meta { font-size:0.8rem; color:var(--chrome-muted); }
+  /* 4.5:1 con testo #fff (review 3d: #b06f1e era 4.09) */
+  button { font-size:1rem; margin-top:0.5rem; padding:0.5rem 1rem; color:#fff; background:#9a5a16; border-radius:var(--btn-radius); }
+  button:not(.btn) { border:none; cursor:pointer; }
+  button:not(.btn):hover { background:#cf8a2a; }
+  .follow-btn { background:#2471a3; margin-top:0; }
+  .leave-game-btn { background:#5a4a35; font-size:0.8rem; padding:0.4rem 0.9rem; }
+  .start-btn { background:#1e8449; font-size:1.2rem; padding:0.75rem 2rem; }
+
+  .player-list { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.5rem 0; }
+  .player-chip {
+    display:flex; align-items:center; gap:0.3rem; padding:0.3rem 0.7rem;
+    border:2px solid; border-radius:20px; font-size:0.9rem;
+    background: var(--chrome-bg-2);
+  }
+  .chip-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
+  .hint { color:var(--chrome-faint); font-size:0.85rem; }
+
+  /* Game over — foglio segnapunti su pergamena */
+  .game-over { padding:2rem; text-align:center; overflow-y:auto; height:100%; box-sizing:border-box; }
+  .game-over table {
+    margin:1.5rem auto; border-collapse:collapse;
+    background: linear-gradient(160deg, var(--board-1), var(--board-2));
+    color: var(--board-ink);
+    border: 6px solid #6d5228;
+    border-radius: 12px;
+    box-shadow: var(--shadow-board);
+    overflow: hidden;
+  }
+  th, td { padding:0.55rem 1.1rem; border-bottom:1px solid rgba(109,87,49,0.4); text-align:right; }
+  th { color:var(--gold-deep); font-size:0.85rem; text-transform:uppercase; letter-spacing:0.05em; }
+  td:first-child, th:first-child { text-align:left; }
+  .total { font-weight:800; font-size:1.2rem; color:var(--gold-deep); }
+  .winner td { background:rgba(30,132,73,0.14); }
+  .longest-path { margin-top:1rem; font-size:1.2rem; color:var(--gold); }
+
+  /* Game layout — plancia segnapunti + board */
+  .game-layout { display:flex; width:100vw; height:100vh; }
+  .sidebar {
+    width:280px; min-width:280px;
+    background: var(--chrome-bg-1);
+    background-image: var(--table-felt);
+    padding:0.75rem; overflow-y:auto;
+    border-right:1px solid var(--chrome-line);
+  }
+  .player-card {
+    background: var(--chrome-bg-2);
+    padding:0.55rem 0.65rem; margin-bottom:0.55rem;
+    border-radius:10px;
+    border:1px solid var(--chrome-line);
+    box-shadow: var(--shadow-panel);
+  }
+  .player-card.current-turn {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 1px var(--gold), var(--shadow-panel);
+  }
+  .player-card.offline { opacity:0.72; }
+  .offline-tag {
+    font-size:0.6rem; font-weight:800; text-transform:uppercase;
+    letter-spacing:0.06em; color:#3a1207; background:var(--danger);
+    padding:0.1rem 0.4rem; border-radius:999px;
+  }
+  /* QR di rientro (presence) */
+  .offline-strip {
+    display:flex; align-items:center; gap:0.6rem;
+    background: var(--chrome-bg-2);
+    border:1px solid var(--danger);
+    border-radius:10px; padding:0.5rem 0.6rem; margin:0.25rem 0 0.75rem;
+    box-shadow: var(--shadow-panel);
+  }
+  .offline-strip-text { font-size:0.8rem; line-height:1.3; }
+  .offline-sub { display:block; font-size:0.68rem; color:var(--chrome-muted); margin-top:0.15rem; }
+  .offline-qr {
+    width:96px; height:96px; margin-left:auto;
+    background:#fff; border-radius:8px; padding:4px;
+  }
+  .player-name { font-weight:bold; display:flex; align-items:center; gap:0.4rem; }
+  .pawn { display:inline-flex; width:34px; height:16px; }
+  .turn-tag {
+    margin-left:auto; font-size:0.6rem; font-weight:800; text-transform:uppercase;
+    letter-spacing:0.06em; color:var(--chrome-bg-0); background:var(--gold);
+    padding:0.1rem 0.4rem; border-radius:999px;
+  }
+  .score-line { display:flex; align-items:baseline; gap:0.35rem; margin-top:0.15rem; }
+  .score-num { font-size:1.5rem; font-weight:800; color:var(--gold); line-height:1; }
+  .score-label { font-size:0.65rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--chrome-muted); }
+  .player-stats { display:flex; justify-content:space-between; font-size:0.85rem; margin-top:0.3rem; color:var(--chrome-muted); }
+  .visible-deck { margin-top:1rem; }
+  .cards-row { display:flex; gap:6px; flex-wrap:wrap; }
+  .face-up-cell { flex:0 0 auto; }
+  /* Margine per il badge conteggio del mazzo (sporge in basso a destra) */
+  .deck-cell { margin:2px 14px 12px 6px; }
+  .mini-card.empty {
+    width:44px; aspect-ratio:2/3; border-radius:var(--card-radius);
+    display:flex; align-items:center; justify-content:center;
+    background:var(--chrome-bg-2); color:var(--chrome-faint);
+    border:1px dashed var(--chrome-line); font-weight:bold;
+  }
+  .last-round-banner {
+    background:#c0392b; color:#fff; text-align:center; padding:0.5rem;
+    border-radius:8px; margin-top:0.75rem; font-weight:bold;
+    border:1px solid rgba(0,0,0,0.4);
+    box-shadow: 0 3px 0 rgba(0,0,0,0.35);
+    animation:pulse 1s infinite alternate;
+  }
+  @keyframes pulse { from { opacity:0.8; } to { opacity:1; } }
+</style>
