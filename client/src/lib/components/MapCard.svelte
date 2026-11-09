@@ -1,13 +1,13 @@
 <script lang="ts">
   // Card di selezione mappa stile board-game (lobby "Nuova partita").
   //
-  // La thumbnail USA è un mini-render SVG originale dalle coordinate reali
-  // (riusa la proiezione di map-utils) — zero asset ufficiali (regola d'oro 2).
+  // La thumbnail USA è un mini-render SVG originale del layout schematico
+  // (lo stesso che si vede in partita) — zero asset ufficiali (regola d'oro 2).
   // Le mappe non disponibili mostrano un placeholder neutro disegnato da noi.
   import type { RulesetInfo } from '../rulesets';
-  import * as MapUtils from '../map-utils';
   import type { MapData } from '../map-utils';
   import usaMap from '../data/usa.json';
+  import usaLayout from '../data/usa-layout.json';
 
   let { ruleset, selected, onSelect }: {
     ruleset: RulesetInfo;
@@ -18,15 +18,37 @@
   const THUMB_W = 260;
   const THUMB_H = 170;
 
-  // Mini-render della mappa USA dalle coordinate (stessa proiezione di MapSvg).
+  // Mini-render del layout schematico (stesse posizioni e curve di MapSvg),
+  // scalato in "meet" nella thumbnail con padding.
   const mapData = usaMap as MapData;
-  const proj: MapUtils.ProjectionConfig = { width: THUMB_W, height: THUMB_H, padding: 14 };
-  const cityPos = new Map(mapData.cities.map((c) => [c.id, MapUtils.projectCity(c, proj)]));
+  const layout = usaLayout as unknown as {
+    width: number;
+    height: number;
+    cities: Record<string, { x: number; y: number }>;
+    routes: Record<string, [number, number][]>;
+  };
+  const PAD = 12;
+  const k = Math.min((THUMB_W - 2 * PAD) / layout.width, (THUMB_H - 2 * PAD) / layout.height);
+  const ox = (THUMB_W - layout.width * k) / 2;
+  const oy = (THUMB_H - layout.height * k) / 2;
+  const tp = ([x, y]: [number, number]) => `${(ox + x * k).toFixed(1)},${(oy + y * k).toFixed(1)}`;
+  const cityPos = new Map(
+    Object.entries(layout.cities).map(([id, p]) => [id, { x: ox + p.x * k, y: oy + p.y * k }]),
+  );
+  const seenPairs = new Set<string>();
   const thumbRoutes = mapData.routes
+    .filter((r) => {
+      const key = [r.from, r.to].sort().join('|');
+      if (seenPairs.has(key)) return false;
+      seenPairs.add(key);
+      return true;
+    })
     .map((r) => {
-      const a = cityPos.get(r.from);
-      const b = cityPos.get(r.to);
-      return a && b ? { id: r.id, x1: a.x, y1: a.y, x2: b.x, y2: b.y } : null;
+      const pts = layout.routes[r.id];
+      if (!pts || pts.length < 2) return null;
+      const [a, b, c] = pts;
+      const d = c ? `M ${tp(a!)} Q ${tp(b!)} ${tp(c)}` : `M ${tp(a!)} L ${tp(b!)}`;
+      return { id: r.id, d };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
 </script>
@@ -44,8 +66,8 @@
       <svg viewBox="0 0 {THUMB_W} {THUMB_H}" width="100%" height="100%" aria-hidden="true">
         <rect width={THUMB_W} height={THUMB_H} fill="#f0e3c2" rx="6" />
         {#each thumbRoutes as r}
-          <line x1={r.x1} y1={r.y1} x2={r.x2} y2={r.y2}
-            stroke="#a68b5b" stroke-width="1" stroke-linecap="round" opacity="0.6" />
+          <path d={r.d} fill="none"
+            stroke="#a68b5b" stroke-width="1.4" stroke-linecap="round" opacity="0.75" />
         {/each}
         {#each mapData.cities as c}
           {@const p = cityPos.get(c.id)}

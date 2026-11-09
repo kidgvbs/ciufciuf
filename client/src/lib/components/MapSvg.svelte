@@ -12,10 +12,24 @@
   // - onRouteTap:        tap/click su una rotta (distinto dal pan via soglia)
   // - compact:           stesso viewBox del full (layout) ma font/stroke/dot adattati
   //                      al telefono (stesso componente, niente fork)
+  //
+  // Revisione grafica:
+  // - disegno a LAYER (ombre → letto binari → glow → tasselli/vagoni → aree
+  //   tap → biglietti → città → etichette): uno sfondo disegnato dopo non
+  //   copre più la linea di una rotta precedente, e nessun pallino copre
+  //   un'etichetta altrui;
+  // - tasselli separati (uno per carta) con bordo scuro: bianche/gialle
+  //   leggibili sulla pergamena; vagoni reclamati "in rilievo" (ombra,
+  //   riflesso, finestrini) distinguibili da una rotta dello stesso colore;
+  // - offset doppie dipendente dallo spessore (doubleGap dal layout);
+  // - font incluso (Barlow Semi Condensed 600) misurato dal generatore;
+  // - pan/zoom in unità viewBox con pinch a due dita, limiti e pulsanti.
+  import '@fontsource/barlow-semi-condensed/latin-600.css';
   import { publicStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS } from '../colors';
   import * as MapUtils from '../map-utils';
-  import type { MapData as MapDataType, Point } from '../map-utils';
+  import type { MapData as MapDataType, Point, RouteData } from '../map-utils';
+  import * as PZ from '../pan-zoom.ts';
   import usaMap from '../data/usa.json';
   import usaLayout from '../data/usa-layout.json';
 
@@ -47,8 +61,14 @@
     cities: Record<string, Point>;
     labels: Record<string, { dx: number; dy: number; anchor: 'start' | 'middle' | 'end' }>;
     routes: Record<string, [number, number][]>;
+    /** Font con cui il generatore ha validato le etichette. */
+    font?: { family: string; weight: number; size: number };
+    /** Gap libero tra i due binari di una doppia (px viewBox). */
+    doubleGap?: number;
   }
   const layout = usaLayout as unknown as UsaLayout;
+  const FONT_FAMILY = `'${layout.font?.family ?? 'Barlow Semi Condensed'}', system-ui, sans-serif`;
+  const DOUBLE_GAP = layout.doubleGap ?? MapUtils.DEFAULT_DOUBLE_GAP;
 
   const interactive = $derived(onRouteTap !== undefined);
   const highlightSet = $derived(new Set(highlightRouteIds));
@@ -56,12 +76,9 @@
   // Fase 3e: nel compact gli stroke pensati per il full sembrano il doppio
   // sul telefono → fattore di scala solo visivo. Geometria invariata.
   const swFactor = $derived(compact ? 0.7 : 1);
-  // Nomi città: il canvas è ora quello del layout (~1097×609) per ENTRAMBE
-  // le viste. Full 15.5 (validato dal generatore col caso peggiore: dot r=8,
-  // stroke 1.0×). Compact 16: sul telefono il viewBox più largo rende le label
-  // ~0.33–0.53× → più piccole; si compensa salendo a 16 (il compact ha dot
-  // r=6 e stroke 0.7×, quindi più spazio, e l'ingombro resta ≈ al full).
-  const cityFontSize = $derived(compact ? 16 : 15.5);
+  // Font etichette: full = quello validato dal generatore; compact 16
+  // (il compact ha dot e stroke più piccoli → l'ingombro resta ≈ al full).
+  const cityFontSize = $derived(compact ? 16 : (layout.font?.size ?? 15.5));
   const cityLabelStroke = $derived(compact ? 3.2 : 4.2);
   // 3f+4: TV (full) r=8; compact (controller) pallino più piccolo (6).
   const cityDotR = $derived(compact ? 6 : 8);
@@ -80,7 +97,7 @@
 
   // ── Geometria polyline (layout schematico) ──────────────────────────
   // Le rotte sono polyline a 2 o 3 punti (il 3° è il "bend" del layout).
-  // offsetPoints sposta la polyline sulla normale locale (doppie ±10);
+  // offsetPoints sposta la polyline sulla normale locale (doppie);
   // trimPolyline accorcia le estremità lungo il PRIMO/ULTIMO segmento;
   // pointAlong interpola vagoni/slot sulla lunghezza totale.
 
@@ -123,7 +140,7 @@
     return out;
   }
 
-// ── Quadratic Bézier helpers (3f+9: curve lisce al bend) ────
+  // ── Quadratic Bézier helpers (3f+9: curve lisce al bend) ────
   // Formula di de Casteljau: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
   // La curva è sempre contenuta nel triangolo P₀-P₁-P₂.
   function bezierPoint(t: number, p0: Point, p1: Point, p2: Point): { x: number; y: number } {
@@ -242,22 +259,158 @@
     return total;
   }
 
+  // ── Geometria disegnata (precalcolata, indipendente da pan/zoom) ──────
+  // Un tassello per carta: lungo quanto lo spazio disponibile meno un
+  // piccolo gap (così si contano i vagoni), largo quanto lo stroke.
+  interface Slot { x: number; y: number; deg: number }
+  interface RouteGeo {
+    route: RouteData;
+    d: string;
+    sw: number;
+    slotL: number;
+    slots: Slot[];
+  }
+  const routeGeos = $derived.by((): RouteGeo[] => {
+    const out: RouteGeo[] = [];
+    for (const route of mapData.routes) {
+      const pts = routePoints(route.id);
+      if (!pts) continue;
+      // Offset doppie: metà spessore PIENO + metà gap (stessa formula del
+      // generatore) — sul telefono lo stroke scala 0.7, il gap cresce.
+      const off = route.double
+        ? MapUtils.doubleRouteOffset(route.len, routeIndex.get(route.id) ?? 0, DOUBLE_GAP)
+        : 0;
+      const offPts = off === 0 ? pts : offsetPoints(pts, off);
+      const sw = MapUtils.routeStrokeWidth(route.len) * swFactor;
+      // Trim con cap: le rotte len-1 restano visibili (stesso cap del generatore).
+      const trim = Math.min(routeGap + sw / 2, curveLength(pts) * 0.42);
+      const trimmed = trimCurve(offPts, trim, trim);
+      const len = curveLength(trimmed);
+      const N = route.len;
+      const slots: Slot[] = [];
+      for (let i = 0; i < N; i++) {
+        const pt = pointAlongCurve(trimmed, (i + 0.5) / N);
+        slots.push({ x: pt.x, y: pt.y, deg: (pt.angle * 180) / Math.PI });
+      }
+      const slotL = Math.max(6, len / N - 3 * swFactor);
+      out.push({ route, d: curveD(trimmed), sw, slotL, slots });
+    }
+    return out;
+  });
 
-  // Canvas variabile: viewBox dal layout (usa-layout.json width/height) per
-  // ENTRAMBE le viste (full e compact) — lo stesso disegno, il compact
-  // differisce solo per swFactor/font/dot. Pan & zoom usano questi valori.
-  const mapWidth = layout.width;
-  const mapHeight = layout.height;
-  let panX = $state(0);
-  let panY = $state(0);
-  let zoom = $state(1);
-  let dragging = $state(false);
-  let dragStart = $state({ x: 0, y: 0 });
-  let dragPan = $state({ x: 0, y: 0 });
-  // Tap vs pan: distanza percorsa durante il drag (non reattiva, solo handler).
-  let movedBeyondTapSlop = false;
+  // Hub (≥6 collegamenti distinti): pallino "stazione" con anello doppio,
+  // aiuta a riconoscere i nodi principali a colpo d'occhio.
+  const cityDegree = (() => {
+    const seen = new Set<string>();
+    const deg = new Map<string, number>();
+    for (const r of mapData.routes) {
+      const k = [r.from, r.to].sort().join('|');
+      if (seen.has(k)) continue;
+      seen.add(k);
+      deg.set(r.from, (deg.get(r.from) ?? 0) + 1);
+      deg.set(r.to, (deg.get(r.to) ?? 0) + 1);
+    }
+    return deg;
+  })();
 
   const cityPositions = new Map<string, Point>(Object.entries(layout.cities));
+
+  // Etichette lontane dal pallino (vincolate dal generatore a ≤32px):
+  // filetto sottile pallino→etichetta, così il nome resta legato alla sua
+  // città anche nei cluster. Punto d'arrivo = bordo del testo verso il dot.
+  const labelLeaders = $derived.by(() => {
+    const fs = cityFontSize;
+    const out: Array<{ id: string; x1: number; y1: number; x2: number; y2: number }> = [];
+    for (const city of mapData.cities) {
+      const pos = cityPositions.get(city.id);
+      const l = layout.labels[city.id];
+      if (!pos || !l) continue;
+      // Ancora sul bordo del box testo più vicino al pallino
+      let ex = l.dx;
+      let ey = l.dy - 0.35 * fs; // centro verticale (cap height ≈ 0.7em)
+      if (l.anchor === 'middle') ey = l.dy < 0 ? l.dy + 0.15 * fs : l.dy - 0.75 * fs;
+      const dist = Math.hypot(ex, ey);
+      if (dist - cityDotR < 14) continue; // vicina: nessun filetto
+      const ux = ex / dist, uy = ey / dist;
+      ex -= ux * 2; ey -= uy * 2;
+      out.push({
+        id: city.id,
+        x1: pos.x + ux * (cityDotR + 1.5), y1: pos.y + uy * (cityDotR + 1.5),
+        x2: pos.x + ex, y2: pos.y + ey,
+      });
+    }
+    return out;
+  });
+
+  // ── Pan & Zoom (unità viewBox, pinch, limiti) ─────────────────────────
+  // Canvas variabile: viewBox dal layout per ENTRAMBE le viste.
+  const mapWidth = layout.width;
+  const mapHeight = layout.height;
+  const vb: PZ.Size = { width: mapWidth, height: mapHeight };
+  let pz = $state<PZ.PanZoom>({ ...PZ.IDENTITY });
+  let dragging = $state(false);
+  let svgEl = $state<SVGSVGElement | null>(null);
+  let containerEl = $state<HTMLDivElement | null>(null);
+  const gesture = new PZ.GestureTracker({ tapSlopPx: 10 });
+  // Rotta sotto il dito al pointerdown: il tap scatta al rilascio se il
+  // gesto è rimasto un tap (niente click: il pointer capture sul container
+  // lo dirotterebbe).
+  let tapRouteId: string | null = null;
+
+  function svgRect(): PZ.RectLike | null {
+    return svgEl ? svgEl.getBoundingClientRect() : null;
+  }
+
+  function onDown(e: PointerEvent) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (gesture.active === 0) {
+      const el = (e.target as Element | null)?.closest?.('[data-route-id]');
+      tapRouteId = el?.getAttribute('data-route-id') ?? null;
+    }
+    gesture.down(e.pointerId, e.clientX, e.clientY);
+    containerEl?.setPointerCapture(e.pointerId);
+    dragging = true;
+  }
+  function onMove(e: PointerEvent) {
+    if (gesture.active === 0) return;
+    const rect = svgRect();
+    if (!rect) return;
+    pz = gesture.move(e.pointerId, e.clientX, e.clientY, pz, rect, vb);
+  }
+  function onUp(e: PointerEvent) {
+    if (gesture.active === 0) return;
+    gesture.up(e.pointerId);
+    if (gesture.active > 0) return;
+    dragging = false;
+    if (e.type === 'pointerup' && gesture.isTap && tapRouteId) {
+      const id = tapRouteId;
+      tapRouteId = null;
+      if (interactive && !claimedMap.has(id)) onRouteTap?.(id);
+    }
+    tapRouteId = null;
+  }
+  function onWheel(e: WheelEvent) {
+    e.preventDefault();
+    const rect = svgRect();
+    if (!rect) return;
+    const focus = PZ.clientToViewBox(e.clientX, e.clientY, rect, vb);
+    pz = PZ.zoomAt(pz, focus, PZ.wheelFactor(e.deltaY, e.deltaMode), vb);
+  }
+  function zoomButton(factor: number) {
+    pz = PZ.zoomAt(pz, { x: mapWidth / 2, y: mapHeight / 2 }, factor, vb);
+  }
+  function resetView() {
+    pz = { ...PZ.IDENTITY };
+  }
+
+  // wheel non passivo (preventDefault per non scrollare la pagina)
+  $effect(() => {
+    const el = containerEl;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  });
+
   const claimedMap = $derived(
     new Map(publicStore.claimedRoutes.map(cr => [cr.route_id, cr.claimed_by_player_id]))
   );
@@ -298,197 +451,242 @@
     return p ? PLAYER_COLOR_CSS[p.color] : '#666';
   }
 
-  // Pan & Zoom
-  function onDown(e: PointerEvent) {
-    dragging = true; dragStart = { x: e.clientX, y: e.clientY };
-    dragPan = { x: panX, y: panY };
-    movedBeyondTapSlop = false;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-  }
-  function onMove(e: PointerEvent) {
-    if (!dragging) return;
-    panX = dragPan.x + (e.clientX - dragStart.x);
-    panY = dragPan.y + (e.clientY - dragStart.y);
-    if (Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y) > 10) {
-      movedBeyondTapSlop = true;
-    }
-  }
-  function onUp() { dragging = false; }
-  function onWheel(e: WheelEvent) {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.3, Math.min(4, zoom * delta));
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    panX = mx - (mx - panX) * (newZoom / zoom);
-    panY = my - (my - panY) * (newZoom / zoom);
-    zoom = newZoom;
+  // Tasselli liberi: il grigio "neutro" è più caldo e chiaro del vecchio
+  // #95a5a6 (si legge meglio sulla pergamena); gli altri colori restano.
+  function slotFill(route: RouteData): string {
+    const c = MapUtils.routeStrokeColor(route);
+    return c === '#95a5a6' ? '#b7ab95' : c;
   }
 
-  // Tap su rotta: scatta solo se il puntatore non ha pannato.
-  function handleRouteTap(routeId: string) {
-    if (movedBeyondTapSlop) { movedBeyondTapSlop = false; return; }
-    onRouteTap?.(routeId);
-  }
-
+  // Ombra proiettata (luce da nord-ovest), in unità viewBox
+  const SHADOW_DX = 1.6;
+  const SHADOW_DY = 2.4;
 </script>
 
 <div
   class="map-container"
   class:compact
+  class:dragging
+  class:zoomed={pz.zoom > 1.001}
   role="application"
   aria-label="Mappa delle rotte"
+  bind:this={containerEl}
   onpointerdown={onDown} onpointermove={onMove}
-  onpointerup={onUp} onpointerleave={onUp}
-  onwheel={onWheel}
-  style="cursor: {dragging ? 'grabbing' : 'grab'}"
+  onpointerup={onUp} onpointercancel={onUp} onlostpointercapture={onUp}
 >
-  <svg viewBox="0 0 {mapWidth} {mapHeight}" width="100%" height="100%">
-    <g transform="translate({panX}, {panY}) scale({zoom})">
-      <!-- Rotte -->
-      {#each mapData.routes as route}
-        {@const pts = routePoints(route.id)}
-        {#if pts}
-          <!-- Offset doppie ±7 (perpendicolare al segmento locale); le
-               singole restano centrate. 3f+3: estremi troncati prima del
-               pallino lungo il PRIMO/ULTIMO segmento. -->
-          {@const isDouble = route.double}
-          {@const offMag = isDouble ? ((routeIndex.get(route.id) ?? 0) === 1 ? -7 : 7) : 0}
-          {@const offsetPts = offMag === 0 ? pts : offsetPoints(pts, offMag)}
-          {@const claimedBy = claimedMap.get(route.id)}
-          {@const color = claimedBy ? playerColor(claimedBy) : MapUtils.routeStrokeColor(route)}
-          {@const sw = MapUtils.routeStrokeWidth(route.len) * swFactor}
-          <!-- Trim con cap: le rotte len-1 (26px) restano visibili (lo
-               stesso cap del generatore, che lo usa anche per le etichette). -->
-          {@const trim = Math.min(routeGap + sw / 2, curveLength(pts) * 0.42)}
-          {@const trimmed = trimCurve(offsetPts, trim, trim)}
-          {@const d = curveD(trimmed)}
-          {@const N = route.len}
-          {@const highlighted = !claimedBy && highlightSet.has(route.id)}
-          {@const selected = route.id === selectedRouteId}
+  <svg bind:this={svgEl} viewBox="0 0 {mapWidth} {mapHeight}" width="100%" height="100%">
+    <defs>
+      <!-- Riflesso/ombreggiatura dei tasselli: coordinate locali del
+           tassello (ruotato), quindi la luce segue la direzione della rotta. -->
+      <linearGradient id="slot-shade" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fff" stop-opacity="0.45" />
+        <stop offset="0.45" stop-color="#fff" stop-opacity="0.06" />
+        <stop offset="0.55" stop-color="#000" stop-opacity="0" />
+        <stop offset="1" stop-color="#000" stop-opacity="0.28" />
+      </linearGradient>
+      <!-- Pallino città a "bottone" (luce da nord-ovest) -->
+      <radialGradient id="city-dot" cx="0.38" cy="0.32" r="0.75">
+        <stop offset="0" stop-color="#fffdf6" />
+        <stop offset="0.6" stop-color="#f3e8cc" />
+        <stop offset="1" stop-color="#cdb98f" />
+      </radialGradient>
+    </defs>
 
-          <!-- Tap/click sulle rotte; il percorso keyboard-accessibile è la lista testuale (bottoni veri) -->
-          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-          <g
-            class:route-tappable={interactive && !claimedBy}
-            onclick={interactive ? () => handleRouteTap(route.id) : undefined}
-          >
-            <!-- Sfondo rotta -->
-            <path d={d}
-              fill="none"
-              stroke={claimedBy ? color : '#8a7350'}
-              stroke-width={sw + 4 * swFactor}
+    <g transform="translate({pz.panX}, {pz.panY}) scale({pz.zoom})">
+      <!-- 1. Ombre proiettate di tasselli e vagoni (rilievo) -->
+      <g class="layer-shadow" aria-hidden="true">
+        {#each routeGeos as g (g.route.id)}
+          {@const claimed = claimedMap.has(g.route.id)}
+          {@const w = claimed ? g.sw + 1.5 * swFactor : g.sw}
+          {#each g.slots as s}
+            <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.3}
+              fill="#2a1d0c" opacity={claimed ? 0.32 : 0.18}
+              transform="translate({s.x + SHADOW_DX * (claimed ? 1.4 : 1)} {s.y + SHADOW_DY * (claimed ? 1.4 : 1)}) rotate({s.deg})" />
+          {/each}
+        {/each}
+      </g>
+
+      <!-- 2. Letto dei binari: filo sottile continuo che lega i tasselli -->
+      <g class="layer-bed" aria-hidden="true">
+        {#each routeGeos as g (g.route.id)}
+          <path d={g.d} fill="none" stroke="#6d5731" stroke-width={Math.max(2, g.sw * 0.28)}
+            stroke-linecap="round" opacity="0.45" />
+        {/each}
+      </g>
+
+      <!-- 3. Glow rotte evidenziate / in pagamento (sotto i tasselli) -->
+      <g class="layer-glow" aria-hidden="true">
+        {#each routeGeos as g (g.route.id)}
+          {@const selected = g.route.id === selectedRouteId}
+          {@const highlighted = !claimedMap.has(g.route.id) && highlightSet.has(g.route.id)}
+          {#if highlighted || selected}
+            <path d={g.d} fill="none"
+              stroke={selected ? '#d35400' : '#e8a83e'}
+              stroke-width={g.sw + (selected ? 12 : 9) * swFactor}
               stroke-linecap="round" stroke-linejoin="round"
-              opacity={claimedBy ? 0.15 : 0.3} />
+              class="route-glow"
+              style={selected ? 'animation:none;opacity:0.55' : ''} />
+          {/if}
+        {/each}
+      </g>
 
-            <!-- Glow rotte evidenziate (es. claimabili da legalMoves) -->
-            {#if highlighted || selected}
-              <path d={d}
-                fill="none"
-                stroke={selected ? '#d35400' : '#e8a83e'}
-                stroke-width={sw + (selected ? 12 : 9) * swFactor}
-                stroke-linecap="round" stroke-linejoin="round"
-                class="route-glow"
-                style={selected ? 'animation:none;opacity:0.55' : ''} />
-            {/if}
+      <!-- 4. Tasselli liberi / vagoni reclamati -->
+      <g class="layer-slots">
+        {#each routeGeos as g (g.route.id)}
+          {@const claimedBy = claimedMap.get(g.route.id)}
+          {#if claimedBy}
+            {@const color = playerColor(claimedBy)}
+            {@const w = g.sw + 1.5 * swFactor}
+            {#each g.slots as s, i}
+              <g transform="translate({s.x} {s.y}) rotate({s.deg})">
+                <g class="wagon" style="animation-delay:{i * 70}ms">
+                  <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.28}
+                    fill={color} stroke="#1d150c" stroke-width={1.3 * swFactor} />
+                  <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.28}
+                    fill="url(#slot-shade)" />
+                  <!-- Finestrini: distinguono il vagone da una rotta libera dello stesso colore -->
+                  {#if g.slotL >= 14 * swFactor}
+                    {@const winW = Math.min(5, g.slotL * 0.2)}
+                    {@const winH = w * 0.32}
+                    <rect x={-g.slotL / 4 - winW / 2} y={-w / 2 + w * 0.16} width={winW} height={winH} rx="1"
+                      fill="#fdf7e6" opacity="0.85" />
+                    <rect x={g.slotL / 4 - winW / 2} y={-w / 2 + w * 0.16} width={winW} height={winH} rx="1"
+                      fill="#fdf7e6" opacity="0.85" />
+                  {/if}
+                </g>
+              </g>
+            {/each}
+          {:else}
+            {@const fill = slotFill(g.route)}
+            {#each g.slots as s}
+              <g transform="translate({s.x} {s.y}) rotate({s.deg})">
+                <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
+                  fill={fill} stroke="#4a3920" stroke-width={1.2 * swFactor} stroke-opacity="0.85" />
+                <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
+                  fill="url(#slot-shade)" opacity="0.8" />
+              </g>
+            {/each}
+          {/if}
+        {/each}
+      </g>
 
-            <!-- Linea principale -->
-            <path d={d}
-              fill="none"
-              stroke={color}
-              stroke-width={sw}
-              stroke-linecap="round" stroke-linejoin="round"
-              opacity={claimedBy ? 0.9 : 0.7} />
-
-            {#if interactive && !claimedBy}
-              <!-- Area di tap generosa (touch) -->
-              <path d={d}
-                fill="none"
-                stroke="#000" stroke-opacity="0"
-                stroke-width={sw + 18}
+      <!-- 5. Aree di tap generose (touch), invisibili -->
+      {#if interactive}
+        <g class="layer-hit">
+          {#each routeGeos as g (g.route.id)}
+            {#if !claimedMap.has(g.route.id)}
+              <path d={g.d} data-route-id={g.route.id} class="route-tappable"
+                fill="none" stroke="#000" stroke-opacity="0"
+                stroke-width={g.sw + 14}
                 stroke-linecap="round" stroke-linejoin="round"
                 pointer-events="stroke" />
             {/if}
+          {/each}
+        </g>
+      {/if}
 
-            {#if claimedBy}
-              <!-- Vagoni: comparsa sfalsata al claim (§8.2) -->
-              {#each Array(N) as _, i}
-                {@const pt = pointAlongCurve(trimmed, (i + 0.5) / N)}
-                <circle cx={pt.x} cy={pt.y} r={sw * 0.4}
-                  fill={color} stroke="#fff" stroke-width="1"
-                  class="wagon" style="animation-delay:{i * 70}ms" />
-              {/each}
-            {:else}
-              <!-- Slot vagoni: un tassello per lunghezza rotta -->
-              {@const slotW = 14 * swFactor}
-              {@const slotH = 9 * swFactor}
-              {#each Array(N) as _, i}
-                {@const pt = pointAlongCurve(trimmed, (i + 0.5) / N)}
-                <rect
-                  x={-slotW / 2} y={-slotH / 2}
-                  width={slotW} height={slotH} rx={slotH / 2}
-                  fill="#3a2b18" stroke={color} stroke-width="1.5" opacity="0.9"
-                  transform="translate({pt.x} {pt.y}) rotate({(pt.angle * 180) / Math.PI})" />
-              {/each}
+      <!-- 6. Linee dei biglietti pinnati (sotto le città) -->
+      {#each ticketLayers as layer}
+        <path d={layer.d} class="ticket-line ticket-highlight" aria-hidden="true"
+          fill="none" stroke={layer.color} stroke-width={3.5 * swFactor}
+          stroke-linecap="round" stroke-dasharray="10 7" opacity="0.9" />
+      {/each}
+
+      <!-- 7. Città: ombra, pallino a bottone, anello doppio per gli hub -->
+      <g class="layer-cities" aria-hidden="true">
+        {#each labelLeaders as l (l.id)}
+          <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+            stroke="#453416" stroke-width="1.1" stroke-opacity="0.55" stroke-linecap="round" />
+        {/each}
+        {#each mapData.cities as city (city.id)}
+          {@const pos = cityPositions.get(city.id)}
+          {#if pos}
+            {@const hub = (cityDegree.get(city.id) ?? 0) >= 6}
+            <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
+              fill="#2a1d0c" opacity="0.25" />
+            <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#city-dot)"
+              stroke="#453416" stroke-width="2" />
+            {#if hub}
+              <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
             {/if}
-          </g>
-        {/if}
-      {/each}
+          {/if}
+        {/each}
+      </g>
 
-      <!-- Città (pallini + label) -->
-      {#each mapData.cities as city}
-        {@const pos = cityPositions.get(city.id)}
-        {@const label = layout.labels[city.id]}
-        {#if pos && label}
-          <circle cx={pos.x} cy={pos.y} r={cityDotR} fill="#fbf6e9" stroke="#453416" stroke-width="2" />
-          <text x={pos.x + label.dx} y={pos.y + label.dy}
-            text-anchor={label.anchor}
-            font-size={cityFontSize} font-weight="600"
-            fill="#453416" stroke="#f6ebd0" stroke-width={cityLabelStroke} paint-order="stroke"
-            font-family="system-ui">{city.name}</text>
-        {/if}
-      {/each}
-
-      <!-- Biglietti evidenziati (Fase 3f→3f+2): pin + linea tratteggiata
-           per ogni biglietto pinnato, ciascuno col suo colore. Solo
-           decorazione: pointer-events none, il tap-to-claim sulle rotte
-           sottostanti resta intatto. Mai sulla TV. -->
+      <!-- 8. Pin biglietti: anello attorno al pallino + stella a lato
+           (non coprono più il pallino della città). -->
       {#each ticketLayers as layer}
         <g class="ticket-highlight" aria-hidden="true">
-          <path d={layer.d} class="ticket-line"
-            fill="none" stroke={layer.color} stroke-width={3.5 * swFactor}
-            stroke-linecap="round" stroke-dasharray="10 7" opacity="0.9" />
           {#each [layer.from, layer.to] as pinPos}
-            <g class="ticket-pin" transform="translate({pinPos.x} {pinPos.y})">
-              <circle r={13 * swFactor} fill="#fbf6e9" stroke={layer.color} stroke-width={2.5 * swFactor} />
-              <circle r={13 * swFactor} fill="none" stroke={layer.color} stroke-width={1.2 * swFactor}
+            <g transform="translate({pinPos.x} {pinPos.y})">
+              <circle r={cityDotR + 4} fill="none" stroke={layer.color} stroke-width={2.5 * swFactor} />
+              <circle r={cityDotR + 4} fill="none" stroke={layer.color} stroke-width={1.2 * swFactor}
                 class="pin-pulse" />
-              <path d={starPath(0, 0, 7.5 * swFactor, 3.2 * swFactor)} fill={layer.color} />
+              <g transform="translate({cityDotR + 5} {-(cityDotR + 5)})">
+                <circle r={7.5 * swFactor + 1.5} fill="#fbf6e9" stroke={layer.color} stroke-width={1.5 * swFactor} />
+                <path d={starPath(0, 0, 6 * swFactor, 2.6 * swFactor)} fill={layer.color} />
+              </g>
             </g>
           {/each}
         </g>
       {/each}
+
+      <!-- 9. Etichette: sempre in cima (nessun pallino/rotta le copre) -->
+      <g class="layer-labels" aria-hidden="true">
+        {#each mapData.cities as city (city.id)}
+          {@const pos = cityPositions.get(city.id)}
+          {@const label = layout.labels[city.id]}
+          {#if pos && label}
+            <text x={pos.x + label.dx} y={pos.y + label.dy}
+              text-anchor={label.anchor}
+              font-size={cityFontSize} font-weight="600"
+              fill="#453416" stroke="#f6ebd0" stroke-width={cityLabelStroke}
+              stroke-linejoin="round" paint-order="stroke"
+              font-family={FONT_FAMILY}>{city.name}</text>
+          {/if}
+        {/each}
+      </g>
     </g>
   </svg>
+
+  <!-- Controlli zoom (il pinch resta il gesto principale sul telefono) -->
+  <div class="zoom-controls" onpointerdown={(e) => e.stopPropagation()} role="group" aria-label="Zoom mappa">
+    <button type="button" aria-label="Ingrandisci" onclick={() => zoomButton(1.5)} disabled={pz.zoom >= PZ.MAX_ZOOM}>+</button>
+    <button type="button" aria-label="Riduci" onclick={() => zoomButton(1 / 1.5)} disabled={pz.zoom <= PZ.MIN_ZOOM}>−</button>
+    {#if pz.zoom > 1.001}
+      <button type="button" aria-label="Vista intera" onclick={resetView}>⤢</button>
+    {/if}
+  </div>
 </div>
 
 <style>
   /* Board in pergamena con cornice di legno (Fase 3d): la mappa è una
-     "scatola aperta sul tavolo" — bordo, ombra, angoli. Geometria invariata. */
+     "scatola aperta sul tavolo" — bordo, ombra, angoli. */
   .map-container {
     flex: 1;
     position: relative;
     overflow: hidden;
     background:
       radial-gradient(circle at 30% 20%, rgba(255, 252, 240, 0.55), transparent 55%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.32 0 0 0 0 0.16 0 0 0 0.09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"),
       linear-gradient(155deg, var(--board-1), var(--board-2));
+    /* Cornice di legno in rilievo: luce in alto a sinistra, ombra in basso a destra */
     border: 6px solid #6d5228;
+    border-top-color: #8a6a36;
+    border-left-color: #7d5f30;
+    border-bottom-color: #4f3a1b;
+    border-right-color: #5a4320;
     border-radius: 14px;
     margin: 12px;
     box-shadow: var(--shadow-board);
     touch-action: none;
+    cursor: default;
+    user-select: none;
+    -webkit-user-select: none;
   }
-  /* Vignettatura interna tipo carta invecchiata */
+  .map-container.zoomed { cursor: grab; }
+  .map-container.zoomed.dragging { cursor: grabbing; }
+  /* Vignettatura interna tipo carta invecchiata + bordo interno inciso */
   .map-container::after {
     content: '';
     position: absolute;
@@ -497,6 +695,7 @@
     border-radius: inherit;
     box-shadow:
       inset 0 0 70px rgba(96, 72, 34, 0.28),
+      inset 0 2px 4px rgba(0, 0, 0, 0.25),
       inset 0 0 0 1px rgba(69, 52, 22, 0.5);
   }
   /* Variante compatta (telefono): il genitore dà l'altezza, la mappa riempie */
@@ -510,23 +709,66 @@
     box-shadow: var(--shadow-panel);
   }
   .map-container svg { display: block; }
+
+  /* Prospettiva leggera solo sulla TV (sul telefono peggiorerebbe la lettura) */
+  @media (min-width: 1200px) and (prefers-reduced-motion: no-preference) {
+    .map-container:not(.compact) {
+      transform: perspective(2200px) rotateX(4deg);
+      transform-origin: 50% 100%;
+    }
+  }
+
+  .zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 1;
+  }
+  .zoom-controls button {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    border-radius: 8px;
+    border: 1px solid rgba(69, 52, 22, 0.6);
+    background: linear-gradient(#fbf3de, #e6d3a8);
+    color: #453416;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 2px 3px rgba(0, 0, 0, 0.3);
+    cursor: pointer;
+  }
+  .zoom-controls button:disabled { opacity: 0.4; cursor: default; }
+  .compact .zoom-controls { top: 5px; right: 5px; }
+  .compact .zoom-controls button { width: 28px; height: 28px; }
+
   .wagon {
     transform-box: fill-box;
     transform-origin: center;
     animation: wagon-in 0.35s ease-out both;
   }
   @keyframes wagon-in {
-    from { opacity: 0; transform: scale(0.2); }
-    to { opacity: 1; transform: scale(1); }
+    from { opacity: 0; transform: translateY(-6px) scale(0.6); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
-  /* Glow pulsante sulle rotte evidenziate (claimabili / in pagamento) */
+  /* Glow sulle rotte evidenziate (claimabili / in pagamento): pulsante
+     solo se l'utente non ha chiesto movimento ridotto. */
   .route-glow {
-    animation: glow-pulse 1.2s ease-in-out infinite alternate;
+    opacity: 0.4;
     pointer-events: none;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .route-glow { animation: glow-pulse 1.2s ease-in-out infinite alternate; }
   }
   @keyframes glow-pulse {
     from { opacity: 0.18; }
     to { opacity: 0.5; }
+  }
+  .layer-shadow, .layer-bed, .layer-glow, .layer-slots, .layer-cities, .layer-labels {
+    pointer-events: none;
   }
   .route-tappable {
     cursor: pointer;
@@ -545,6 +787,9 @@
       transform-box: fill-box;
       transform-origin: center;
     }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .wagon { animation: none; }
   }
   @keyframes dash-march {
     to {

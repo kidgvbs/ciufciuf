@@ -76,32 +76,19 @@ export function projectCity(
 
 // ── Rotte doppie: offset ───────────────────────────────────────────
 
+/** Gap libero (bordo-bordo) tra i due binari di una doppia, se il layout non lo specifica. */
+export const DEFAULT_DOUBLE_GAP = 5;
+
 /**
- * Offset perpendicolare per rotte doppie: n = (−Δy, Δx) / |Δ|.
- * Restituisce l'offset per la rotta in posizione `index` (0 o 1)
- * tra le doppie della stessa coppia di città.
+ * Distanza della mezzeria di ciascun binario di una doppia dalla linea
+ * città-città: metà spessore (a stroke pieno) + metà gap. Con l'offset
+ * fisso ±7 le doppie len≥4 avevano ~0.5px tra i due inchiostri e
+ * sembravano una linea sola. Il generatore usa la stessa formula.
+ * Segno: indice 0 → +offset, indice 1 → −offset (normale (−Δy, Δx)/|Δ|).
  */
-export function doubleRouteOffset(
-  from: Point,
-  to: Point,
-  index: number,
-): Point {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len === 0) return { x: 0, y: 0 };
-
-  // Normale perpendicolare normalizzata
-  const nx = -dy / len;
-  const ny = dx / len;
-
-  // 3f+6: ±7 (era ±10) — offset proporzionato agli stroke (max sw 15):
-  // ±10 risultava sproporzionato sul telefono (viewBox grande reso a ~400
-  // CSS px). NOTA: MapSvg usa lo stesso valore hardcoded in offsetPoints.
-  const sign = index === 0 ? 1 : -1;
-  const distance = 7;
-
-  return { x: nx * distance * sign, y: ny * distance * sign };
+export function doubleRouteOffset(len: number, index: number, gap = DEFAULT_DOUBLE_GAP): number {
+  const mag = routeStrokeWidth(len) / 2 + gap / 2;
+  return index === 1 ? -mag : mag;
 }
 
 // ── Rotte doppie: raggruppamento ───────────────────────────────────

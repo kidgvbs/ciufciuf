@@ -53,8 +53,14 @@
 //  9b. Micro-push (NUOVO 3f+8v2): se restano label-CORE o route-city,
 //      spinge di 1–2px le città coinvolte (NO re-tick), re-run cleanup.
 //      Le spinte consumano lo slack di lunghezza (gate ≤1.7× per rotte ≥5 carte).
+//  9c. Incroci rotte (NUOVO): routesClash sulle tracce disegnate (doppie
+//      a ±offsetOf = sw/2+gap/2), adiacenti esclusa la zona hub; ogni bend
+//      che crea un clash nuovo è rifiutato; pass finale raddrizza/ripiega.
+//  Label: metriche reali (opentype, Barlow Semi Condensed 600), tier
+//      12–32px, ownership (box più vicino al proprio dot di ogni altro).
 //  10. Bounding: box di nodi + bend + label con margine 30px → canvas reale.
-//  11. Validazione + report (exit 1 se hidden o label-CORE non-incidenti).
+//  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
+//      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
 // Uso:  node client/tools/gen-schematic-layout.mjs [--svg OUT.svg]
 //   --svg OUT.svg  (opzionale) scrive un preview SVG per ispezione visiva.
@@ -62,6 +68,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import opentype from 'opentype.js';
 import {
   forceSimulation,
   forceLink,
@@ -76,12 +83,33 @@ const OUT_PATH = join(__dirname, '..', 'src', 'lib', 'data', 'usa-layout.json');
 // ── Costanti ──────────────────────────────────────────────────────────
 const UNIT = 34;            // px per carta (rotta len-1 ≈ 34px disegnate)
 const DOT_R = 8;            // pallino full (compact = 6 → più spazio)
-let FONT_SIZE = 15.5;     // font di validazione label (= full; compact ≤ full → full è il caso peggiore)
-let CHAR_W = 0.56 * FONT_SIZE;   // larghezza stimata per carattere
-let TEXT_H = 0.85 * FONT_SIZE;   // altezza stimata del testo
+// Metriche REALI del font del runtime (Barlow Semi Condensed 600) via opentype.js.
+// Validazione a 16px = caso peggiore tra TV (15.5) e phone (16).
+const FONT_FAMILY = 'Barlow Semi Condensed';
+const FONT_WEIGHT = 600;
+const RUNTIME_FONT_SIZE = 15.5; // dimensione dichiarata nel JSON (se non ridotta)
+let FONT_SIZE = RUNTIME_FONT_SIZE; // validazione alla size runtime (16 lasciava Oklahoma City non "propria")
+const FONT = opentype.parse(new Uint8Array(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'node_modules',
+  '@fontsource', 'barlow-semi-condensed', 'files', 'barlow-semi-condensed-latin-600-normal.woff'))).buffer);
+const textWCache = new Map();
+// Larghezza misurata (kerning incluso) alla FONT_SIZE corrente.
+function textW(name) {
+  const k = `${FONT_SIZE}|${name}`;
+  let w = textWCache.get(k);
+  if (w === undefined) { w = FONT.getAdvanceWidth(name, FONT_SIZE, { kerning: true }); textWCache.set(k, w); }
+  return w;
+}
+// Box verticale: cap height 0.70em sopra la baseline, discendente 0.20em sotto.
+const ascOf = () => 0.70 * FONT_SIZE;
+const descOf = () => 0.20 * FONT_SIZE;
+const LABEL_PAD = 1.5;      // padding box (alone ~4px del runtime: ≥1px)
 const LABEL_GAP = 4;        // distanza pallino → ancora testo (dot.r + gap = 12)
-const MAX_LABEL_DIST = 36;  // cap distanza label→dot (tier massimo; fallback ≤40px con WARNING, F3 obiettivo ≤36)
-const OFFSET = 7;           // offset doppie (viewBox), coerente col runtime MapSvg
+const LABEL_WARN_DIST = 28; // oltre: WARNING
+const MAX_LABEL_DIST = 32;  // cap duro distanza label→dot (exit 1 se superato)
+const OWN_MARGIN = 10;      // ownership: ogni altro dot ≥ dOwn + 10 dal box
+const DOUBLE_GAP = 5;       // gap libero inchiostro-inchiostro tra le due tracce di una doppia
+// Offset doppie per lunghezza (= runtime offsetOf): metà tratto + metà gap.
+const offsetOf = (e) => swOf(e.len) / 2 + DOUBLE_GAP / 2;
 
 // d3-force
 const CHARGE = -115;         // repulsione calibrata (3f+8v2: cluster sud-est)
@@ -217,17 +245,18 @@ function offsetPts(pts, off) {
 
 // Distanza minima tra le due tracce offsettate (±OFFSET) di una doppia con bend.
 // Restituisce Infinity per le singole o senza bend (non c'è rischio incrocio).
-// 3f+8: usata per validare che le tracce ±7 non si incrocino al bend (Blocker 2).
+// 3f+8: usata per validare che le tracce ±offsetOf non si incrocino al bend (Blocker 2).
 function doubleTrackMinDist(e) {
   if (!e.isDouble || e.points.length < 3) return Infinity;
   // NON trimmed: l'incrocio può avvenire anche vicino agli estremi dopo il bend
-  const plus = offsetPts(e.points, OFFSET);
-  const minus = offsetPts(e.points, -OFFSET);
+  const plus = offsetPts(e.points, offsetOf(e));
+  const minus = offsetPts(e.points, -offsetOf(e));
   return minDistPolyline(plus, minus);
 }
 function doubleTrackSafe(e) {
-  return doubleTrackMinDist(e) >= 12;
+  return doubleTrackMinDist(e) >= doubleTrackMin(e);
 }
+function doubleTrackMin(e) { return swOf(e.len) + 0.6 * DOUBLE_GAP; }
 
 function samplePolyline(pts, step = 3) {
   const out = [];
@@ -358,8 +387,8 @@ for (let cycle = 0; cycle < 3; cycle++) {
   let maxMove = 0;
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
-      const wi = (names.get(nodes[i].id) || '').length * CHAR_W * FONT_SIZE;
-      const wj = (names.get(nodes[j].id) || '').length * CHAR_W * FONT_SIZE;
+      const wi = textW(names.get(nodes[i].id) || '');
+      const wj = textW(names.get(nodes[j].id) || '');
       // Solo coppie con label larghe (> 80px somma) e città vicine
       if (wi + wj < 80) continue;
       const needed = (wi + wj) * 0.28 + 2 * (DOT_R + LABEL_GAP) + 2;
@@ -434,7 +463,7 @@ function trimmed(e) { return trimPts(e.points, e); }
 // Tracce DISEGNATE (offset doppie ±OFFSET, poi trim) — stesse formule del runtime.
 function tracksOf(e) {
   if (!e.isDouble) return [trimmed(e)];
-  return [trimPts(offsetPts(e.points, OFFSET), e), trimPts(offsetPts(e.points, -OFFSET), e)];
+  return [trimPts(offsetPts(e.points, offsetOf(e)), e), trimPts(offsetPts(e.points, -offsetOf(e)), e)];
 }
 
 // F2: Campionamento della curva DISEGNATA (De Casteljau sui punti trimmed).
@@ -447,8 +476,8 @@ function sampleDrawnCurve(e) {
 }
 function sampledCurvesOf(e) {
   if (!e.isDouble) return [sampleDrawnCurve(e)];
-  const plus = trimPts(offsetPts(e.points, OFFSET), e);
-  const minus = trimPts(offsetPts(e.points, -OFFSET), e);
+  const plus = trimPts(offsetPts(e.points, offsetOf(e)), e);
+  const minus = trimPts(offsetPts(e.points, -offsetOf(e)), e);
   return [sampleCurve(plus, 2), sampleCurve(minus, 2)];
 }
 
@@ -637,7 +666,77 @@ function bendPointCitySafe(e) {
 }
 
 // Verifica che e non confligga con nessun'altra tratta non-adiacente.
+// ── C: incroci/sovrapposizioni rotte (anche adiacenti, esclusa zona hub) ──
+const HUB_R = routeGap + 24;
+const clashCache = new Map(); // edge → { key, tracks, bbox }
+function clashTracks(e) {
+  const key = JSON.stringify(e.points);
+  let c = clashCache.get(e);
+  if (c && c.key === key) return c;
+  const tracks = e.isDouble
+    ? [trimPts(offsetPts(e.points, offsetOf(e)), e), trimPts(offsetPts(e.points, -offsetOf(e)), e)].map((p) => sampleCurve(p, 3))
+    : [sampleCurve(trimmed(e), 3)];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const t of tracks) for (const [x, y] of t) {
+    x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+  }
+  c = { key, tracks, bbox: [x0, y0, x1, y1] };
+  clashCache.set(e, c);
+  return c;
+}
+function segDist(p, q, r, s) {
+  const ps = (P, A, B) => {
+    const dx = B[0] - A[0], dy = B[1] - A[1], L = dx * dx + dy * dy;
+    const t = L ? Math.max(0, Math.min(1, ((P[0] - A[0]) * dx + (P[1] - A[1]) * dy) / L)) : 0;
+    return Math.hypot(P[0] - A[0] - t * dx, P[1] - A[1] - t * dy);
+  };
+  const cr = (A, B, C) => (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+  const d1 = cr(p, q, r), d2 = cr(p, q, s), d3 = cr(r, s, p), d4 = cr(r, s, q);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return 0;
+  return Math.min(ps(p, r, s), ps(q, r, s), ps(r, p, q), ps(s, p, q));
+}
+function routesClash(a, b) {
+  if (a === b) return false;
+  const ca = clashTracks(a), cb = clashTracks(b);
+  const th = (swOf(a.len) + swOf(b.len)) / 2 + 1.5;
+  const A = ca.bbox, B = cb.bbox;
+  if (A[0] > B[2] + th || B[0] > A[2] + th || A[1] > B[3] + th || B[1] > A[3] + th) return false;
+  let hub = null;
+  if (a.a === b.a || a.a === b.b) hub = cityPos[a.a];
+  else if (a.b === b.a || a.b === b.b) hub = cityPos[a.b];
+  const far = (P) => !hub || Math.hypot(P[0] - hub[0], P[1] - hub[1]) >= HUB_R;
+  for (const ta of ca.tracks) for (const tb of cb.tracks) {
+    for (let i = 0; i + 1 < ta.length; i++) {
+      if (!far(ta[i]) || !far(ta[i + 1])) continue;
+      for (let j = 0; j + 1 < tb.length; j++) {
+        if (!far(tb[j]) || !far(tb[j + 1])) continue;
+        if (segDist(ta[i], ta[i + 1], tb[j], tb[j + 1]) < th) return true;
+      }
+    }
+  }
+  return false;
+}
+// Nessun clash NUOVO rispetto alla versione dritta di e.
+function noNewClash(e) {
+  if (e.points.length < 3) return true;
+  const saved = e.points;
+  const bad = edges.filter((o) => o !== e && routesClash(e, o));
+  if (bad.length === 0) return true;
+  e.points = [[...cityPos[e.a]], [...cityPos[e.b]]];
+  const ok = bad.every((o) => routesClash(e, o));
+  e.points = saved;
+  return ok;
+}
+function countClashes() {
+  const out = [];
+  for (let i = 0; i < edges.length; i++)
+    for (let j = i + 1; j < edges.length; j++)
+      if (routesClash(edges[i], edges[j])) out.push([edges[i], edges[j]]);
+  return out;
+}
+
 function noRouteConflict(e) {
+  if (!noNewClash(e)) return false;
   for (const o of edges) {
     if (o === e || isAdjacent(e, o)) continue;
     const th = swAvg(e, o) + SW_AVG_PAD;
@@ -655,7 +754,7 @@ function pushBendRoute(e, other, targetSep) {
   for (const sign of [e.bendSign, -e.bendSign]) {
     for (let step = 2; step <= 120; step += 2) {
       setBend(e, sign, step);
-      if (minDistDrawn(e, other) >= targetSep && doubleTrackSafe(e)) {
+      if (minDistDrawn(e, other) >= targetSep && doubleTrackSafe(e) && noNewClash(e)) {
         e.bendSign = sign;
         return true;
       }
@@ -886,9 +985,9 @@ for (const e of edges) {
 const D0 = DOT_R + LABEL_GAP; // 12
 // 3f+7: TIERS ridotti — cap 32px (era 45). Ordinati per distanza (tier
 // UNICO preferito): prima tutti gli 8 angoli a 12px, poi 20, 28, 32.
-const TIERS = [D0, D0 + 8, D0 + 16, D0 + 20, D0 + 28]; // 12, 20, 28, 32, 40 (3f+9: 40px fallback con WARNING)
+const TIERS = [D0, D0 + 4, D0 + 8, D0 + 12, D0 + 16, D0 + 20]; // 12, 16, 20, 24, 28 (+32 fallback con WARNING)
 const N_DIRS = 8; // 8 angoli ogni 45°, anchor coerente alla direzione
-const FALLBACK_MAX_DIST = 40; // cap di fallback con WARNING (dopo route-bend)
+const FALLBACK_MAX_DIST = MAX_LABEL_DIST; // cap duro 32px
 
 // 3f+10: override manuali per-city, richiesti dall'utente dopo la validazione
 // visiva (il piazzamento automatico sceglie per punteggio, non per gusto).
@@ -905,6 +1004,8 @@ const LABEL_OVERRIDES = {
   // (61px): "Omaha è più vicina al pallino di kansas city che al suo".
   // Su, in alto a destra del proprio dot: anchor start, salendo.
   omaha: { anchor: 'start', dir: 'up' },
+  // Saint Louis: l'automatico la spingeva a 32px verso Nashville (ownership).
+  saint_louis: { anchor: 'middle', dir: 'up' },
 };
 
 // RResolve un override: candidati nella direzione voluta, ordinati per
@@ -940,26 +1041,29 @@ function resolveOverride(c, name, id) {
 // middle se sopra/sotto. Il vertice del box più vicino al dot sta a
 // distanza `d`. La label DEVE stare entro 32px — eventuali fallback ≤40px
 // vengono segnalati con WARNING.
+// Box metrico: il vertice/lato del box (padding incluso) più vicino sta a `d`.
 function candidatesFor() {
-  const h = TEXT_H;
+  const asc = ascOf() + LABEL_PAD, desc = descOf() + LABEL_PAD;
+  const vy = () => (asc - desc) / 2; // centro verticale del box sul dot
   const out = [];
   for (const d of TIERS) {
     for (let k = 0; k < N_DIRS; k++) {
       const ang = (k / N_DIRS) * 2 * Math.PI;
       const cos = Math.cos(ang), sin = Math.sin(ang);
       let anchor, dx, dy;
+      const sideDy = Math.abs(sin) < 0.25 ? vy(sin) : (sin > 0 ? d * sin + asc : d * sin - desc);
       if (cos > 0.25) {
         anchor = 'start';
-        dx = d * cos;
-        dy = Math.abs(sin) < 0.25 ? 0.3 * h : (sin > 0 ? d * sin + 0.8 * h : d * sin - 0.2 * h);
+        dx = d * cos + LABEL_PAD;
+        dy = sideDy;
       } else if (cos < -0.25) {
         anchor = 'end';
-        dx = d * cos; // negativo
-        dy = Math.abs(sin) < 0.25 ? 0.3 * h : (sin > 0 ? d * sin + 0.8 * h : d * sin - 0.2 * h);
+        dx = d * cos - LABEL_PAD; // negativo
+        dy = sideDy;
       } else {
         anchor = 'middle';
         dx = 0;
-        dy = sin > 0 ? d + 0.8 * h : -d - 0.2 * h;
+        dy = sin > 0 ? d + asc : -d - desc;
       }
       out.push({ d, dx: round1(dx), dy: round1(dy), anchor });
     }
@@ -968,15 +1072,14 @@ function candidatesFor() {
 }
 
 function labelBox(cx, cy, cand, name) {
-  const w = CHAR_W * name.length;
-  const h = TEXT_H;
+  const w = textW(name);
   let left;
   if (cand.anchor === 'middle') left = cx + cand.dx - w / 2;
   else if (cand.anchor === 'end') left = cx + cand.dx - w;
   else left = cx + cand.dx;
-  const top = cy + cand.dy - 0.8 * h;
-  const bottom = cy + cand.dy + 0.2 * h;
-  return { left: left - 1, right: left + w + 1, top: top - 1, bottom: bottom + 1 };
+  const top = cy + cand.dy - ascOf();
+  const bottom = cy + cand.dy + descOf();
+  return { left: left - LABEL_PAD, right: left + w + LABEL_PAD, top: top - LABEL_PAD, bottom: bottom + LABEL_PAD };
 }
 function rectsOverlap(a, b) {
   return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
@@ -1001,10 +1104,27 @@ function segRectDist(ax, ay, bx, by, box) {
   return m;
 }
 
+// Curve DISEGNATE (Bézier campionata, doppie offsettate, trimmed) per le
+// verifiche label↔tratta. Prima si usava il poligono di controllo
+// (tracksOf): per le tratte piegate la curva vera sta DENTRO il triangolo,
+// quindi una label "pulita" rispetto al poligono finiva sopra l'inchiostro
+// (es. Salt Lake City, Saint Louis). Cache per geometria corrente.
+const labelCurveCache = new Map();
+function labelCurvesOf(e) {
+  const key = e.points.map((p) => p[0].toFixed(2) + ',' + p[1].toFixed(2)).join(';');
+  const hit = labelCurveCache.get(e);
+  if (hit && hit.key === key) return hit.curves;
+  const curves = (e.isDouble
+    ? [trimPts(offsetPts(e.points, offsetOf(e)), e), trimPts(offsetPts(e.points, -offsetOf(e)), e)]
+    : [trimmed(e)]).map((pts) => sampleCurve(pts, 4));
+  labelCurveCache.set(e, { key, curves });
+  return curves;
+}
+
 // Il box tocca il CORE (ink, sw/2) di una tratta disegnata? (+0.5px di margine).
 function labelCoreHit(e, box) {
   const sw2 = swOf(e.len) / 2 + 0.5;
-  for (const t of tracksOf(e)) {
+  for (const t of labelCurvesOf(e)) {
     for (let i = 0; i < t.length - 1; i++) {
       if (segRectDist(t[i][0], t[i][1], t[i + 1][0], t[i + 1][1], box) < sw2) return true;
     }
@@ -1047,7 +1167,7 @@ function scoreLabel(c, cand, name, selfId) {
   for (const e of edges) {
     const sw2 = swOf(e.len) / 2;
     let edgeClear = Infinity;
-    for (const t of tracksOf(e)) {
+    for (const t of labelCurvesOf(e)) {
       for (let i = 0; i < t.length - 1; i++) {
         edgeClear = Math.min(edgeClear, segRectDist(t[i][0], t[i][1], t[i + 1][0], t[i + 1][1], box) - sw2);
       }
@@ -1063,9 +1183,35 @@ function scoreLabel(c, cand, name, selfId) {
   for (const oc of cityIndexPos()) {
     if (oc.id !== selfId && distPointRect(oc.x, oc.y, box) < DOT_R + 1) nDot++;
   }
+  const nOwn = ownershipBad(c, box, selfId) ? 1 : 0;
   // 3f+7: conflitti puri (no distanza — il tier system decide il tier)
-  const total = nCore * 5 + nLabel * 2 + nDot * 2;
+  const total = nCore * 5 + nLabel * 2 + nDot * 2 + nOwn * 3;
   return { total, nCore, nLabel, nDot, clearance, d: cand.d, cand };
+}
+
+// Ownership: la label deve stare chiaramente "vicino" al proprio pallino:
+// ogni altro dot ≥ dOwn + OWN_MARGIN dal box, e centro box più vicino al
+// proprio dot che a qualunque altro.
+function ownershipWhy(c, box, selfId) {
+  const dOwn = distPointRect(c.x, c.y, box);
+  let m = Infinity, who = '';
+  for (const oc of cityIndexPos()) {
+    if (oc.id === selfId) continue;
+    const d = distPointRect(oc.x, oc.y, box);
+    if (d < m) { m = d; who = oc.id; }
+  }
+  return `dOwn ${dOwn.toFixed(1)}, ${who} ${m.toFixed(1)}`;
+}
+function ownershipBad(c, box, selfId) {
+  const dOwn = distPointRect(c.x, c.y, box);
+  const bx = (box.left + box.right) / 2, by = (box.top + box.bottom) / 2;
+  const cOwn = Math.hypot(bx - c.x, by - c.y);
+  for (const oc of cityIndexPos()) {
+    if (oc.id === selfId) continue;
+    if (distPointRect(oc.x, oc.y, box) < dOwn + OWN_MARGIN) return true;
+    if (Math.hypot(bx - oc.x, by - oc.y) <= cOwn) return true;
+  }
+  return false;
 }
 
 // 3f+7: Tier-first. Prima il tier (distanza), poi meno conflitti, poi
@@ -1946,8 +2092,7 @@ if (clusterApplied) {
   if (llRemaining > 0) {
     console.log(`  ⚠ CLUSTER-ESCAPE: ${llRemaining} label-label residue dopo ${clusterCycles} cicli → riduco font ${FONT_SIZE}→${CLUSTER_FONT_FALLBACK}`);
     FONT_SIZE = CLUSTER_FONT_FALLBACK;
-    CHAR_W = 0.56 * FONT_SIZE;
-    TEXT_H = 0.85 * FONT_SIZE;
+    // textW/ascOf/descOf leggono FONT_SIZE → metriche ricalcolate
     fontReduced = true;
     reRunCleanup();
   }
@@ -2042,7 +2187,7 @@ if (f2ShiftsApplied > 0) {
 
 // ── 4e. Double-track safety repair (3f+8 Blocker 2) ──
 // Dopo tutte le fasi di bend, verifica che le doppie con bend non abbiano
-// le tracce ±7 incrociate. Se sì, riduci l'ampiezza del bend o resetta.
+// le tracce ±offsetOf incrociate. Se sì, riduci l'ampiezza del bend o resetta.
 let doubleTrackRepairs = 0;
 for (const e of edges) {
   if (!e.isDouble || e.points.length < 3) continue;
@@ -2068,7 +2213,7 @@ for (const e of edges) {
     // Reset to straight
     e.points = [e.points[0], e.points[e.points.length - 1]];
     e.bendSign = null;
-    console.log(`  ⚠ DOUBLE-BEND reset ${cityIds[e.a]}-${cityIds[e.b]}: tracce ±7 si incrociavano, tratta raddrizzata`);
+    console.log(`  ⚠ DOUBLE-BEND reset ${cityIds[e.a]}-${cityIds[e.b]}: tracce ±offset si incrociavano, tratta raddrizzata`);
     doubleTrackRepairs++;
   }
 }
@@ -2153,6 +2298,164 @@ for (let strCycle = 0; strCycle < 10; strCycle++) {
   if (!anyStraightened) break;
 }
 
+// ── 4z. Risoluzione incroci/sovrapposizioni rotte (C) ─────────────────
+// Per ogni coppia in clash: raddrizza una delle due, altrimenti ripiega
+// (entrambi i segni); accetta solo se gli edge coinvolti non hanno più
+// clash di prima e restano validi (label-CORE, city clearance, doppie).
+function edgeLocalOK(e) {
+  for (let ci = 0; ci < cityIds.length; ci++) {
+    if (ci === e.a || ci === e.b) continue;
+    if (distPointDrawnEdge(cityPos[ci][0], cityPos[ci][1], e) < CITY_CLEARANCE) return false;
+  }
+  for (const id of order) {
+    if (cityIds[e.a] === id || cityIds[e.b] === id) continue;
+    if (labelCoreHitCurve(e, boxFor(id))) return false;
+  }
+  return doubleTrackSafe(e);
+}
+const clashesOf = (e) => edges.filter((o) => o !== e && routesClash(e, o)).length;
+const clashBefore = countClashes().length;
+for (let round = 0; round < 6; round++) {
+  const pairs = countClashes();
+  if (pairs.length === 0) break;
+  let progress = false;
+  for (const [a, b] of pairs) {
+    if (!routesClash(a, b)) continue;
+    let done = false;
+    for (const e of [a, b]) {
+      const saved = e.points.map((p) => [...p]), savedSign = e.bendSign, n0 = clashesOf(e);
+      const cands = [];
+      if (e.points.length > 2) cands.push(null);
+      for (let step = 4; step <= 120; step += 4) cands.push([1, step], [-1, step]);
+      for (const c of cands) {
+        if (c === null) { e.points = [[...cityPos[e.a]], [...cityPos[e.b]]]; e.bendSign = null; }
+        else { e.points = saved.map((p) => [...p]); ensureBendable(e); setBend(e, c[0], c[1]); e.bendSign = c[0]; }
+        if (!routesClash(a, b) && clashesOf(e) < n0 && edgeLocalOK(e)) { done = true; break; }
+      }
+      if (done) break;
+      e.points = saved; e.bendSign = savedSign;
+    }
+    if (done) progress = true;
+  }
+  if (!progress) break;
+}
+const clashResidual = countClashes();
+
+// Repair finale delle etichette: le fasi 4e/4f/4z modificano le tratte
+// ignorando (di proposito) le label delle proprie città estreme, quindi
+// una label può finire sull'inchiostro dei binari della sua città. Qui
+// ogni label ancora sporca (CORE anche incidente, label, dot, ownership)
+// prende il candidato migliore secondo pickBest (tier-first, ≤32px),
+// override inclusi se sporchi. Più passate: uno spostamento può liberare
+// o occupare spazio per le vicine.
+let finalLabelRepairs = 0;
+// Candidati "a scorrimento": stessa distanza dal pallino dei tier, ma il
+// testo scivola lungo il lato (sopra/sotto in orizzontale, ai lati in
+// verticale) restando affacciato al dot. Servono agli hub con molte
+// tratte, dove gli 8 angoli fissi cadono tutti su un binario.
+function slideCandidatesFor(name) {
+  const w = textW(name);
+  const asc = ascOf() + LABEL_PAD, desc = descOf() + LABEL_PAD;
+  const out = [];
+  for (const d of TIERS) {
+    for (const f of [-0.4, -0.25, -0.1, 0.1, 0.25, 0.4]) {
+      out.push({ d, dx: round1(f * w), dy: round1(-d - desc), anchor: 'middle' });
+      out.push({ d, dx: round1(f * w), dy: round1(d + asc), anchor: 'middle' });
+    }
+    for (const v of [-0.45, -0.25, 0.25, 0.45]) {
+      const dy = round1((asc - desc) / 2 + v * (asc + desc));
+      out.push({ d, dx: round1(d + LABEL_PAD), dy, anchor: 'start' });
+      out.push({ d, dx: round1(-d - LABEL_PAD), dy, anchor: 'end' });
+    }
+  }
+  return out;
+}
+function bestSlide(c, name, id) {
+  let best = null;
+  for (const cand of slideCandidatesFor(name)) {
+    const box = labelBox(c.x, c.y, cand, name);
+    const ld = distPointRect(c.x, c.y, box);
+    if (ld > MAX_LABEL_DIST) continue;
+    const s = scoreLabel(c, cand, name, id);
+    if (!best || s.total < best.total || (s.total === best.total && ld < best.ld)) best = { total: s.total, ld, cand, clean: s.nLabel === 0 && s.nDot === 0 };
+  }
+  return best;
+}
+for (let pass = 0; pass < 6; pass++) {
+  let changed = false;
+  for (const id of order) {
+    const c = cityIndexPos().find((cc) => cc.id === id);
+    const cur = labels.get(id);
+    const curScore = scoreLabel(c, { dx: cur.dx, dy: cur.dy, anchor: cur.anchor }, names.get(id), id);
+    if (curScore.total === 0) continue;
+    const best = pickBest(c, names.get(id), id);
+    let pick = best && best.cand.d <= MAX_LABEL_DIST ? { total: best.total, cand: best.cand, clean: best.nLabel === 0 && best.nDot === 0 } : null;
+    if (!pick || pick.total > 0) {
+      const sl = bestSlide(c, names.get(id), id);
+      if (sl && sl.clean && (!pick || !pick.clean || sl.total < pick.total)) pick = sl;
+    }
+    // Mai scambiare un conflitto con la tratta per uno label-label/dot
+    if (pick && pick.clean && pick.total < curScore.total) {
+      labels.set(id, { dx: round1(pick.cand.dx), dy: round1(pick.cand.dy), anchor: pick.cand.anchor });
+      finalLabelRepairs++;
+      changed = true;
+    }
+  }
+  if (!changed) break;
+}
+
+// Ownership "forte" (lamentela principale: nome lontano dal pallino o più
+// vicino a un'altra città). Per le label ancora ambigue si accetta di
+// passare SOPRA le tratte della propria città (il testo ha l'alone
+// pergamena ed è disegnato sopra i binari) pur di stare attaccate al
+// proprio dot. Vincoli duri: niente label-label, niente dot, niente
+// tratte NON incidenti, ownership ok. Costo: tratte incidenti coperte,
+// poi distanza.
+let ownershipStrongFixes = 0;
+for (const id of order) {
+  const c = cityIndexPos().find((cc) => cc.id === id);
+  const name = names.get(id);
+  const cur = labels.get(id);
+  if (!ownershipBad(c, labelBox(c.x, c.y, cur, name), id)) continue;
+  let best = null;
+  for (const cand of [...candidatesFor(), ...slideCandidatesFor(name)]) {
+    const box = labelBox(c.x, c.y, cand, name);
+    const ld = distPointRect(c.x, c.y, box);
+    if (ld > MAX_LABEL_DIST) continue;
+    if (ownershipBad(c, box, id)) continue;
+    if (order.some((o) => o !== id && rectsOverlap(box, boxFor(o)))) continue;
+    if (cityIndexPos().some((oc) => oc.id !== id && distPointRect(oc.x, oc.y, box) < DOT_R + 1)) continue;
+    let incHits = 0, bad = false;
+    for (const e of edges) {
+      if (!labelCoreHit(e, box)) continue;
+      if (cityIds[e.a] === id || cityIds[e.b] === id) incHits++;
+      else { bad = true; break; }
+    }
+    if (bad) continue;
+    const cost = incHits * 100 + ld;
+    if (!best || cost < best.cost) best = { cost, cand };
+  }
+  if (best) {
+    labels.set(id, { dx: round1(best.cand.dx), dy: round1(best.cand.dy), anchor: best.cand.anchor });
+    ownershipStrongFixes++;
+  }
+}
+console.log(`label repair finale: ${finalLabelRepairs} riposizionate, ${ownershipStrongFixes} ownership forte`);
+
+// Ownership repair finale: label che non "appartengono" al proprio dot
+// prendono il candidato più vicino senza alcun conflitto (score 0).
+for (const id of order) {
+  const c = cityIndexPos().find((cc) => cc.id === id);
+  if (!ownershipBad(c, boxFor(id), id)) continue;
+  for (const cand of candidatesFor().slice().sort((p, q) => p.d - q.d)) {
+    if (cand.d > MAX_LABEL_DIST) continue;
+    const s = scoreLabel(c, cand, names.get(id), id);
+    if (s.total === 0) {
+      labels.set(id, { dx: round1(cand.dx), dy: round1(cand.dy), anchor: cand.anchor });
+      break;
+    }
+  }
+}
 
 // ── 5. Bounding → canvas di output (variabile) ─────────────────────────
 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2180,6 +2483,9 @@ const H = Math.ceil(maxY - minY + 2 * MARGIN);
 
 // ── 6. Validazione + report ────────────────────────────────────────────
 let labelLabel = 0, labelRouteCore = 0, labelDot = 0, maxLabelDist = 0;
+const labelCoreList = [];
+const labelCoreIncident = [];
+const labelOwnershipList = [];
 const labelDistWarnings = []; // label > MAX_LABEL_DIST (dopo route-bend fallback)
 for (let i = 0; i < order.length; i++) {
   const id = order[i];
@@ -2187,20 +2493,27 @@ for (let i = 0; i < order.length; i++) {
   const box = boxFor(id);
   const ld = distPointRect(c.x, c.y, box);
   maxLabelDist = Math.max(maxLabelDist, ld);
-  if (ld > MAX_LABEL_DIST) labelDistWarnings.push(`${id}: ${ld.toFixed(1)}px`);
+  if (ld > MAX_LABEL_DIST + 0.05) labelDistWarnings.push(`${id}: ${ld.toFixed(1)}px`);
+  if (ownershipBad(c, box, id)) labelOwnershipList.push(`${id}(${ownershipWhy(c, box, id)})`);
   for (let j = i + 1; j < order.length; j++) {
     if (rectsOverlap(box, boxFor(order[j]))) labelLabel++;
   }
   for (const e of edges) {
-    // 3f+7: escludi le tratte incidenti alla città della label
-    if (cityIds[e.a] === id || cityIds[e.b] === id) continue;
+    // Tratte incidenti: la label è disegnata SOPRA le tratte con alone
+    // pergamena, quindi resta leggibile → WARNING (hub a 7 tratte senza
+    // spazio libero ≤32px). Tratte non incidenti → errore (gate).
+    const incidentEdge = cityIds[e.a] === id || cityIds[e.b] === id;
     const sw2 = swOf(e.len) / 2;
-    for (const t of tracksOf(e)) {
+    for (const t of labelCurvesOf(e)) {
       let hit = false;
       for (let k = 0; k < t.length - 1; k++) {
         if (segRectDist(t[k][0], t[k][1], t[k + 1][0], t[k + 1][1], box) < sw2) { hit = true; break; }
       }
-      if (hit) { labelRouteCore++; break; }
+      if (hit) {
+        if (incidentEdge) labelCoreIncident.push(`${id}↔${cityIds[e.a]}-${cityIds[e.b]}`);
+        else { labelRouteCore++; labelCoreList.push(`${id}↔${cityIds[e.a]}-${cityIds[e.b]}`); }
+        break;
+      }
     }
   }
   for (const oc of cityIndexPos()) {
@@ -2280,9 +2593,9 @@ const doubleTrackViolationList = [];
 for (const e of edges) {
   if (!e.isDouble || e.points.length < 3) continue;
   const md = doubleTrackMinDist(e);
-  if (md < 12) {
+  if (md < doubleTrackMin(e)) {
     doubleTrackViolations++;
-    doubleTrackViolationList.push(`${e.key}: min-dist tracce ±7 = ${md.toFixed(1)}px < 12px`);
+    doubleTrackViolationList.push(`${e.key}: min-dist tracce ±${offsetOf(e).toFixed(1)} = ${md.toFixed(1)}px < ${doubleTrackMin(e).toFixed(1)}px`);
   }
 }
 
@@ -2303,6 +2616,8 @@ const output = {
   cities: citiesOut,
   labels: labelsOut,
   routes: routesOut,
+  font: { family: 'Barlow Semi Condensed', weight: 600, size: FONT_SIZE },
+  doubleGap: DOUBLE_GAP,
 };
 writeFileSync(OUT_PATH, JSON.stringify(output, null, 2) + '\n');
 
@@ -2365,6 +2680,9 @@ if (f2ShiftsApplied > 0) {
 console.log('validazione finale:');
 console.log(`  conflitti label-label:       ${labelLabel}`);
 console.log(`  conflitti label-CORE:        ${labelRouteCore}  (obiettivo 0)`);
+for (const s of labelCoreList) console.log(`    ⚠ LABEL-CORE ${s}`);
+console.log(`  label su tratte della propria città (alone, warning): ${labelCoreIncident.length}`);
+for (const s of labelCoreIncident) console.log(`    ⚠ LABEL-CORE-INCIDENTE ${s}`);
 console.log(`  conflitti label-pallino:     ${labelDot}`);
 console.log(`  conflitti tratta-tratta:     ${routeRoute}`);
 for (const c of routeConflictList) console.log(`  TRATTA ${c}`);
@@ -2375,7 +2693,7 @@ for (const c of routeCityConflictList) console.log(`  CITY-ROUTE ${c}`);
 console.log(`  distanza max label→dot:      ${maxLabelDist.toFixed(1)}px (cap ${MAX_LABEL_DIST}px${labelDistWarnings.length > 0 ? ', WARNING' : ''})`);
 for (const w of labelDistWarnings) console.log(`  ⚠ LABEL-DIST ${w}`);
 console.log(`  distanza min città-città:    ${minCityDist.toFixed(1)}px (${minCityPair}) — obiettivo ≥18px`);
-console.log(`  doppie con bend: min-dist ±7 < 12px: ${doubleTrackViolations} (gate: 0, exit 1 se >0)`);
+console.log(`  doppie con bend: min-dist tracce < sw+0.6·gap: ${doubleTrackViolations} (gate: 0, exit 1 se >0)`);
 for (const v of doubleTrackViolationList) console.log(`  DOUBLE-X ${v}`);
 // F1: approach separation (nuovo gate)
 const worstApproach = approachPairs.sort((a, b) => a.dist - b.dist);
@@ -2396,8 +2714,21 @@ if (svgArg !== -1 && process.argv[svgArg + 1]) {
 }
 
 let failed = false;
+console.log(`  incroci/sovrapposizioni rotte: ${clashResidual.length} (prima della risoluzione: ${clashBefore})${clashResidual.length ? ' — ' + clashResidual.map(([a, b]) => `${a.key}×${b.key}`).join(', ') : ''}`);
+console.log(`  label-ownership: ${labelOwnershipList.length} | label > ${MAX_LABEL_DIST}px: ${labelDistWarnings.length}`);
+if (clashResidual.length > 0) {
+  console.error(`FALLITO: ${clashResidual.length} incroci/sovrapposizioni rotte residui.`);
+  failed = true;
+}
 if (labelLabel > 0) {
   console.error(`FALLITO: ${labelLabel} conflitti label-label residui (gate: 0, exit 1).`);
+  failed = true;
+}
+if (labelOwnershipList.length > 0) {
+  console.log(`  ⚠ WARNING ${labelOwnershipList.length} label-ownership (nessun candidato pulito ≤${MAX_LABEL_DIST}px): ${labelOwnershipList.join(', ')}`);
+}
+if (labelDistWarnings.length > 0) {
+  console.error(`FALLITO: label oltre ${MAX_LABEL_DIST}px: ${labelDistWarnings.join(', ')}`);
   failed = true;
 }
 if (hiddenCount > 0 || labelRouteCore > 0) {
@@ -2435,7 +2766,7 @@ if (lengthRatioViolations.length > 0) {
   }
 }
 if (doubleTrackViolations > 0) {
-  console.error(`FALLITO: ${doubleTrackViolations} doppie con tracce ±7 che si incrociano (min-dist < 12px).`);
+  console.error(`FALLITO: ${doubleTrackViolations} doppie con tracce che si incrociano (min-dist < sw+0.6·gap).`);
   failed = true;
 }
 if (approachViolations.length > 0) {
