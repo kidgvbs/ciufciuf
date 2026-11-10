@@ -146,6 +146,7 @@ bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server 
 - **Package manager del client:** bun (`client/bun.lock`). `bun install` blocca il postinstall di `esbuild` (`bun pm untrusted` lo elenca): è innocuo, perché esbuild usa il binario del suo pacchetto per piattaforma, quindi `trustedDependencies` resta vuoto.
 - **Aggiornamento delle dipendenze:** Renovate (`renovate.json`) apre PR raggruppate. `rand`, `rand_chacha` e `rand_core` sono esclusi dal bot, perché determinano lo shuffle e quindi il replay di ogni save: si aggiornano solo a mano, insieme a `RULES_VERSION`.
 - **Major del client:** `vite`, `vitest`, `svelte` e `typescript` richiedono modifiche alla configurazione, quindi le major si approvano dalla Dependency Dashboard di Renovate.
+- **Dati di mappa e ruleset:** `ttr-validate` e l'avvio del server rifiutano dati incoerenti (id duplicati, città inesistenti, rotte doppie non appaiate, biglietti con partenza uguale all'arrivo, ecc.) e le mappe troppo dense per il calcolo esatto del percorso più lungo (numero ciclomatico stimato oltre 20). La USA passa.
 - **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
 - **Layout della mappa:** `cd client && bun tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
@@ -155,6 +156,6 @@ In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
 1. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi", `hostToken` della ripresa visibile alla TV)
 2. TV: riquadro con le ultime mosse
-3. Rotazione dei backup `.bak` e prestazioni del longest path
+3. Rotazione dei backup `.bak` e biglietti del dialog letti dal ruleset della partita (oggi `usa.json` fisso nel client)
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.
