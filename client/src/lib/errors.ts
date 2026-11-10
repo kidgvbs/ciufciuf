@@ -17,8 +17,11 @@ const REASON_TEXT: Record<ErrorReason, string> = {
   NAME_TAKEN: 'Nome già in uso',
 };
 
+const SPECTATOR_LIMIT_TEXT = 'Troppi spettatori collegati a questa partita';
+
 /** Messaggio leggibile: il dettaglio del server se c'è, altrimenti il motivo. */
 export function errorMessage(err: ErrorPayload): string {
+  if (err.detail === 'TOO_MANY_SPECTATORS') return SPECTATOR_LIMIT_TEXT;
   return err.detail ?? REASON_TEXT[err.reason] ?? 'Errore dal server';
 }
 
@@ -31,6 +34,8 @@ export function fatalMessage(reason: FatalReason): string {
       return 'Sessione non valida';
     case 'PROTOCOL_VERSION':
       return 'Versione incompatibile con il server: ricarica la pagina';
+    case 'TOO_MANY_SPECTATORS':
+      return SPECTATOR_LIMIT_TEXT;
   }
 }
 

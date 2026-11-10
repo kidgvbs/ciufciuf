@@ -36,7 +36,8 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 - Il ruleset dichiara in `ticketDecks` quali mazzi esistono; ogni biglietto ha un campo `deck`
 - L'ordine di `ticketDecks` è parte del replay: i mazzi vengono mescolati in quell'ordine, quindi riordinarlo o aggiungere un mazzo a un ruleset esistente invalida i suoi save (vedi `RULES_VERSION` in `ttr-core`).
 - Ogni mazzo compare una sola volta in `ticketDecks`; `initialTickets.dealt[].deck` e `ticketDraw.deck` devono essere elencati in `ticketDecks`, e un mazzo elencato in `dealt` deve contenere almeno `giocatori × count` biglietti.
-- `initialTickets.keepMin` non supera il totale dei biglietti distribuiti e `ticketDraw.keepMin` non supera `ticketDraw.count`.
+- `initialTickets.keepMin` non supera il totale dei biglietti distribuiti e `ticketDraw.keepMin` non supera `ticketDraw.count`; `ticketDraw.count` è almeno 1.
+- Con `setupDiscards: "reshuffleBottom"` tornano in fondo alla pila di pesca solo gli scarti del setup appartenenti a `ticketDraw.deck`; gli scarti degli altri mazzi escono dalla partita.
 
 ## Bonus
 
@@ -45,3 +46,17 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 ## Validazione
 
 `Ruleset::validate(&map)` in `ttr-core` controlla i vincoli di questo documento ed è eseguita da `Engine::new`, da `ttr-validate` e all'avvio del server. I colori delle rotte accettati sono solo quelli canonici elencati sopra (`Gray` e i nomi dei colori carta in PascalCase).
+
+Vincoli su mappa e ruleset, ognuno con una variante dedicata di `EngineInitError`:
+
+- id unici per città, rotte e biglietti;
+- le città di rotte e biglietti esistono; un biglietto ha `from != to`;
+- ogni rotta ha `len >= 1` e la sua lunghezza compare in `routePoints`;
+- `trainsPerPlayer >= 1`;
+- una rotta con `double: true` ha id con suffisso `_1`/`_2` e una gemella con `double: true`, stessi estremi e stessa lunghezza;
+- il mazzo treni ha `perColor × 8 >= 3 × locomotives`;
+- `Engine::new` richiede inoltre id e colori dei giocatori distinti.
+
+## Longest path e densità della mappa
+
+Il calcolo del percorso più lungo è esatto entro `MAX_SEARCH_NODES` nodi di ricerca. `Ruleset::validate` stima il numero ciclomatico massimo (rotte − città + 1) di una componente che un giocatore può costruire con `trainsPerPlayer` treni, usando la degenerazione del multigrafo delle rotte, e rifiuta la mappa se supera `MAX_CYCLOMATIC_NUMBER` (20, in `scoring.rs`). La mappa USA stima 19.

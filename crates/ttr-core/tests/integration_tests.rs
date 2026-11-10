@@ -2750,3 +2750,308 @@ const GOLDEN_LONG_FIRST: [[&str; 4]; 2] = [
     ["long_0", "dummy_6", "dummy_13", "dummy_14"],
     ["long_1", "dummy_3", "dummy_4", "dummy_8"],
 ];
+
+// ============================================================
+// Coerenza di mappa, ruleset e giocatori (E2, E4, E5)
+// ============================================================
+
+fn dense_map(cities: usize) -> MapData {
+    let ids: Vec<String> = (0..cities).map(|i| format!("c{i}")).collect();
+    let mut routes = Vec::new();
+    for a in 0..cities {
+        for b in (a + 1)..cities {
+            routes.push(route(
+                &format!("{}_{}_1", ids[a], ids[b]),
+                &ids[a],
+                &ids[b],
+                1,
+                "Gray",
+                false,
+            ));
+        }
+    }
+    let mut map = mini_map();
+    map.cities = ids.iter().map(|id| city(id)).collect();
+    map.routes = routes;
+    for t in &mut map.tickets {
+        t.from = "c0".into();
+        t.to = "c1".into();
+    }
+    map
+}
+
+#[test]
+fn engine_new_rejects_route_to_unknown_city() {
+    let mut map = mini_map();
+    map.routes[0].to = "Z".into();
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::RouteCityUnknown {
+            route_id: "A_B_1".into(),
+            city_id: "Z".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_ticket_to_unknown_city() {
+    let mut map = mini_map();
+    map.tickets[0].from = "Z".into();
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::TicketCityUnknown {
+            ticket_id: "A_D".into(),
+            city_id: "Z".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_ticket_with_same_endpoints() {
+    let mut map = mini_map();
+    map.tickets[0].to = "A".into();
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::TicketSameCity {
+            ticket_id: "A_D".into(),
+            city_id: "A".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_duplicate_ticket_id() {
+    let mut map = mini_map();
+    map.tickets[1].id = "A_D".into();
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::DuplicateTicketId {
+            ticket_id: "A_D".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_duplicate_city_id() {
+    let mut map = mini_map();
+    map.cities.push(city("A"));
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::DuplicateCityId {
+            city_id: "A".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_duplicate_route_id() {
+    let mut map = mini_map();
+    map.routes.push(map.routes[0].clone());
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::DuplicateRouteId {
+            route_id: "A_B_1".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_double_route_without_pair_suffix() {
+    let mut map = double_route_map();
+    map.routes[0].id = "A_B_first".into();
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::DoubleRouteBadId {
+            route_id: "A_B_first".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_double_route_with_mismatched_sister() {
+    let mut longer = double_route_map();
+    longer.routes[1].len = 3;
+    let mut other_ends = double_route_map();
+    other_ends.routes[1].to = "C".into();
+    let mut single = double_route_map();
+    single.routes.remove(1);
+    let mut not_double = double_route_map();
+    not_double.routes[1].double = false;
+    for map in [longer, other_ends, single, not_double] {
+        assert!(
+            matches!(
+                init_error(mini_ruleset(), map, 2, 0),
+                EngineInitError::DoubleRouteUnpaired { .. }
+            ),
+            "una coppia incoerente va rifiutata"
+        );
+    }
+}
+
+#[test]
+fn engine_new_rejects_route_length_zero() {
+    let mut map = mini_map();
+    map.routes[0].len = 0;
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::RouteLengthZero {
+            route_id: "A_B_1".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_route_length_missing_from_route_points() {
+    let mut rs = mini_ruleset();
+    rs.route_points.remove("6");
+    assert_eq!(
+        init_error(rs, mini_map(), 2, 0),
+        EngineInitError::RouteLengthUnscored {
+            route_id: "A_F_1".into(),
+            len: 6
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_zero_trains_per_player() {
+    let mut rs = mini_ruleset();
+    rs.trains_per_player = 0;
+    assert_eq!(
+        init_error(rs, mini_map(), 2, 0),
+        EngineInitError::ZeroTrainsPerPlayer
+    );
+}
+
+#[test]
+fn engine_new_rejects_duplicate_player_ids() {
+    let (_, names, colors) = two_players();
+    let err = Engine::new(
+        1,
+        mini_ruleset(),
+        mini_map(),
+        vec!["p1".into(), "p1".into()],
+        names,
+        colors,
+        0,
+    )
+    .err()
+    .unwrap();
+    assert_eq!(
+        err,
+        EngineInitError::DuplicatePlayerId {
+            player_id: "p1".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_duplicate_player_colors() {
+    let (ids, names, _) = two_players();
+    let red = ttr_proto::PlayerColor::Red;
+    let err = Engine::new(1, mini_ruleset(), mini_map(), ids, names, vec![red, red], 0)
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        EngineInitError::DuplicatePlayerColor {
+            color: "Red".into()
+        }
+    );
+}
+
+#[test]
+fn engine_new_rejects_ticket_draw_count_zero() {
+    let mut rs = mini_ruleset();
+    rs.ticket_draw.count = 0;
+    rs.ticket_draw.keep_min = 0;
+    assert_eq!(
+        init_error(rs, mini_map(), 2, 0),
+        EngineInitError::TicketDrawCountZero
+    );
+}
+
+#[test]
+fn engine_new_rejects_too_many_locomotives() {
+    let mut rs = mini_ruleset();
+    rs.deck.per_color = 5;
+    assert_eq!(
+        init_error(rs.clone(), mini_map(), 2, 0),
+        EngineInitError::TrainDeckLocomotiveHeavy {
+            per_color: 5,
+            locomotives: 14
+        }
+    );
+    rs.deck.per_color = 6;
+    Engine::new(
+        1,
+        rs,
+        mini_map(),
+        two_players().0,
+        two_players().1,
+        two_players().2,
+        0,
+    )
+    .unwrap();
+}
+
+#[test]
+fn engine_new_rejects_map_too_dense_for_longest_path() {
+    let err = init_error(mini_ruleset(), dense_map(10), 2, 0);
+    assert!(
+        matches!(err, EngineInitError::LongestPathTooDense { .. }),
+        "{err:?}"
+    );
+}
+
+#[test]
+fn engine_new_accepts_dense_map_when_trains_limit_claims() {
+    let mut rs = mini_ruleset();
+    rs.trains_per_player = 12;
+    let (ids, names, colors) = two_players();
+    Engine::new(1, rs, dense_map(10), ids, names, colors, 0).unwrap();
+}
+
+#[test]
+fn huge_locomotive_count_is_rejected_without_building_the_deck() {
+    let mut rs = mini_ruleset();
+    rs.deck.locomotives = 1_000_000_000;
+    assert!(matches!(
+        init_error(rs, mini_map(), 2, 0),
+        EngineInitError::TrainDeckLocomotiveHeavy { .. }
+    ));
+}
+
+/// Gli scarti del setup di un mazzo diverso da quello di pesca non rientrano nella pila.
+#[test]
+fn setup_discards_of_other_ticket_decks_stay_out_of_draw_pile() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(
+        7,
+        two_deck_ruleset(["regular", "long"]),
+        two_deck_map(),
+        ids,
+        names,
+        colors,
+        0,
+    )
+    .unwrap();
+    let is_regular = |id: &String| !id.starts_with("long_");
+    let mut returned = 0;
+    for pi in 0..2 {
+        let offered = eng.initial_tickets_for(pi).unwrap().to_vec();
+        returned += offered.iter().take(2).filter(|t| is_regular(t)).count();
+        eng.apply(Action::ChooseTickets {
+            player_index: pi,
+            keep: offered[2..].to_vec(),
+        })
+        .unwrap();
+    }
+    assert!(eng.ticket_pile().iter().all(is_regular));
+    // 20 regular tickets, 6 dealt, plus the regular discards.
+    assert_eq!(eng.ticket_pile().len(), 20 - 6 + returned);
+    assert!(
+        returned < 4,
+        "il test deve scartare almeno un biglietto long"
+    );
+}

@@ -96,3 +96,159 @@ fn ttr_validate_rejects_non_canonical_route_color() {
     assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
     assert!(stdout(&output).contains("grey"), "{}", stdout(&output));
 }
+
+/// Una mutazione dei dati spediti con il messaggio d'errore atteso in stdout.
+struct Case {
+    name: &'static str,
+    mutate: fn(&mut Value, &mut Value),
+    expected: &'static str,
+}
+
+fn first_double_route(map: &Value) -> usize {
+    map["routes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .position(|r| r["double"] == Value::Bool(true))
+        .unwrap()
+}
+
+const CASES: &[Case] = &[
+    Case {
+        name: "route-unknown-city",
+        mutate: |map, _| map["routes"][0]["to"] = Value::from("atlantis"),
+        expected: "atlantis",
+    },
+    Case {
+        name: "ticket-same-city",
+        mutate: |map, _| {
+            let from = map["tickets"][0]["from"].clone();
+            map["tickets"][0]["to"] = from;
+        },
+        expected: "partenza e arrivo coincidono",
+    },
+    Case {
+        name: "ticket-unknown-city",
+        mutate: |map, _| map["tickets"][0]["to"] = Value::from("atlantis"),
+        expected: "atlantis",
+    },
+    Case {
+        name: "duplicate-ticket-id",
+        mutate: |map, _| {
+            let id = map["tickets"][0]["id"].clone();
+            map["tickets"][1]["id"] = id;
+        },
+        expected: "id biglietto",
+    },
+    Case {
+        name: "duplicate-city-id",
+        mutate: |map, _| {
+            let id = map["cities"][0]["id"].clone();
+            map["cities"][1]["id"] = id;
+        },
+        expected: "id città",
+    },
+    Case {
+        name: "duplicate-route-id",
+        mutate: |map, _| {
+            let id = map["routes"][0]["id"].clone();
+            map["routes"][1]["id"] = id;
+        },
+        expected: "id rotta",
+    },
+    Case {
+        name: "double-route-id-without-suffix",
+        mutate: |map, _| {
+            let i = first_double_route(map);
+            map["routes"][i]["id"] = Value::from("double_without_suffix");
+        },
+        expected: "_1 o _2",
+    },
+    Case {
+        name: "double-route-length-mismatch",
+        mutate: |map, _| {
+            let i = first_double_route(map);
+            map["routes"][i]["len"] = Value::from(6);
+        },
+        expected: "gemella",
+    },
+    Case {
+        name: "route-length-zero",
+        mutate: |map, _| map["routes"][0]["len"] = Value::from(0),
+        expected: "almeno 1",
+    },
+    Case {
+        name: "route-length-without-route-points",
+        mutate: |_, ruleset| {
+            ruleset["routePoints"].as_object_mut().unwrap().remove("6");
+        },
+        expected: "routePoints",
+    },
+    Case {
+        name: "zero-trains-per-player",
+        mutate: |_, ruleset| ruleset["trainsPerPlayer"] = Value::from(0),
+        expected: "trainsPerPlayer",
+    },
+    Case {
+        name: "ticket-draw-count-zero",
+        mutate: |_, ruleset| {
+            ruleset["ticketDraw"]["count"] = Value::from(0);
+            ruleset["ticketDraw"]["keepMin"] = Value::from(0);
+        },
+        expected: "ticketDraw.count",
+    },
+    Case {
+        name: "too-many-locomotives",
+        mutate: |_, ruleset| ruleset["deck"]["perColor"] = Value::from(5),
+        expected: "troppe locomotive",
+    },
+];
+
+#[test]
+fn ttr_validate_rejects_inconsistent_data() {
+    let dir = TempDir::new("cases");
+    for case in CASES {
+        let (mut map, mut ruleset) = (load(MAP), load(RULESET));
+        (case.mutate)(&mut map, &mut ruleset);
+        let output = run(
+            &dir.write(&format!("{}-map.json", case.name), &map),
+            &dir.write(&format!("{}-ruleset.json", case.name), &ruleset),
+        );
+        let out = stdout(&output);
+        assert_eq!(output.status.code(), Some(1), "{}: {out}", case.name);
+        assert!(out.contains(case.expected), "{}: {out}", case.name);
+        assert!(!out.contains("✅"), "{}: {out}", case.name);
+    }
+}
+
+#[test]
+fn ttr_validate_prints_check_mark_only_for_passed_checks() {
+    let dir = TempDir::new("marks");
+    let map = dir.write("map.json", &load(MAP));
+    let mut ruleset = load(RULESET);
+    ruleset["ticketDraw"]["count"] = Value::from(0);
+    ruleset["ticketDraw"]["keepMin"] = Value::from(0);
+    let output = run(&map, &dir.write("ruleset.json", &ruleset));
+    let out = stdout(&output);
+    assert!(
+        out.contains("✗ Ruleset/mappa"),
+        "il check fallito va segnato: {out}"
+    );
+    assert!(
+        out.contains("✓ Biglietti: tutti raggiungibili"),
+        "i check passati restano ✓: {out}"
+    );
+    assert!(!out.contains("✓ Ruleset/mappa"), "{out}");
+}
+
+#[test]
+fn ttr_validate_huge_per_color_does_not_panic() {
+    let dir = TempDir::new("huge");
+    let map = dir.write("map.json", &load(MAP));
+    let mut ruleset = load(RULESET);
+    ruleset["deck"]["perColor"] = Value::from(u32::MAX);
+    let output = run(&map, &dir.write("ruleset.json", &ruleset));
+    assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!stderr.contains("panicked"), "{stderr}");
+}

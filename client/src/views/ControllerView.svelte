@@ -28,6 +28,7 @@
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import JoinScreen from '../lib/components/JoinScreen.svelte';
   import ControllerGameView from '../lib/components/ControllerGameView.svelte';
+  import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
 
   // ── Stato connessione ───────────────────────────────────────────
   // Default: stesso server che serve la pagina. Override: `/controller?server=http://<ip>:8080`.
@@ -39,6 +40,8 @@
   // Messaggio mostrato nella JoinScreen dopo una connessione abbandonata.
   let notice = $state('');
   let lobbyError = $state('');
+  // Nome dell'identità salvata, mostrato nella schermata di riconnessione automatica.
+  let playerName = $state('');
 
   // Anti doppio tap su tutte le azioni di gioco (ogni tap doppio consumerebbe
   // una pescata, o invierebbe due volte la stessa rotta/scelta).
@@ -76,6 +79,7 @@
       gameId = saved.gameId;
       playerId = saved.playerId;
       token = saved.token;
+      playerName = saved.name ?? '';
       privateStore.playerId = playerId;
       // Prova reconnect
       connectPlayer(true);
@@ -163,14 +167,15 @@
   // ── Join ───────────────────────────────────────────────────────
   // Al resume il server richiede il token originale: lo inviamo se abbiamo un'identità
   // salvata per la stessa partita.
-  async function onJoin(name: string, gid: string, color?: PlayerColor, signal?: AbortSignal) {
+  async function onJoin(name: string, gid: string, color?: PlayerColor) {
     notice = '';
     const saved = loadIdentity(gid);
-    const result = await lobby.joinGame(gid, name, color, saved?.token, signal);
+    const result = await lobby.joinGame(gid, name, color, saved?.token);
     gameId = gid;
     playerId = result.playerId;
     token = result.token;
-    saveIdentity({ playerId, token, gameId: gid, host });
+    saveIdentity({ playerId, token, gameId: gid, host, name });
+    playerName = name;
     savePlayerName(name);
     connectPlayer(false);
   }
@@ -191,14 +196,18 @@
     return true;
   }
 
+  let confirmingLeave = $state(false);
+
   function confirmLeave() {
-    if (view === 'game' && !window.confirm(
-      'Uscire dalla partita? Perderai il tuo posto e non potrai rientrare.',
-    )) return;
+    if (view === 'game') {
+      confirmingLeave = true;
+      return;
+    }
     onLeave();
   }
 
   function onLeave() {
+    confirmingLeave = false;
     leaveGame(true);
     notice = '';
   }
@@ -238,7 +247,18 @@
 </script>
 
 <div class="cv-root">
-  {#if view === 'join'}
+  {#if view === 'join' && connection !== null}
+    <div class="waiting-screen">
+      <h1>🚂 CiufCiuf!</h1>
+      <div class="waiting-card" role="status" aria-live="polite">
+        <p class="waiting-msg">
+          Riconnessione come <strong>{playerName || 'giocatore salvato'}</strong>…
+        </p>
+        <button class="leave-btn btn" onclick={onLeave}>Non sono io</button>
+      </div>
+    </div>
+
+  {:else if view === 'join'}
     <JoinScreen {host} {onJoin} notice={notice} />
 
   {:else if view === 'waiting'}
@@ -267,7 +287,7 @@
                 class="chip-dot"
                 style="background:{PLAYER_COLOR_CSS[p.color]}"
               ></span>
-              {p.name}
+              <span class="chip-name">{p.name}</span>
             </div>
           {/each}
           {#if lobbyPlayers.length === 0}
@@ -345,6 +365,16 @@
   {:else}
     <ControllerGameView {playerId} {sendAction} onLeave={confirmLeave} {drawBusy} />
   {/if}
+
+  {#if confirmingLeave}
+    <ConfirmDialog
+      title="Uscire dalla partita?"
+      message="Perderai il tuo posto e non potrai rientrare."
+      confirmLabel="Esci"
+      onConfirm={onLeave}
+      onCancel={() => (confirmingLeave = false)}
+    />
+  {/if}
 </div>
 
 <style>
@@ -407,6 +437,8 @@
   .player-chip {
     display: flex;
     align-items: center;
+    min-width: 0;
+    max-width: 100%;
     gap: 0.3rem;
     padding: 0.3rem 0.7rem;
     background: var(--chrome-bg-2);
@@ -414,8 +446,15 @@
     border-radius: 20px;
     font-size: 0.9rem;
   }
+  .chip-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .chip-dot {
     display: inline-block;
+    flex: none;
     width: 10px;
     height: 10px;
     border-radius: 50%;
@@ -485,6 +524,10 @@
   }
   .score-name {
     flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     font-weight: 600;
   }
   .score-total {

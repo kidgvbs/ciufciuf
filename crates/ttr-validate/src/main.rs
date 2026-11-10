@@ -15,6 +15,8 @@ use ttr_core::types::{MapData, Route, Ruleset};
 struct Report {
     errors: Vec<String>,
     warnings: Vec<String>,
+    /// Nome di ogni check eseguito e se è passato.
+    checks: Vec<(&'static str, bool)>,
 }
 
 impl Report {
@@ -22,50 +24,86 @@ impl Report {
         Self {
             errors: Vec::new(),
             warnings: Vec::new(),
+            checks: Vec::new(),
         }
     }
+
     fn err(&mut self, msg: String) {
         self.errors.push(msg);
     }
+
     fn warn(&mut self, msg: String) {
         self.warnings.push(msg);
+    }
+
+    /// Esegue un check e lo registra come passato solo se non ha aggiunto errori.
+    fn check(&mut self, name: &'static str, run: impl FnOnce(&mut Self)) {
+        let before = self.errors.len();
+        run(self);
+        self.checks.push((name, self.errors.len() == before));
     }
 }
 
 fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
     let mut r = Report::new();
-    let city_set: BTreeSet<&str> = map.cities.iter().map(|c| c.id.as_str()).collect();
 
-    // Build route graph for connectivity
+    r.check(
+        "Ruleset/mappa: id, città, rotte, biglietti, mazzi, giocatori",
+        |r| {
+            if let Err(e) = ruleset.validate(map) {
+                r.err(format!("Ruleset: {e}"));
+            }
+            warn_unused_route_points(r, map, ruleset);
+        },
+    );
+    r.check("Biglietti: tutti raggiungibili sul grafo", |r| {
+        check_ticket_reachability(r, map);
+    });
+    r.check("Mazzo treno: conteggi coerenti", |r| {
+        check_deck_counts(r, ruleset);
+    });
+    r.check("Rotte doppie: max 2 per coppia, double marcato", |r| {
+        let (total, double_pairs, single_pairs) = check_double_routes(r, map);
+        println!(
+            "  Segmenti totali: {} ({} doppie + {} singole)",
+            total, double_pairs, single_pairs
+        );
+    });
+    r.check("Mappa: numero di segmenti plausibile", |r| {
+        if map.routes.len() < 10 {
+            r.err(format!("Solo {} segmenti — sospetto", map.routes.len()));
+        }
+    });
+
+    r
+}
+
+/// Avvisa delle lunghezze di `routePoints` che nessuna rotta usa.
+fn warn_unused_route_points(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
+    let lengths: BTreeSet<u32> = map.routes.iter().map(|rt| rt.len).collect();
+    for key in ruleset.route_points.keys() {
+        if let Ok(len) = key.parse::<u32>()
+            && !lengths.contains(&len)
+        {
+            r.warn(format!(
+                "routePoints ha lunghezza {} non presente nella mappa",
+                len
+            ));
+        }
+    }
+}
+
+/// Ogni biglietto deve collegare due città raggiungibili sul grafo delle rotte.
+fn check_ticket_reachability(r: &mut Report, map: &MapData) {
+    let city_set: BTreeSet<&str> = map.cities.iter().map(|c| c.id.as_str()).collect();
     let mut route_graph: HashMap<&str, Vec<&str>> = HashMap::new();
     for rt in &map.routes {
         route_graph.entry(&rt.from).or_default().push(&rt.to);
         route_graph.entry(&rt.to).or_default().push(&rt.from);
     }
 
-    // ── Check 1: cities in routes/tickets exist ──
-    for rt in &map.routes {
-        if !city_set.contains(rt.from.as_str()) {
-            r.err(format!("Rotta '{}': città '{}' non esiste", rt.id, rt.from));
-        }
-        if !city_set.contains(rt.to.as_str()) {
-            r.err(format!("Rotta '{}': città '{}' non esiste", rt.id, rt.to));
-        }
-    }
     for t in &map.tickets {
-        if !city_set.contains(t.from.as_str()) {
-            r.err(format!(
-                "Biglietto '{}': città '{}' non esiste",
-                t.id, t.from
-            ));
-        }
-        if !city_set.contains(t.to.as_str()) {
-            r.err(format!("Biglietto '{}': città '{}' non esiste", t.id, t.to));
-        }
-    }
-
-    // ── Check 2: ticket reachability (BFS) ──
-    for t in &map.tickets {
+        // Le città inesistenti le segnala `Ruleset::validate`.
         if !city_set.contains(t.from.as_str()) || !city_set.contains(t.to.as_str()) {
             continue;
         }
@@ -94,15 +132,25 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
             ));
         }
     }
+}
 
-    // ── Check 3: deck counts ──
+/// Il mazzo treno completo ha 110 carte (USA); un totale che non entra in `u32` è un errore.
+fn check_deck_counts(r: &mut Report, ruleset: &Ruleset) {
     let deck = &ruleset.deck;
-    let total = deck.per_color * 8 + deck.locomotives;
-    if total != 110 {
-        r.err(format!(
+    let total = deck
+        .per_color
+        .checked_mul(8)
+        .and_then(|colored| colored.checked_add(deck.locomotives));
+    match total {
+        None => r.err(format!(
+            "Mazzo treno: {}×8 + {} non entra in u32",
+            deck.per_color, deck.locomotives
+        )),
+        Some(110) => {}
+        Some(total) => r.err(format!(
             "Mazzo treno: {}×8 + {} = {} (atteso 110)",
             deck.per_color, deck.locomotives, total
-        ));
+        )),
     }
     if deck.per_color != 12 {
         r.warn(format!("perColor={} (atteso 12 per USA)", deck.per_color));
@@ -113,35 +161,11 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
             deck.locomotives
         ));
     }
+}
 
-    // ── Check 4: coerenza ruleset/mappa (stessa di Engine::new) ──
-    if let Err(e) = ruleset.validate(map) {
-        r.err(format!("Ruleset: {e}"));
-    }
-
-    // ── Check 5: route lengths in routePoints ──
-    let lengths: BTreeSet<u32> = map.routes.iter().map(|rt| rt.len).collect();
-    for len in &lengths {
-        let key = len.to_string();
-        if !ruleset.route_points.contains_key(&key) {
-            r.err(format!(
-                "Lunghezza {} presente nella mappa ma non in routePoints",
-                len
-            ));
-        }
-    }
-    for key in ruleset.route_points.keys() {
-        if let Ok(len) = key.parse::<u32>()
-            && !lengths.contains(&len)
-        {
-            r.warn(format!(
-                "routePoints ha lunghezza {} non presente nella mappa",
-                len
-            ));
-        }
-    }
-
-    // ── Check 6: double routes ──
+/// Max 2 rotte per coppia di città, entrambe `double`. Restituisce (rotte, coppie doppie,
+/// coppie singole).
+fn check_double_routes(r: &mut Report, map: &MapData) -> (usize, usize, usize) {
     let mut pair_segments: BTreeMap<(&str, &str), Vec<&Route>> = BTreeMap::new();
     for rt in &map.routes {
         pair_segments
@@ -154,14 +178,11 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
         if count > 2 {
             r.err(format!("Coppia {}–{}: {} rotte (max 2)", a, b, count));
         }
-        if count == 2 {
-            let both = routes.iter().all(|rt| rt.double);
-            if !both {
-                r.err(format!(
-                    "Coppia {}–{}: 2 rotte ma non entrambe double=true",
-                    a, b
-                ));
-            }
+        if count == 2 && !routes.iter().all(|rt| rt.double) {
+            r.err(format!(
+                "Coppia {}–{}: 2 rotte ma non entrambe double=true",
+                a, b
+            ));
         }
         if count == 1 && routes[0].double {
             r.warn(format!(
@@ -170,20 +191,9 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
             ));
         }
     }
-
-    // ── Check 7: total segments ──
-    let total = map.routes.len();
     let double_pairs = pair_segments.values().filter(|v| v.len() == 2).count();
     let single_pairs = pair_segments.values().filter(|v| v.len() == 1).count();
-    println!(
-        "  Segmenti totali: {} ({} doppie + {} singole)",
-        total, double_pairs, single_pairs
-    );
-    if total < 10 {
-        r.err(format!("Solo {} segmenti — sospetto", total));
-    }
-
-    r
+    (map.routes.len(), double_pairs, single_pairs)
 }
 
 fn main() {
@@ -226,16 +236,8 @@ fn main() {
 
     println!();
     println!("--- Check ---");
-    let checks = [
-        "Città: tutte esistono per rotte e biglietti",
-        "Biglietti: tutti raggiungibili sul grafo",
-        "Mazzo treno: conteggi coerenti",
-        "Ruleset/mappa: colori rotte, bonus, mazzi biglietti, giocatori",
-        "RoutePoints: ogni lunghezza rotta ha entry",
-        "Rotte doppie: max 2 per coppia, double marcato",
-    ];
-    for c in &checks {
-        println!("  ✓ {}", c);
+    for (name, passed) in &report.checks {
+        println!("  {} {}", if *passed { "✓" } else { "✗" }, name);
     }
 
     for w in &report.warnings {

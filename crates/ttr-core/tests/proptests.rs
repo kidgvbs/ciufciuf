@@ -415,6 +415,139 @@ proptest! {
     }
 }
 
+/// Azioni massime per una partita giocata fino a `GameOver`.
+const MAX_GAME_STEPS: usize = 6000;
+
+/// Esito di una partita completa: eventi di fine partita e conteggi raccolti mentre si gioca.
+struct FinishedGame {
+    final_scores: Vec<ttr_core::event::FinalScore>,
+    longest_path_players: Vec<usize>,
+    longest_path_bonus: u32,
+    /// Punti delle rotte reclamate, sommati dagli eventi `RouteClaimed`.
+    route_points: Vec<i32>,
+    /// Fine turno dopo `LastRoundAnnounced`, compreso quello dell'azione che l'ha annunciato
+    /// e quello che chiude la partita.
+    turn_ends_after_announcement: usize,
+}
+
+/// Gioca con mosse legali fino a `GameOver` verificando a ogni passo vagoni e carte.
+fn play_to_game_over(
+    seed: u64,
+    players: usize,
+    choices: &[u16],
+) -> Result<(Engine, FinishedGame), TestCaseError> {
+    let trains = data().0.trains_per_player;
+    let mut eng = new_engine(seed, players);
+    let mut route_points = vec![0i32; players];
+    let mut announced = false;
+    let mut turn_ends = 0;
+    let mut finished = None;
+    for step in 0..MAX_GAME_STEPS {
+        let choice = choices[step % choices.len()].wrapping_add((step / choices.len()) as u16);
+        let Some(action) = pick(progress_actions(&eng), choice) else {
+            break;
+        };
+        let events = eng.apply(action.clone());
+        prop_assert!(events.is_ok(), "azione legale rifiutata: {action:?}");
+        for event in events.unwrap() {
+            match event {
+                GameEvent::RouteClaimed {
+                    player_index,
+                    points,
+                    ..
+                } => route_points[player_index] += i32::try_from(points).unwrap(),
+                GameEvent::LastRoundAnnounced { .. } => {
+                    prop_assert!(!announced, "ultimo giro annunciato due volte");
+                    announced = true;
+                }
+                GameEvent::TurnAdvanced { .. } if announced => turn_ends += 1,
+                GameEvent::GameOver {
+                    final_scores,
+                    longest_path_players,
+                    longest_path_bonus,
+                } => {
+                    prop_assert!(announced, "GameOver senza ultimo giro");
+                    turn_ends += 1;
+                    finished = Some((final_scores, longest_path_players, longest_path_bonus));
+                }
+                _ => {}
+            }
+        }
+        for p in 0..players {
+            let state = eng.player(p).unwrap();
+            let placed: u32 = state.claimed_routes.values().map(|r| r.train_count).sum();
+            prop_assert_eq!(
+                state.trains_remaining + placed,
+                trains,
+                "vagoni del giocatore {}",
+                p
+            );
+        }
+    }
+    let Some((final_scores, longest_path_players, longest_path_bonus)) = finished else {
+        return Err(TestCaseError::fail("la partita non è arrivata a GameOver"));
+    };
+    let game = FinishedGame {
+        final_scores,
+        longest_path_players,
+        longest_path_bonus,
+        route_points,
+        turn_ends_after_announcement: turn_ends,
+    };
+    Ok((eng, game))
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 64, ..ProptestConfig::default() })]
+
+    /// Una partita completa chiude il giro finale, assegna i punti e ha un vincitore.
+    #[test]
+    fn full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        let (eng, game) = play_to_game_over(seed, players, &choices)?;
+
+        prop_assert_eq!(
+            game.turn_ends_after_announcement,
+            players + 1,
+            "fine turno dopo LastRoundAnnounced"
+        );
+        prop_assert_eq!(game.final_scores.len(), players);
+        let best_total = game.final_scores.iter().map(|fs| fs.total).max().unwrap();
+        prop_assert!(game.final_scores.iter().any(|fs| fs.winner), "nessun vincitore");
+        for fs in &game.final_scores {
+            let state = eng.player(fs.player_index).unwrap();
+            let completed: i32 = state.tickets.values()
+                .filter(|t| t.completed == Some(true))
+                .map(|t| i32::try_from(t.points).unwrap())
+                .sum();
+            let failed: i32 = state.tickets.values()
+                .filter(|t| t.completed != Some(true))
+                .map(|t| i32::try_from(t.points).unwrap())
+                .sum();
+            let bonus = if game.longest_path_players.contains(&fs.player_index) {
+                i32::try_from(game.longest_path_bonus).unwrap()
+            } else {
+                0
+            };
+            prop_assert_eq!(fs.route_points, game.route_points[fs.player_index]);
+            prop_assert_eq!(fs.route_points, state.score);
+            prop_assert_eq!(fs.ticket_completed, completed);
+            prop_assert_eq!(fs.ticket_failed, -failed);
+            prop_assert_eq!(fs.longest_path_bonus, bonus);
+            prop_assert_eq!(
+                fs.total,
+                fs.route_points + fs.ticket_completed + fs.ticket_failed + fs.longest_path_bonus
+            );
+            if fs.winner {
+                prop_assert_eq!(fs.total, best_total, "un vincitore non ha il totale massimo");
+            }
+        }
+    }
+}
+
 /// Gli eventi `FaceUpReset` descrivono davvero le scoperte dopo il reset.
 #[test]
 fn face_up_reset_events_match_final_face_up() {

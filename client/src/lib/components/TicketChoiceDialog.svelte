@@ -107,6 +107,7 @@
         <button
           class="ticket-item"
           class:selected={selected.has(t.id)}
+          aria-pressed={selected.has(t.id)}
           onclick={() => toggle(t.id)}
         >
           <TicketCard

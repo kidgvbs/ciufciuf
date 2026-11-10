@@ -38,6 +38,10 @@ pub enum LobbyError {
     MinPlayers(u32),
     #[error("Troppe partite attive: attendi che ne termini una.")]
     TooManyGames,
+    #[error("Il seed scelto dal client non è ammesso su questo server.")]
+    SeedNotAllowed,
+    #[error("Il server si sta spegnendo.")]
+    ShuttingDown,
     #[error("Errore interno del server.")]
     Internal(String),
 }
@@ -59,6 +63,8 @@ impl LobbyError {
             Self::BadRequest(_) => "BAD_REQUEST",
             Self::MinPlayers(_) => "MIN_PLAYERS",
             Self::TooManyGames => "TOO_MANY_GAMES",
+            Self::SeedNotAllowed => "SEED_NOT_ALLOWED",
+            Self::ShuttingDown => "SHUTTING_DOWN",
             Self::Internal(_) => "INTERNAL_ERROR",
         }
     }
@@ -74,9 +80,11 @@ impl LobbyError {
             | Self::NameTaken
             | Self::NameNotInSave => StatusCode::CONFLICT,
             Self::Unauthorized | Self::ResumeTokenMismatch => StatusCode::UNAUTHORIZED,
-            Self::InvalidName(_) | Self::BadRequest(_) | Self::MinPlayers(_) => {
-                StatusCode::BAD_REQUEST
-            }
+            Self::InvalidName(_)
+            | Self::BadRequest(_)
+            | Self::MinPlayers(_)
+            | Self::SeedNotAllowed => StatusCode::BAD_REQUEST,
+            Self::ShuttingDown => StatusCode::SERVICE_UNAVAILABLE,
             Self::TooManyGames => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }

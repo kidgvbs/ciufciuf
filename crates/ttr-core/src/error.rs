@@ -121,6 +121,64 @@ pub enum EngineInitError {
 
     #[error("ticketDraw.keepMin {keep_min} maggiore di ticketDraw.count {count}")]
     DrawKeepMinExceedsCount { keep_min: u32, count: u32 },
+
+    #[error("ticketDraw.count deve essere almeno 1")]
+    TicketDrawCountZero,
+
+    #[error("trainsPerPlayer deve essere almeno 1")]
+    ZeroTrainsPerPlayer,
+
+    #[error(
+        "troppe locomotive nel mazzo: {locomotives} locomotive con {per_color} carte per colore (serve perColor × 8 ≥ 3 × locomotives)"
+    )]
+    TrainDeckLocomotiveHeavy { per_color: u32, locomotives: u32 },
+
+    #[error("id città '{city_id}' duplicato")]
+    DuplicateCityId { city_id: String },
+
+    #[error("id rotta '{route_id}' duplicato")]
+    DuplicateRouteId { route_id: String },
+
+    #[error("id biglietto '{ticket_id}' duplicato")]
+    DuplicateTicketId { ticket_id: String },
+
+    #[error("rotta '{route_id}': la città '{city_id}' non esiste")]
+    RouteCityUnknown { route_id: String, city_id: String },
+
+    #[error("biglietto '{ticket_id}': la città '{city_id}' non esiste")]
+    TicketCityUnknown { ticket_id: String, city_id: String },
+
+    #[error("rotta '{route_id}': la lunghezza deve essere almeno 1")]
+    RouteLengthZero { route_id: String },
+
+    #[error("rotta '{route_id}': la lunghezza {len} non è in routePoints")]
+    RouteLengthUnscored { route_id: String, len: u32 },
+
+    #[error("biglietto '{ticket_id}': partenza e arrivo coincidono ('{city_id}')")]
+    TicketSameCity { ticket_id: String, city_id: String },
+
+    #[error("rotta doppia '{route_id}': l'id deve finire con _1 o _2")]
+    DoubleRouteBadId { route_id: String },
+
+    #[error(
+        "rotta doppia '{route_id}': manca la gemella '{sister_id}' con stessi estremi, stessa lunghezza e double=true"
+    )]
+    DoubleRouteUnpaired { route_id: String, sister_id: String },
+
+    #[error(
+        "mappa troppo densa per il percorso più lungo: fino a {routes} rotte reclamabili da un giocatore e numero ciclomatico fino a {cyclomatic} (massimo {max})"
+    )]
+    LongestPathTooDense {
+        routes: usize,
+        cyclomatic: u32,
+        max: u32,
+    },
+
+    #[error("id giocatore '{player_id}' duplicato")]
+    DuplicatePlayerId { player_id: String },
+
+    #[error("colore giocatore {color} duplicato")]
+    DuplicatePlayerColor { color: String },
 }
 
 /// Fase di gioco (macchina a stati interna).

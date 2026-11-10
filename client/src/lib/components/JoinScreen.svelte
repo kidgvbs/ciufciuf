@@ -2,6 +2,7 @@
   // Schermata di join: nome giocatore + selezione partita (da lobby o manuale).
 
   import { LobbyClient, loadPlayerName, type GameListItem } from '../lobby';
+  import { createJoinFlow, SLOW_JOIN_MESSAGE, type JoinFlow } from '../join-flow';
   import { PLAYER_COLOR_CSS } from '../colors';
   import type { PlayerColor } from '../proto';
 
@@ -9,12 +10,7 @@
 
   let { host, onJoin, onCancel, notice = '' }: {
     host: string;
-    onJoin: (
-      name: string,
-      gameId: string,
-      color?: PlayerColor,
-      signal?: AbortSignal,
-    ) => Promise<void>;
+    onJoin: (name: string, gameId: string, color?: PlayerColor) => Promise<void>;
     onCancel?: () => void;
     /** Messaggio da mostrare (es. connessione abbandonata); riabilita i controlli. */
     notice?: string;
@@ -33,6 +29,7 @@
   let loading = $state(false);
   let error = $state('');
   let joining = $state(false);
+  let slowJoin = $state(false);
 
   const lobby = $derived(new LobbyClient(host));
 
@@ -86,13 +83,10 @@
     return () => { cancelled = true; };
   });
 
-  // Il join (richiesta REST + primo stato dal server) deve completarsi entro questo tempo.
-  const JOIN_TIMEOUT_MS = 10_000;
-  let joinTimer: ReturnType<typeof setTimeout> | null = null;
+  let joinFlow: JoinFlow | null = null;
 
   function stopJoinTimer() {
-    if (joinTimer) clearTimeout(joinTimer);
-    joinTimer = null;
+    joinFlow?.stopJoinTimer();
   }
 
   $effect(() => stopJoinTimer);
@@ -102,29 +96,31 @@
     if (notice) {
       stopJoinTimer();
       joining = false;
+      slowJoin = false;
     }
   });
 
+  // La richiesta non viene mai annullata: se è lenta lo diciamo, e se poi riesce si prosegue.
   async function join() {
-    if (!name.trim() || !gameId.trim()) return;
+    const playerName = name.trim();
+    const gid = gameId.trim();
+    if (!playerName || !gid) return;
     joining = true;
+    slowJoin = false;
     error = '';
-    const abort = new AbortController();
     stopJoinTimer();
-    joinTimer = setTimeout(() => {
-      abort.abort();
-      error = 'Il server non risponde: riprova tra un attimo';
-      joining = false;
-    }, JOIN_TIMEOUT_MS);
-    try {
-      await onJoin(name.trim(), gameId.trim(), color === '' ? undefined : color, abort.signal);
-    } catch (e: unknown) {
-      stopJoinTimer();
-      error = abort.signal.aborted
-        ? 'Il server non risponde: riprova tra un attimo'
-        : e instanceof Error ? e.message : 'Errore';
-      joining = false;
-    }
+    joinFlow = createJoinFlow({
+      attempt: () => onJoin(playerName, gid, color === '' ? undefined : color),
+      registeredNames: async () => (await lobby.getGame(gid)).players.map((p) => p.name),
+      name: playerName,
+      onSlow: () => { slowJoin = true; },
+      onError: (message) => {
+        error = message;
+        joining = false;
+        slowJoin = false;
+      },
+    });
+    await joinFlow.run();
   }
 </script>
 
@@ -190,6 +186,8 @@
         onclick={() => (color = '')}
         disabled={joining}
         title="Automatico"
+        aria-label="Colore automatico"
+        aria-pressed={color === ''}
       >?</button>
       {#each ALL_COLORS as c}
         <button
@@ -199,10 +197,15 @@
           onclick={() => (color = c)}
           disabled={joining || takenColors.has(c)}
           title={takenColors.has(c) ? 'Colore già preso' : c}
+          aria-label={takenColors.has(c) ? `Colore ${c} già preso` : `Colore ${c}`}
+          aria-pressed={color === c}
         ></button>
       {/each}
     </div>
 
+    {#if slowJoin && !error}
+      <p class="muted" role="status">{SLOW_JOIN_MESSAGE}</p>
+    {/if}
     {#if error || notice}
       <p class="error" role="alert">{error || notice}</p>
     {/if}
@@ -289,11 +292,12 @@
   }
   .color-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
   }
   .color-swatch {
-    width: 36px;
-    height: 36px;
+    width: 44px;
+    height: 44px;
     border-radius: 50%;
     border: 3px solid transparent;
     cursor: pointer;

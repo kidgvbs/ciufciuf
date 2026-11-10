@@ -280,9 +280,6 @@ async fn lobby_players_after_join() {
     let _pa = join_game(&server.base_url, &game.game_id, "Alice", Some("RED")).await;
     let _pb = join_game(&server.base_url, &game.game_id, "Bob", Some("BLUE")).await;
 
-    // Lascia tempo all'attore di processare i join.
-    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-
     // Verifica GET /api/games → players_joined == 2.
     let client = reqwest::Client::new();
     let list_resp = client
@@ -499,4 +496,185 @@ async fn lobby_errors_use_the_documented_codes() {
     .await;
     assert_eq!(status, 401, "{body}");
     assert_eq!(body["error"], "UNAUTHORIZED");
+}
+
+// ── Seed ─────────────────────────────────────────────────────────────
+
+/// Il seed di default viene da un CSPRNG: due partite nello stesso secondo
+/// hanno seed diversi e lontani dall'orologio.
+#[tokio::test]
+async fn default_seed_is_not_time_based() {
+    let server = TestServer::start().await;
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    let mut seeds = Vec::new();
+    for name in ["Seed 1", "Seed 2"] {
+        let g = create_game(&server.base_url, name).await;
+        join_game(&server.base_url, &g.game_id, "Alice", None).await;
+        join_game(&server.base_url, &g.game_id, "Bob", None).await;
+        start_game(&server.base_url, &g.game_id, &g.host_token).await;
+        let save = server.saves_dir.join(format!("{}.json", g.game_id));
+        wait_for_file(&save).await;
+        let value = try_read_save(&save).expect("save leggibile");
+        seeds.push(value["seed"].as_u64().expect("seed numerico"));
+    }
+    assert_ne!(seeds[0], seeds[1], "seed diversi");
+    for seed in seeds {
+        assert!(
+            !(t.saturating_sub(60)..=t + 60).contains(&seed),
+            "seed {seed} vicino all'orologio {t}"
+        );
+    }
+}
+
+/// Un server avviato senza `--allow-client-seed` rifiuta il seed del client.
+#[tokio::test]
+async fn client_seed_rejected_without_flag() {
+    let saves = temp_saves_dir();
+    let state = ttr_server::AppState::new(data_dir(), saves.clone(), 0).expect("AppState::new");
+    let server = TestServer::start_with_state(state, saves).await;
+
+    let (status, body) = post_json(
+        &server.base_url,
+        "/api/games",
+        serde_json::json!({ "rulesetId": "usa_v2", "seed": 1 }),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "SEED_NOT_ALLOWED");
+    let (status, _) = get_json(&server.base_url, "/api/games").await;
+    assert_eq!(status, 200);
+
+    let (status, body) = post_json(
+        &server.base_url,
+        "/api/games",
+        serde_json::json!({ "rulesetId": "usa_v2" }),
+    )
+    .await;
+    assert_eq!(status, 201, "senza seed la creazione funziona: {body}");
+}
+
+/// Né le API REST né i messaggi WS espongono il seed.
+#[tokio::test]
+async fn seed_is_never_exposed() {
+    let server = TestServer::start().await;
+    let g = create_game_with_seed(&server.base_url, "Segreto", Some(987_654_321)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+
+    let base = server.base_url.as_str();
+    for path in [
+        "/api/games".to_string(),
+        format!("/api/games/{}", g.game_id),
+    ] {
+        let (_, body) = get_json(base, &path).await;
+        let text = body.to_string();
+        assert!(
+            !text.contains("seed") && !text.contains("987654321"),
+            "{path}: {text}"
+        );
+    }
+
+    let mut ws = WsClient::connect(&server, &g.game_id, &pa.player_id, &pa.token).await;
+    let snapshot = serde_json::to_string(&ws.recv().await).unwrap();
+    assert!(
+        !snapshot.contains("seed") && !snapshot.contains("987654321"),
+        "{snapshot}"
+    );
+}
+
+// ── Nomi invisibili e confusabili ────────────────────────────────────
+
+#[tokio::test]
+async fn invisible_names_are_rejected_with_invalid_name() {
+    let server = TestServer::start().await;
+    let g = create_game(&server.base_url, "Invisibili").await;
+    let base = server.base_url.as_str();
+    join_game(base, &g.game_id, "Anna", None).await;
+
+    for name in [
+        "Anna\u{3164}",
+        "Anna\u{2800}",
+        "Anna\u{34f}",
+        "Anna\u{FE0F}",
+        "\u{3164}",
+    ] {
+        let res = post_join(base, &g.game_id, serde_json::json!({ "name": name })).await;
+        assert_rejected(&res, 400, "INVALID_NAME");
+    }
+    // Il mix di alfabeti nella stessa parola ("А" cirillica + "nna" latina) è rifiutato.
+    let mixed = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "\u{410}nna" }),
+    )
+    .await;
+    assert_rejected(&mixed, 400, "INVALID_NAME");
+
+    let (_, profiles) = get_json(base, "/api/profiles").await;
+    assert_eq!(profiles["profiles"], serde_json::json!(["Anna"]));
+}
+
+#[tokio::test]
+async fn confusable_names_are_taken() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+
+    let g = create_game(base, "Confusabili").await;
+    join_game(base, &g.game_id, "Anna", None).await;
+    let fullwidth = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "\u{FF21}\u{FF4E}\u{FF4E}\u{FF41}" }),
+    )
+    .await;
+    assert_rejected(&fullwidth, 409, "NAME_TAKEN");
+
+    // Tre lettere cirilliche (С а р) identiche a "Cap" latino.
+    join_game(base, &g.game_id, "Cap", None).await;
+    let cyrillic = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "\u{421}\u{430}\u{440}" }),
+    )
+    .await;
+    assert_rejected(&cyrillic, 409, "NAME_TAKEN");
+
+    let (_, profiles) = get_json(base, "/api/profiles").await;
+    assert_eq!(profiles["profiles"], serde_json::json!(["Anna", "Cap"]));
+}
+
+#[tokio::test]
+async fn nbsp_is_collapsed_and_accents_stay_valid() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+
+    let g = create_game(base, "Spazi").await;
+    let res = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "Anna\u{a0}\u{a0}Bianchi" }),
+    )
+    .await;
+    assert_eq!(res.0, 200, "{}", res.1);
+    assert_eq!(
+        get_game_detail(base, &g.game_id).await["players"][0]["name"],
+        "Anna Bianchi"
+    );
+
+    for (nfc, nfd) in [("Jos\u{e9}", "Jose\u{301}"), ("Zo\u{eb}", "Zoe\u{308}")] {
+        for name in [nfc, nfd] {
+            let g = create_game(base, "Accenti").await;
+            let res = post_join(base, &g.game_id, serde_json::json!({ "name": name })).await;
+            assert_eq!(res.0, 200, "{name:?}: {}", res.1);
+            assert_eq!(
+                get_game_detail(base, &g.game_id).await["players"][0]["name"],
+                nfc
+            );
+        }
+    }
 }

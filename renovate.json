@@ -1,0 +1,148 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    "helpers:pinGitHubActionDigests",
+    ":maintainLockFilesMonthly"
+  ],
+  "timezone": "Europe/Rome",
+  "schedule": [
+    "before 9am on monday"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "labels": [
+    "dependencies"
+  ],
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "labels": [
+      "security"
+    ],
+    "schedule": [
+      "at any time"
+    ]
+  },
+  "packageRules": [
+    {
+      "description": "rand/rand_chacha determinano lo shuffle e quindi il replay dei save: si aggiornano solo a mano, insieme a RULES_VERSION.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "rand",
+        "rand_chacha",
+        "rand_core"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "ts-rs cambia i binding generati: PR separata, la CI verifica la deriva.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "ts-rs"
+      ],
+      "groupName": "ts-rs",
+      "addLabels": [
+        "protocol"
+      ]
+    },
+    {
+      "description": "Stack HTTP/WS del server.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "axum",
+        "tower-http",
+        "tokio",
+        "tokio-tungstenite",
+        "reqwest",
+        "hyper"
+      ],
+      "groupName": "server http stack"
+    },
+    {
+      "description": "Dipendenze Rust minor/patch rimanenti in un'unica PR.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "rust non-major",
+      "matchPackageNames": [
+        "!rand",
+        "!rand_chacha",
+        "!rand_core",
+        "!ts-rs"
+      ]
+    },
+    {
+      "description": "Toolchain del client: le major vanno approvate dalla Dependency Dashboard.",
+      "matchManagers": [
+        "npm",
+        "bun"
+      ],
+      "matchPackageNames": [
+        "vite",
+        "vitest",
+        "svelte",
+        "svelte-check",
+        "typescript",
+        "@sveltejs/**",
+        "@tsconfig/svelte"
+      ],
+      "groupName": "client toolchain"
+    },
+    {
+      "matchManagers": [
+        "npm",
+        "bun"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "groupName": "client non-major"
+    },
+    {
+      "description": "Ogni major richiede approvazione esplicita.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest",
+        "pinDigest"
+      ]
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Toolchain Rust in rust-toolchain.toml.",
+      "managerFilePatterns": [
+        "/^rust-toolchain\\.toml$/"
+      ],
+      "matchStrings": [
+        "channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
+      ],
+      "depNameTemplate": "rust",
+      "datasourceTemplate": "github-releases",
+      "packageNameTemplate": "rust-lang/rust"
+    }
+  ]
+}

@@ -5,12 +5,15 @@
 // - Envelope `ServerMessage`: `type` + `payload` annidato, validato prima dell'uso.
 // - Dedup dei messaggi privati con `PrivateState.seq`; il server rinumera i seq a ogni
 //   sessione, quindi i contatori si azzerano a ogni nuova connessione.
-// - Riconnessione: backoff esponenziale con jitter, azzerato al primo SNAPSHOT;
-//   `visibilitychange` riapre il socket e richiede uno SNAPSHOT.
-// - Errori fatali (partita inesistente, non autorizzato, protocollo diverso): niente riconnessione.
+// - Riconnessione: backoff esponenziale con jitter, azzerato solo dopo 10 s di connessione
+//   stabile (SNAPSHOT ricevuto); `visibilitychange` e `online` richiedono uno SNAPSHOT e, se
+//   il socket resta muto per 3 s, lo riaprono.
+// - Messaggi con forma non valida: scartati, con al più un REQUEST_SNAPSHOT ogni 5 s.
+// - Errori fatali (partita inesistente, non autorizzato, protocollo diverso, troppi spettatori):
+//   niente riconnessione.
 
 import { parseWithBigInt, stringifyWithBigInt } from './json';
-import { isRecord } from './guards';
+import { isRecord, isPrivateState, isPublicState, isSnapshot } from './guards';
 import type {
   InboundAction,
   ServerMessage,
@@ -23,7 +26,7 @@ import type {
 // ── Tipi ─────────────────────────────────────────────────────────────
 
 /** Motivo per cui la connessione è stata abbandonata senza riprovare. */
-export type FatalReason = 'GAME_NOT_FOUND' | 'UNAUTHORIZED' | 'PROTOCOL_VERSION';
+export type FatalReason = 'GAME_NOT_FOUND' | 'UNAUTHORIZED' | 'PROTOCOL_VERSION' | 'TOO_MANY_SPECTATORS';
 
 /** Callback per i messaggi ricevuti dal server. */
 export interface GameCallbacks {
@@ -79,6 +82,12 @@ const MAX_BACKOFF_MS = 30_000;
 const BACKOFF_MULTIPLIER = 2;
 /** Il ritardo effettivo varia di ±20% attorno al valore del backoff. */
 const BACKOFF_JITTER = 0.2;
+/** Una connessione con SNAPSHOT aperta per tanto tempo azzera il backoff. */
+const STABLE_MS = 10_000;
+/** Attesa di una risposta a REQUEST_SNAPSHOT prima di riaprire il socket. */
+const WATCHDOG_MS = 3_000;
+/** Intervallo minimo tra due REQUEST_SNAPSHOT causati da messaggi malformati. */
+const BAD_MESSAGE_SNAPSHOT_INTERVAL_MS = 5_000;
 
 const READY_STATE_CONNECTING = 0;
 const READY_STATE_OPEN = 1;
@@ -122,6 +131,14 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
   let snapshotSeen = false;
   let lastPrivateSeq = 0n;
   let lastSnapshotSeq = 0n;
+  let stableTimer: ReturnType<typeof setTimeout> | null = null;
+  let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastBadMessageRequest = -Infinity;
+
+  function clearTimer(timer: ReturnType<typeof setTimeout> | null): null {
+    if (timer) clearTimeout(timer);
+    return null;
+  }
 
   // ── Costruzione URL ──────────────────────────────────────────
 
@@ -161,13 +178,19 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
           fail('PROTOCOL_VERSION');
           return;
         }
-        if (!isRecord(snap.public) || (snap.private !== null && !hasSeq(snap.private))) {
-          console.warn('[ws] SNAPSHOT malformato');
+        if (!isSnapshot(snap)) {
+          dropMalformed('SNAPSHOT');
           return;
         }
-        // Il server risponde: da qui in poi gli errori non sono più fatali e il backoff riparte.
+        // Il server risponde: da qui in poi gli errori non sono più fatali; il backoff riparte
+        // solo se la connessione resta stabile.
         snapshotSeen = true;
-        backoffMs = INITIAL_BACKOFF_MS;
+        watchdogTimer = clearTimer(watchdogTimer);
+        stableTimer = clearTimer(stableTimer);
+        stableTimer = setTimeout(() => {
+          stableTimer = null;
+          backoffMs = INITIAL_BACKOFF_MS;
+        }, STABLE_MS);
         if (snap.private) {
           if (snap.private.seq <= lastSnapshotSeq) return;
           lastSnapshotSeq = snap.private.seq;
@@ -184,15 +207,20 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
           fail('PROTOCOL_VERSION');
           return;
         }
+        if (!isPublicState(ps)) {
+          dropMalformed('PUBLIC_STATE');
+          return;
+        }
         callbacks.onPublicState(ps);
         break;
       }
       case 'PRIVATE_STATE': {
         const ps = parsed.payload;
-        if (!hasSeq(ps)) {
-          console.warn('[ws] PRIVATE_STATE malformato');
+        if (!isPrivateState(ps)) {
+          dropMalformed('PRIVATE_STATE');
           return;
         }
+        watchdogTimer = clearTimer(watchdogTimer);
         if (ps.seq <= lastPrivateSeq) return;
         lastPrivateSeq = ps.seq;
         callbacks.onPrivateState(ps);
@@ -208,14 +236,24 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
           fail(ep.reason as FatalReason);
           return;
         }
+        if (!snapshotSeen && ep.reason === 'GAME_FULL' && ep.detail === 'TOO_MANY_SPECTATORS') {
+          callbacks.onError(ep);
+          fail('TOO_MANY_SPECTATORS');
+          return;
+        }
         callbacks.onError(ep);
         break;
       }
     }
   }
 
-  function hasSeq(state: { seq: bigint }): boolean {
-    return typeof state.seq === 'bigint';
+  /** Scarta un messaggio con forma non valida e, con throttle, chiede uno SNAPSHOT fresco. */
+  function dropMalformed(kind: string): void {
+    console.warn(`[ws] ${kind} malformato`);
+    const now = Date.now();
+    if (now - lastBadMessageRequest < BAD_MESSAGE_SNAPSHOT_INTERVAL_MS) return;
+    lastBadMessageRequest = now;
+    requestSnapshot();
   }
 
   // ── Eventi socket ────────────────────────────────────────────
@@ -237,6 +275,8 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
       detachSocket = null;
       ws = null;
       _connected = false;
+      stableTimer = clearTimer(stableTimer);
+      watchdogTimer = clearTimer(watchdogTimer);
       callbacks.onConnectionChange(false);
       if (!closed) scheduleReconnect();
     };
@@ -293,25 +333,53 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
     backoffMs = Math.min(backoffMs * BACKOFF_MULTIPLIER, MAX_BACKOFF_MS);
   }
 
-  // ── Visibility change ────────────────────────────────────────
+  // ── Ritorno in primo piano / rete ────────────────────────────
+
+  /** Abbandona il socket corrente (anche muto) e ne apre uno nuovo senza attendere il backoff. */
+  function forceReconnect(): void {
+    reconnectTimer = clearTimer(reconnectTimer);
+    stableTimer = clearTimer(stableTimer);
+    watchdogTimer = clearTimer(watchdogTimer);
+    detachSocket?.();
+    detachSocket = null;
+    const old = ws;
+    ws = null;
+    if (_connected) {
+      _connected = false;
+      callbacks.onConnectionChange(false);
+    }
+    old?.close();
+    backoffMs = INITIAL_BACKOFF_MS;
+    connect();
+  }
+
+  /** Verifica la connessione: socket chiuso → riapri; socket aperto → SNAPSHOT con watchdog. */
+  function refresh(): void {
+    if (closed) return;
+    if (!ws || ws.readyState > READY_STATE_OPEN) {
+      reconnectTimer = clearTimer(reconnectTimer);
+      backoffMs = INITIAL_BACKOFF_MS;
+      connect();
+      return;
+    }
+    // Anche con il WS aperto lo stato potrebbe essere stantio: se non risponde, riapri.
+    if (ws.readyState === READY_STATE_OPEN) {
+      requestSnapshot();
+      watchdogTimer = clearTimer(watchdogTimer);
+      watchdogTimer = setTimeout(() => {
+        watchdogTimer = null;
+        forceReconnect();
+      }, WATCHDOG_MS);
+    }
+  }
 
   function onVisibilityChange(): void {
     if (document.hidden) return;
+    refresh();
+  }
 
-    // Pagina tornata visibile: se WS chiuso, riapri e chiedi SNAPSHOT
-    if (!ws || ws.readyState > READY_STATE_OPEN) {
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-      backoffMs = INITIAL_BACKOFF_MS;
-      connect();
-    }
-
-    // Anche con il WS ancora aperto lo stato potrebbe essere stantio.
-    if (ws && ws.readyState === READY_STATE_OPEN) {
-      requestSnapshot();
-    }
+  function onOnline(): void {
+    refresh();
   }
 
   // ── Chiusura ─────────────────────────────────────────────────
@@ -323,8 +391,13 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
+    stableTimer = clearTimer(stableTimer);
+    watchdogTimer = clearTimer(watchdogTimer);
     if (typeof document !== 'undefined') {
       document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('online', onOnline);
     }
     detachSocket?.();
     detachSocket = null;
@@ -353,10 +426,7 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
 
   function requestSnapshot(): void {
     // `player_id` è omesso nelle connessioni spettatore.
-    const action: Record<string, unknown> = {
-      actionType: 'REQUEST_SNAPSHOT',
-      client_seq: null,
-    };
+    const action: Record<string, unknown> = { actionType: 'REQUEST_SNAPSHOT' };
     if (playerId) action['player_id'] = playerId;
     if (ws && ws.readyState === READY_STATE_OPEN) {
       ws.send(stringifyWithBigInt(action));
@@ -372,6 +442,9 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
 
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', onVisibilityChange);
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', onOnline);
   }
   connect();
 

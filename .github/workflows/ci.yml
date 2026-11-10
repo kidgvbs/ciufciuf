@@ -1,32 +1,45 @@
 name: ci
 on:
   push:
+    branches: [main]
   pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
 jobs:
   rust:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - name: ts-rs bindings are up to date
+        run: |
+          git diff --exit-code -- crates/ttr-proto/bindings
+          bash client/scripts/copy-bindings.sh
+          git diff --exit-code -- client/src/lib/proto
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
   client:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: client
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: client/package.json
       - run: bun install --frozen-lockfile
       - run: bun run check
-      - run: bunx vitest run
+      - run: bun run test
+      - run: bun run build

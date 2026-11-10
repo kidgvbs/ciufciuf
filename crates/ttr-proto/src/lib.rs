@@ -109,6 +109,7 @@ pub struct DrawCardPayload {
     pub source: DrawSource,
     /// Numero di sequenza client per idempotenza: un valore minore o uguale
     /// all'ultimo ricevuto è un duplicato scartato. Assente = nessuna deduplica.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
 }
@@ -125,6 +126,7 @@ pub enum DrawSource {
 #[ts(export)]
 pub struct DrawTicketsPayload {
     pub player_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
 }
@@ -135,6 +137,7 @@ pub struct ChooseTicketsPayload {
     pub player_id: String,
     /// Id dei biglietti da tenere (in ordine lessicografico).
     pub keep: Vec<TicketId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
 }
@@ -146,6 +149,7 @@ pub struct ClaimRoutePayload {
     pub route_id: RouteId,
     /// Suggerimento: il server valida e risolve il pagamento (locomotive automatiche).
     pub cards_discarded: Vec<CardColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
 }
@@ -154,6 +158,7 @@ pub struct ClaimRoutePayload {
 #[ts(export)]
 pub struct RequestSnapshotPayload {
     pub player_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
 }
@@ -438,6 +443,42 @@ mod tests {
         let _back: InboundAction = serde_json::from_str(&json).unwrap();
     }
 
+    #[test]
+    fn client_seq_none_is_omitted() {
+        let player_id = "p".to_string();
+        let msgs = [
+            InboundAction::DrawTrainCard(DrawCardPayload {
+                player_id: player_id.clone(),
+                source: DrawSource::Deck,
+                client_seq: None,
+            }),
+            InboundAction::DrawTickets(DrawTicketsPayload {
+                player_id: player_id.clone(),
+                client_seq: None,
+            }),
+            InboundAction::ChooseTickets(ChooseTicketsPayload {
+                player_id: player_id.clone(),
+                keep: vec![],
+                client_seq: None,
+            }),
+            InboundAction::ClaimRoute(ClaimRoutePayload {
+                player_id: player_id.clone(),
+                route_id: "r".into(),
+                cards_discarded: vec![],
+                client_seq: None,
+            }),
+            InboundAction::RequestSnapshot(RequestSnapshotPayload {
+                player_id,
+                client_seq: None,
+            }),
+        ];
+        for msg in msgs {
+            let json = serde_json::to_string(&msg).unwrap();
+            assert!(!json.contains("client_seq"), "{json}");
+            let back: InboundAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(serde_json::to_string(&back).unwrap(), json);
+        }
+    }
     #[test]
     fn roundtrip_inbound_choose() {
         let msg = InboundAction::ChooseTickets(ChooseTicketsPayload {

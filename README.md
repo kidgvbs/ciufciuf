@@ -16,7 +16,7 @@ Per orientarsi nel dettaglio:
 
 ## Come si gioca
 
-Servono Rust (edizione 2024) e Node.js. Dalla radice del repo:
+Servono Rust (edizione 2024) e [bun](https://bun.sh). Dalla radice del repo:
 
 ```bash
 (cd client && bun install --frozen-lockfile && bun run build)
@@ -42,18 +42,19 @@ I dati restano in `--saves-dir` (ignorata da git):
 | File | Contenuto |
 |---|---|
 | `<id>.json` | Save di una partita **in corso**: seed, log delle azioni e, per ogni giocatore, solo l'hash SHA-256 del token |
-| `profiles.json` | Nomi dei profili, salvati al primo ingresso in partita (maiuscole e forma Unicode ignorate, massimo 200). Se il file è illeggibile viene spostato in `profiles.json.corrupt-<unix>` e non è mai sovrascritto |
+| `profiles.json` | Nomi dei profili, salvati al primo ingresso in partita (maiuscole, forma Unicode e caratteri confondibili ignorati, massimo 200; se due profili hanno la stessa chiave resta il primo). Se il file è illeggibile viene spostato in `profiles.json.corrupt-<unix>` e non è mai sovrascritto |
 | `results.jsonl` | Una riga per partita conclusa: nome, totale e vincitore di ogni giocatore. Una partita compare una sola volta |
 
-A fine partita il motore calcola il vincitore (totale più alto; a parità più biglietti completati, poi bonus del percorso più lungo), il risultato viene aggiunto a `results.jsonl` e solo dopo il save della partita viene **eliminato**. La schermata finale resta per 30 minuti, poi la partita sparisce dall'elenco. La classifica generale (vittorie, poi punti totali, aggregata per nome normalizzato) è in `GET /api/standings`; i profili in `GET /api/profiles`. Save, profili e risultati sono scritti in modo durevole (file temporaneo, `fsync`, `rename`, `fsync` della cartella) da un task per partita, fuori dall'attore.
+A fine partita il motore calcola il vincitore (totale più alto; a parità più biglietti completati, poi bonus del percorso più lungo), il risultato viene aggiunto a `results.jsonl` e solo dopo il save della partita viene **eliminato**. Se l'archiviazione fallisce il save resta su disco con stato `completed` e viene archiviato al riavvio successivo: all'avvio il server archivia e elimina i save conclusi rimasti e cancella i `*.tmp` più vecchi di un'ora. La schermata finale resta per 30 minuti, poi la partita sparisce dall'elenco. La classifica generale (vittorie, poi punti totali, aggregata per nome normalizzato) è in `GET /api/standings`; i profili in `GET /api/profiles`. Save, profili e risultati sono scritti in modo durevole (file temporaneo, `fsync`, `rename`, `fsync` della cartella) da un task per partita, fuori dall'attore.
 
 Limiti e durate:
 
-- **Nomi:** giocatori e partite sono normalizzati in NFC; i caratteri di controllo e invisibili (zero-width, bidi) sono rifiutati con `INVALID_NAME`.
-- **Lobby inattiva:** una lobby non avviata senza join, start o connessioni per 30 minuti sparisce.
+- **Nomi:** giocatori e partite sono normalizzati in NFKC e le sequenze di spazi diventano uno spazio solo. Sono rifiutati con `INVALID_NAME` i caratteri di controllo, invisibili o "vuoti" (zero-width, bidi, Hangul filler, braille blank, variation selector), i segni combinanti iniziali o più di 2 di fila e le parole che mescolano alfabeti. Due nomi con lo stesso aspetto (maiuscole, larghezza dei caratteri, lettere confondibili come "А" cirillica e "A" latina) hanno la stessa chiave e il secondo riceve `NAME_TAKEN`.
+- **Seed:** il seed di ogni partita è di 64 bit da un generatore crittografico e finisce solo nel save, mai nelle API o nei messaggi WebSocket. `POST /api/games` con un `seed` risponde `400 SEED_NOT_ALLOWED`, salvo che il server sia avviato con `--allow-client-seed` (test e partite riproducibili: con il seed si ricostruiscono le mani di tutti).
+- **Lobby inattiva:** una lobby non avviata senza join, start o connessioni di giocatori per 30 minuti sparisce; senza giocatori bastano 5 minuti, anche con spettatori collegati.
 - **Partita abbandonata:** una partita avviata senza connessioni per 6 ore sparisce dall'elenco, ma il suo save resta su disco e si può riprendere con `--resume`.
-- **Partite attive:** al massimo 20; oltre, la creazione risponde `429 TOO_MANY_GAMES`. Al massimo 8 spettatori WebSocket per partita.
-- **WebSocket:** messaggi oltre 16 KiB chiudono la connessione; un client che non legge viene scollegato e, riconnettendosi, riceve lo stato aggiornato.
+- **Partite attive:** al massimo 20, e le partite concluse non contano; oltre, la creazione risponde `429 TOO_MANY_GAMES`. Al massimo 8 spettatori WebSocket per partita. L'host chiude una partita con `DELETE /api/games/<id>` e `{"hostToken"}` (204, oppure 401): un save su disco resta dov'è.
+- **WebSocket:** messaggi oltre 16 KiB chiudono la connessione; un client che non legge viene scollegato e, riconnettendosi, riceve lo stato aggiornato. Il server manda un ping ogni 15 secondi e scollega chi tace per 45; la scrittura su un socket che non assorbe dati scade dopo 10 secondi. Ogni giocatore ha al massimo 4 connessioni: la quinta chiude la più vecchia.
 
 ### Opzioni del server
 
@@ -65,8 +66,9 @@ Limiti e durate:
 | `--saves-dir` | `saves` | Save delle partite in corso, profili e risultati |
 | `--client-dist` | `../client/dist` | Il default vale solo se si parte da una sottocartella: dalla radice va passato `./client/dist` |
 | `--resume <file>` | | Ripristina una partita salvata |
+| `--allow-client-seed` | spento | Ammette il seed scelto dal client in `POST /api/games` |
 
-`--help` elenca le opzioni; un valore non valido, un valore mancante o un'opzione sconosciuta fanno terminare il server con un errore. Su SIGINT/SIGTERM il server ferma le partite, attende le scritture in coda e chiude.
+`--help` elenca le opzioni; un valore non valido, un valore mancante o un'opzione sconosciuta fanno terminare il server con un errore. Su SIGINT/SIGTERM il server smette di accettare creazioni, join e WebSocket (503), ferma le partite, attende le scritture in coda e chiude entro 15 secondi; un secondo segnale esce subito (codice 130) e i save in coda potrebbero non essere su disco.
 
 ### Riprendere una partita salvata
 
@@ -85,7 +87,7 @@ curl -X POST http://localhost:8080/api/games/<id>/reassign -H 'content-type: app
 curl -X POST http://localhost:8080/api/games/<id>/start -H 'content-type: application/json' -d '{"hostToken":"<token>"}'
 ```
 
-A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>.bak`. I backup non vengono mai ruotati né sovrascritti.
+A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>.bak`. I backup non vengono mai ruotati né sovrascritti, e si possono cancellare a mano quando non servono più.
 
 ## Da sapere
 
@@ -130,9 +132,9 @@ FUZZ_GAMES_FULL=6000 cargo test -p ttr-core --release --test integration_tests f
 ./target/release/ttr-validate data/maps/usa.json data/rulesets/usa_v2.json
 
 cd client
-bun run typecheck && bun run test && bun run check && bun run build
-node smoke-test.mjs http://localhost:8080       # serve un server già avviato; lascia un save di prova
-node tools/fullgame-test.mjs --spawn-server     # partita completa con un server suo, dopo la build release
+bun run test && bun run check && bun run build
+bun smoke-test.mjs http://localhost:8080        # serve un server già avviato con --allow-client-seed; lascia un save di prova
+bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server suo, dopo la build release
 ```
 
 ### Convenzioni
@@ -141,16 +143,18 @@ node tools/fullgame-test.mjs --spawn-server     # partita completa con un server
 - **`RULES_VERSION`** (`ttr-core`) va incrementata quando una modifica cambia il replay di una partita esistente.
 - **Il client non conosce le regole:** le mosse legali arrivano dal server.
 - **Protocollo:** i tipi nascono in `ttr-proto`; `bun run copy-bindings` li copia nel client.
-- **Package manager del client:** bun (`client/bun.lock`). `bun pm untrusted` non segnala postinstall da approvare, quindi `trustedDependencies` resta vuoto.
+- **Package manager del client:** bun (`client/bun.lock`). `bun install` blocca il postinstall di `esbuild` (`bun pm untrusted` lo elenca): è innocuo, perché esbuild usa il binario del suo pacchetto per piattaforma, quindi `trustedDependencies` resta vuoto.
+- **Aggiornamento delle dipendenze:** Renovate (`renovate.json`) apre PR raggruppate. `rand`, `rand_chacha` e `rand_core` sono esclusi dal bot, perché determinano lo shuffle e quindi il replay di ogni save: si aggiornano solo a mano, insieme a `RULES_VERSION`.
+- **Major del client:** `vite`, `vitest`, `svelte` e `typescript` richiedono modifiche alla configurazione, quindi le major si approvano dalla Dependency Dashboard di Renovate.
 - **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
-- **Layout della mappa:** `cd client && node tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
+- **Layout della mappa:** `cd client && bun tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
 ## Prossimi fix
 
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
 1. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi", `hostToken` della ripresa visibile alla TV)
-2. TV: riquadro con le ultime mosse; WebSocket: ping per rilevare i telefoni in standby
+2. TV: riquadro con le ultime mosse
 3. Rotazione dei backup `.bak` e prestazioni del longest path
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.

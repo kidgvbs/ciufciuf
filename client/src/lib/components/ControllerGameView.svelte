@@ -341,6 +341,8 @@
 </script>
 
 <div class="cv-game">
+  <!-- Sfondo inerte mentre il dialog dei biglietti è aperto. -->
+  <div class="cv-bg" inert={ticketDialogOpen}>
   <!-- Header -->
   <div class="header">
     <div class="player-info">
@@ -539,6 +541,7 @@
                   <button
                     class="pay-swatch"
                     class:selected={payColor === c}
+                    aria-pressed={payColor === c}
                     disabled={handCount(c) === 0}
                     onclick={() => { payColor = c; }}
                     aria-label="Paga con {c} ({handCount(c)} in mano)"
@@ -560,12 +563,14 @@
                 <button
                   class="btn"
                   onclick={() => (payLocos = Math.max(0, payLocos - 1))}
+                  aria-label="Meno locomotive"
                   disabled={payLocos <= 0}
                 >−</button>
                 <span class="locos-value">{payLocos}</span>
                 <button
                   class="btn"
                   onclick={() => (payLocos = Math.min(maxLocos, payLocos + 1))}
+                  aria-label="Più locomotive"
                   disabled={payLocos >= maxLocos}
                 >+</button>
               </div>
@@ -652,6 +657,8 @@
     </div>
   {/if}
 
+  </div>
+
   <!-- Ticket choice dialog -->
   {#if ticketDialogOpen}
     <TicketChoiceDialog
@@ -675,6 +682,10 @@
     padding-bottom: 2rem;
   }
 
+  .cv-bg {
+    display: contents;
+  }
+
   /* Header */
   .header {
     display: flex;
@@ -694,6 +705,7 @@
     align-items: center;
     gap: 0.4rem;
     flex: 1;
+    min-width: 0;
   }
   .chip-dot {
     display: inline-block;
@@ -704,6 +716,10 @@
   .player-name {
     font-weight: 600;
     font-size: 1rem;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .player-stats {
     display: flex;
@@ -1019,6 +1035,8 @@
     border-radius: 10px;
     padding: 2px;
     cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
   }
   .pay-swatch.selected {
     border-color: var(--gold);

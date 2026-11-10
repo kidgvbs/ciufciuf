@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -19,8 +20,10 @@ use crate::names::{name_key, normalize_name};
 use crate::save::{build_save_data, now_rfc3339, token_matches, tokens_equal};
 use crate::writer::SaveWriter;
 
-/// Lobby non avviata senza comandi `Join`/`Start`/`Connect`/`Reassign`: oltre questo tempo l'attore termina.
+/// Lobby non avviata senza comandi `Join`/`Start`/`Reassign` né connessioni di giocatori: oltre questo tempo l'attore termina.
 pub(crate) const LOBBY_IDLE_TTL: Duration = Duration::from_secs(30 * 60);
+/// Lobby senza giocatori: oltre questo tempo l'attore termina, anche se ci sono spettatori.
+pub(crate) const EMPTY_LOBBY_TTL: Duration = Duration::from_secs(5 * 60);
 /// Partita avviata senza connessioni attive: oltre questo tempo l'attore termina e il save resta su disco.
 pub(crate) const ABANDONED_TTL: Duration = Duration::from_secs(6 * 60 * 60);
 /// Quanto resta viva una partita conclusa (schermata finale su TV e telefoni).
@@ -29,6 +32,12 @@ pub(crate) const GAME_OVER_LINGER: Duration = Duration::from_secs(30 * 60);
 pub(crate) const MAX_ACTIVE_GAMES: usize = 20;
 /// Spettatori WebSocket per partita oltre i quali la connessione viene rifiutata.
 pub(crate) const MAX_SPECTATORS_PER_GAME: usize = 8;
+/// Connessioni WebSocket per giocatore oltre le quali la più vecchia viene chiusa.
+pub(crate) const MAX_CONNECTIONS_PER_PLAYER: usize = 4;
+/// Intervallo tra due `Ping` inviati a un client WebSocket.
+pub(crate) const WS_PING_INTERVAL: Duration = Duration::from_secs(15);
+/// Silenzio (nessun messaggio, `Pong` compresi) oltre il quale un client WebSocket è scollegato.
+pub(crate) const WS_IDLE_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// Lunghezza massima del nome di un giocatore, in caratteri.
 pub(crate) const MAX_PLAYER_NAME_CHARS: usize = 24;
@@ -38,6 +47,8 @@ pub(crate) const MAX_PLAYER_NAME_CHARS: usize = 24;
 pub struct SessionLimits {
     /// Vita massima di una lobby inattiva.
     pub lobby_idle_ttl: Duration,
+    /// Vita massima di una lobby senza giocatori.
+    pub empty_lobby_ttl: Duration,
     /// Vita massima di una partita avviata senza connessioni.
     pub abandoned_ttl: Duration,
     /// Vita di una partita conclusa.
@@ -46,16 +57,26 @@ pub struct SessionLimits {
     pub max_active_games: usize,
     /// Numero massimo di spettatori per partita.
     pub max_spectators: usize,
+    /// Numero massimo di connessioni per giocatore.
+    pub max_connections_per_player: usize,
+    /// Intervallo tra i `Ping` WebSocket.
+    pub ws_ping_interval: Duration,
+    /// Silenzio massimo di un client WebSocket prima di scollegarlo.
+    pub ws_idle_timeout: Duration,
 }
 
 impl Default for SessionLimits {
     fn default() -> Self {
         Self {
             lobby_idle_ttl: LOBBY_IDLE_TTL,
+            empty_lobby_ttl: EMPTY_LOBBY_TTL,
             abandoned_ttl: ABANDONED_TTL,
             game_over_linger: GAME_OVER_LINGER,
             max_active_games: MAX_ACTIVE_GAMES,
             max_spectators: MAX_SPECTATORS_PER_GAME,
+            max_connections_per_player: MAX_CONNECTIONS_PER_PLAYER,
+            ws_ping_interval: WS_PING_INTERVAL,
+            ws_idle_timeout: WS_IDLE_TIMEOUT,
         }
     }
 }
@@ -74,6 +95,9 @@ pub struct GameHandle {
     pub max_players: u32,
     pub players_joined: usize,
     pub started: bool,
+    /// Impostato dall'attore al game over: la partita non conta più nel limite
+    /// delle partite attive.
+    pub finished: Arc<AtomicBool>,
 }
 
 /// Esito della connessione WebSocket restituito all'handler dopo l'auth.
@@ -150,6 +174,11 @@ pub enum GameCommand {
     GetInfo {
         reply: tokio::sync::oneshot::Sender<GameInfo>,
     },
+    /// Chiude la partita su richiesta dell'host (REST `DELETE`).
+    Delete {
+        host_token: String,
+        reply: tokio::sync::oneshot::Sender<Result<(), LobbyError>>,
+    },
     Shutdown,
 }
 
@@ -198,12 +227,12 @@ pub(crate) struct SavedPlayer {
 
 /// Voce del roster salvato, indicizzata per `name_key`.
 #[derive(Debug, Clone)]
-struct SavedEntry {
-    id: String,
-    engine_index: usize,
-    color: PlayerColor,
-    name: String,
-    token_hash: Option<String>,
+pub(crate) struct SavedEntry {
+    pub id: String,
+    pub engine_index: usize,
+    pub color: PlayerColor,
+    pub name: String,
+    pub token_hash: Option<String>,
 }
 
 /// Parametri comuni a ogni sessione.
@@ -217,6 +246,7 @@ pub(crate) struct SessionConfig {
     pub save_path: Option<PathBuf>,
     pub results_lock: Arc<Mutex<()>>,
     pub limits: SessionLimits,
+    pub finished: Arc<AtomicBool>,
 }
 
 /// Partita ricostruita da un save.
@@ -256,18 +286,20 @@ pub(crate) struct GameSession {
     writer: Option<SaveWriter>,
     results_lock: Arc<Mutex<()>>,
     limits: SessionLimits,
+    finished: Arc<AtomicBool>,
     pub rx: mpsc::Receiver<GameCommand>,
-    /// Seed RNG opzionale (creazione partita); `None` = seed time-based.
+    /// Seed RNG scelto alla creazione (solo se il server lo ammette); `None` =
+    /// seed casuale da CSPRNG allo start.
     pub seed: Option<u64>,
     /// Motore pre-replay per resume.
     pub resumed_engine: Option<ttr_core::Engine>,
     /// Mappa pre-caricata per resume.
     pub resumed_map_data: Option<ttr_core::MapData>,
     /// Roster salvato, indicizzato per `name_key`; vuoto fuori dal resume.
-    saved_roster: BTreeMap<String, SavedEntry>,
+    pub(crate) saved_roster: BTreeMap<String, SavedEntry>,
     /// Istante di fine partita: dopo `game_over_linger` l'attore termina.
     pub finished_at: Option<Instant>,
-    /// Ultimo comando `Join`/`Start`/`Connect`/`Reassign` ricevuto.
+    /// Ultimo comando `Join`/`Start`/`Reassign` o `Connect` di un giocatore.
     last_activity: Instant,
     /// Da quando la partita avviata non ha connessioni attive.
     abandoned_since: Option<Instant>,
@@ -345,6 +377,7 @@ impl GameSession {
             writer: None,
             results_lock: config.results_lock,
             limits: config.limits,
+            finished: config.finished,
             rx,
             seed,
             resumed_engine,
@@ -363,7 +396,12 @@ impl GameSession {
             return Some(t + self.limits.game_over_linger);
         }
         if !self.started {
-            return Some(self.last_activity + self.limits.lobby_idle_ttl);
+            let ttl = if self.players.is_empty() && self.saved_roster.is_empty() {
+                self.limits.empty_lobby_ttl.min(self.limits.lobby_idle_ttl)
+            } else {
+                self.limits.lobby_idle_ttl
+            };
+            return Some(self.last_activity + ttl);
         }
         self.abandoned_since.map(|t| t + self.limits.abandoned_ttl)
     }
@@ -414,7 +452,10 @@ impl GameSession {
                 cmd,
                 GameCommand::Join { .. }
                     | GameCommand::Start { .. }
-                    | GameCommand::Connect { .. }
+                    | GameCommand::Connect {
+                        player_id: Some(_),
+                        ..
+                    }
                     | GameCommand::Reassign { .. }
             ) {
                 self.last_activity = Instant::now();
@@ -471,6 +512,13 @@ impl GameSession {
                 GameCommand::GetInfo { reply } => {
                     let info = self.build_game_info();
                     let _ = reply.send(info);
+                }
+                GameCommand::Delete { host_token, reply } => {
+                    if tokens_equal(&host_token, &self.host_token) {
+                        let _ = reply.send(Ok(()));
+                        break;
+                    }
+                    let _ = reply.send(Err(LobbyError::Unauthorized));
                 }
                 GameCommand::Shutdown => break,
             }
@@ -622,12 +670,15 @@ impl GameSession {
             .ok_or(LobbyError::NameNotInSave)?;
 
         let Some(&pos) = self.player_index.get(&entry.id) else {
-            return Ok(self.add_resumed_player(entry, new_token));
+            let response = self.add_resumed_player(entry, new_token);
+            self.write_save();
+            return Ok(response);
         };
         self.players[pos].token = new_token.clone();
         if let Some(conns) = self.connections.get_mut(&entry.id) {
             conns.clear();
         }
+        self.write_save();
         self.broadcast_public_state();
         Ok(JoinResponse {
             player_id: entry.id,
@@ -664,6 +715,7 @@ impl GameSession {
             self.engine = Some(engine);
             self.map_data = Some(map_data);
             self.started = true;
+            self.write_save();
             self.broadcast_public_state();
             self.push_private_states();
             return Ok(());
@@ -674,14 +726,15 @@ impl GameSession {
             return Err(LobbyError::MinPlayers(min_players));
         }
 
-        // Seed deterministico se fornito alla creazione (test + replay),
-        // altrimenti time-based.
-        let seed = self.seed.unwrap_or_else(|| {
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs()
-        });
+        // Il seed scelto alla creazione vale solo se il server lo ammette;
+        // altrimenti 64 bit da CSPRNG, che finiscono solo nel save.
+        let seed = match self.seed {
+            Some(seed) => seed,
+            None => getrandom::u64().map_err(|e| {
+                tracing::error!(game_id = %self.game_id, error = %e, "seed CSPRNG non disponibile");
+                LobbyError::Internal(e.to_string())
+            })?,
+        };
 
         // Ordine di join = indice del motore.
         let mut ordered: Vec<(usize, String)> = self
@@ -800,6 +853,7 @@ impl GameSession {
                         ..
                     } = event
                     {
+                        self.finished.store(true, Ordering::Release);
                         self.final_scores = Some(bridge::build_final_scores(
                             final_scores,
                             longest_path_players,
@@ -893,10 +947,16 @@ impl GameSession {
                 .connections
                 .get(pid)
                 .is_some_and(|v| v.iter().any(|(_, tx)| !tx.is_closed()));
-            self.connections
-                .entry(pid.clone())
-                .or_default()
-                .push((conn_id, tx.clone()));
+            let conns = self.connections.entry(pid.clone()).or_default();
+            conns.retain(|(_, tx)| !tx.is_closed());
+            // Oltre il limite si chiude la connessione più vecchia: il suo
+            // canale cade e il task di uscita chiude il socket.
+            let keep = self.limits.max_connections_per_player.saturating_sub(1);
+            if conns.len() > keep {
+                let excess = conns.len() - keep;
+                conns.drain(..excess);
+            }
+            conns.push((conn_id, tx.clone()));
             became_connected = !was_connected;
         } else {
             self.spectators.push((conn_id, tx.clone()));
@@ -1097,32 +1157,28 @@ impl GameSession {
 
     /// Partita conclusa: accoda l'archiviazione dei punteggi in `results.jsonl`
     /// (classifica generale) e l'eliminazione del save. Se l'archiviazione
-    /// fallisce il save resta su disco, così i punteggi non vanno persi.
+    /// fallisce il save `completed` resta su disco e viene archiviato al
+    /// riavvio successivo.
     fn archive_result_and_delete_save(&self) {
         let Some(writer) = &self.writer else { return };
         let Some(scores) = &self.final_scores else {
             return;
         };
-        let players = scores
-            .iter()
-            .map(|fs| crate::save::ResultPlayer {
-                name: self
+        let result = crate::save::GameResult::from_scores(
+            &self.game_id,
+            &self.game_name,
+            &self.ruleset_id,
+            now_rfc3339(),
+            scores.iter().map(|fs| {
+                let name = self
                     .player_index
                     .get(&fs.player_id)
                     .and_then(|&i| self.players.get(i))
                     .map(|p| p.name.clone())
-                    .unwrap_or_else(|| fs.player_id.clone()),
-                total: fs.total,
-                winner: fs.winner,
-            })
-            .collect();
-        let result = crate::save::GameResult {
-            game_id: self.game_id.clone(),
-            game_name: self.game_name.clone(),
-            ruleset_id: self.ruleset_id.clone(),
-            finished_at: now_rfc3339(),
-            players,
-        };
+                    .unwrap_or_else(|| fs.player_id.clone());
+                (name, fs.total, fs.winner)
+            }),
+        );
         writer.archive(result, build_save_data(self));
     }
 
@@ -1161,6 +1217,7 @@ mod tests {
                 save_path: None,
                 results_lock: Arc::default(),
                 limits: SessionLimits::default(),
+                finished: Arc::default(),
             },
             rx,
             None,

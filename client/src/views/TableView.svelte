@@ -10,6 +10,7 @@
     saveLastGame,
     loadLastGame,
     clearLastGame,
+    parseSeed,
     type LanCandidate,
     type GameDetailPlayer,
     type GameListItem,
@@ -18,7 +19,8 @@
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
   import { resolveServerHost } from '../lib/server-host';
   import { buildRejoinUrl } from '../lib/rejoin';
-  import { fatalMessage } from '../lib/errors';
+  import { fatalMessage, errorMessage } from '../lib/errors';
+  import { qrDataUrl } from '../lib/qr';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import { rankedScores, winnerNames } from '../lib/scores';
@@ -48,6 +50,8 @@
   let standings = $state<Standings | null>(null);
   // Messaggio d'errore visibile (si chiude da solo).
   let notice = $state<string>('');
+  // Troppi spettatori: la connessione è ferma finché l'operatore non preme "Riprova".
+  let spectatorBlocked = $state<boolean>(false);
   // Resume: nomi del salvataggio non ancora rientrati e QR di rientro già emessi (nome → URL).
   let missingPlayers = $state<string[]>([]);
   let rejoinLinks = $state<Record<string, string>>({});
@@ -68,6 +72,12 @@
   }
 
   $effect(() => {
+    if (!connectionStore.lastError) return;
+    const t = setTimeout(() => { connectionStore.lastError = null; }, 8000);
+    return () => clearTimeout(t);
+  });
+
+  $effect(() => {
     if (!notice) return;
     const t = setTimeout(() => { notice = ''; }, 8000);
     return () => clearTimeout(t);
@@ -85,7 +95,12 @@
 
   async function createGame() {
     try {
-      const seed = seedInput ? parseInt(seedInput, 10) : undefined;
+      // Il seed è un attrezzo di sviluppo: in produzione il campo non esiste e il server lo rifiuta.
+      const seed = import.meta.env.DEV ? parseSeed(seedInput) : undefined;
+      if (seed === null) {
+        notice = 'Seed non valido: serve un intero non negativo';
+        return;
+      }
       const result = await lobby.createGame(rulesetId, gameNameInput, seed);
       gameId = result.gameId; hostToken = result.hostToken;
       // Ricorda l'ultima partita: una TV ricaricata si riaggancia da sola
@@ -168,6 +183,7 @@
   // l'ultima partita ricordata.
   function leaveGame(forget = true) {
     if (connection) { connection.close(); connection = null; }
+    spectatorBlocked = false;
     if (forget) clearLastGame();
     updateUrlGame('');
     gameId = '';
@@ -179,7 +195,21 @@
     void refreshGames();
   }
 
+  function retrySpectator() {
+    spectatorBlocked = false;
+    connectionStore.lastError = null;
+    connectSpectator();
+  }
+
   function onFatal(reason: FatalReason) {
+    if (reason === 'TOO_MANY_SPECTATORS') {
+      // La partita esiste ancora: niente leaveGame, solo un messaggio con "Riprova".
+      connection = null;
+      connectionStore.connected = false;
+      connectionStore.lastError = null;
+      spectatorBlocked = true;
+      return;
+    }
     // Una versione incompatibile non invalida la partita: basta ricaricare la pagina.
     leaveGame(reason !== 'PROTOCOL_VERSION');
     notice = fatalMessage(reason);
@@ -292,6 +322,19 @@
         ⚠️ Disconnesso dal server &mdash; riconnessione in corso...
       </div>
     {/if}
+    {#if spectatorBlocked}
+      <div class="tv-banner" role="alert">
+        ⚠️ {fatalMessage('TOO_MANY_SPECTATORS')}
+        <button class="retry-btn" onclick={retrySpectator}>Riprova</button>
+      </div>
+    {/if}
+    {#if connectionStore.lastError}
+      <div role="alert">
+        <button class="tv-banner" onclick={() => (connectionStore.lastError = null)}>
+          ❌ {errorMessage(connectionStore.lastError)}
+        </button>
+      </div>
+    {/if}
     {#if notice}
       <div role="alert">
         <button class="tv-banner" onclick={() => (notice = '')}>❌ {notice}</button>
@@ -309,7 +352,7 @@
               {#each lanCandidates as cand}
                 {@const controllerUrl = cand.url + '/controller'}
                 <div class="qr-item" class:preferred={cand.preferred}>
-                  <img src={lobby.qrUrl(controllerUrl)} alt="QR {cand.ip}" class="qr-img" />
+                  <img src={qrDataUrl(controllerUrl)} alt="QR {cand.ip}" class="qr-img" />
                   <div class="qr-label">{cand.ip}{lanPort !== null ? `:${lanPort}` : ''}{cand.preferred ? ' ⭐' : ''}</div>
                 </div>
               {/each}
@@ -332,7 +375,9 @@
                 {/each}
               </div>
               <label>Nome: <input bind:value={gameNameInput} /></label>
-              <label>Seed (opzionale — partita ripetibile per test): <input bind:value={seedInput} type="number" placeholder="casuale" /></label>
+              {#if import.meta.env.DEV}
+                <label>Seed (solo sviluppo — partita ripetibile): <input bind:value={seedInput} inputmode="numeric" placeholder="casuale" /></label>
+              {/if}
               <button class="btn" onclick={createGame}>Crea partita</button>
             </div>
             {#if availableGames.length > 0}
@@ -359,7 +404,8 @@
               <div class="player-list">
                 {#each lobbyList as p (p.key)}
                   <div class="player-chip" style="border-color:{PLAYER_COLOR_CSS[p.color]}">
-                    <span class="chip-dot" style="background:{PLAYER_COLOR_CSS[p.color]}"></span> {p.name}
+                    <span class="chip-dot" style="background:{PLAYER_COLOR_CSS[p.color]}"></span>
+                    <span class="chip-name">{p.name}</span>
                   </div>
                 {/each}
               </div>
@@ -382,7 +428,7 @@
                       {#if rejoinLinks[missing]}
                         <img
                           class="missing-qr"
-                          src={lobby.qrUrl(rejoinLinks[missing])}
+                          src={qrDataUrl(rejoinLinks[missing])}
                           alt="QR per {missing}"
                         />
                       {/if}
@@ -472,7 +518,7 @@
               <span class="pawn" style="--pawn:{PLAYER_COLOR_CSS[p.color]}">
                 <TrainIcon color={p.color as CardColor} uid="tv-{p.player_id.slice(0, 6)}" />
               </span>
-              {p.name}
+              <span class="chip-name">{p.name}</span>
               {#if !p.connected}<span class="offline-tag">⚡ offline</span>{/if}
               {#if isCurrentPlayer(p.player_id)}<span class="turn-tag">turno</span>{/if}
             </div>
@@ -491,7 +537,7 @@
               <span class="offline-sub">QR per rientrare — la partita si riprende da sola</span>
             </div>
             {#if rejoinUrl}
-              <img class="offline-qr" src={lobby.qrUrl(rejoinUrl)} alt="QR per rientrare in partita" />
+              <img class="offline-qr" src={qrDataUrl(rejoinUrl)} alt="QR per rientrare in partita" />
             {/if}
           </div>
         {/if}
@@ -582,10 +628,13 @@
   .player-list { display:flex; gap:0.5rem; flex-wrap:wrap; margin:0.5rem 0; }
   .player-chip {
     display:flex; align-items:center; gap:0.3rem; padding:0.3rem 0.7rem;
+    min-width:0; max-width:100%;
     border:2px solid; border-radius:20px; font-size:0.9rem;
     background: var(--chrome-bg-2);
   }
-  .chip-dot { display:inline-block; width:10px; height:10px; border-radius:50%; }
+  .chip-dot { display:inline-block; flex:none; width:10px; height:10px; border-radius:50%; }
+  .chip-name { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .retry-btn { margin:0 0 0 0.6rem; padding:0.3rem 0.9rem; font-size:0.9rem; }
   .hint { color:var(--chrome-faint); font-size:0.85rem; }
 
   /* Game over — foglio segnapunti su pergamena */
@@ -647,7 +696,7 @@
     width:96px; height:96px; margin-left:auto;
     background:#fff; border-radius:8px; padding:4px;
   }
-  .player-name { font-weight:bold; display:flex; align-items:center; gap:0.4rem; }
+  .player-name { font-weight:bold; display:flex; align-items:center; gap:0.4rem; min-width:0; }
   .pawn { display:inline-flex; width:34px; height:16px; }
   .turn-tag {
     margin-left:auto; font-size:0.6rem; font-weight:800; text-transform:uppercase;

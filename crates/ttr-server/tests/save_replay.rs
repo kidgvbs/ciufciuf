@@ -33,10 +33,9 @@ async fn save_and_replay() {
     let final_public = run_game(&mut a, &mut b, &map).await;
     assert_eq!(final_public.state, GameState::GameOver);
 
-    // Lascia tempo al server per archiviare il risultato.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
+    // L'archiviazione aggiunge il risultato e poi elimina il save.
     let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
+    wait_for(WAIT, || (!save_path.exists()).then_some(())).await;
     assert!(
         !save_path.exists(),
         "il save della partita conclusa va eliminato"
@@ -205,8 +204,13 @@ async fn resume_flow() {
         }
     }
 
-    // Aspetta che il server scriva il save file.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    // Aspetta che il server scriva il save con le quattro azioni giocate
+    // (due scelte dei biglietti e un turno a testa).
+    wait_for_save(
+        &server.saves_dir.join(format!("{}.json", game.game_id)),
+        |s| s["actions"].as_array().is_some_and(|a| a.len() == 4),
+    )
+    .await;
 
     // Salva lo stato pubblico pre-resume per confronto.
     let pre_resume_public = public.clone().expect("public state pre-resume");
@@ -380,11 +384,12 @@ async fn resume_inverted_order() {
         }
     }
 
-    // Aspetta save.
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
+    // Aspetta il save con le tre azioni giocate (due scelte dei biglietti e il turno di A).
     let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
-    assert!(save_path.exists(), "save file mid-game esiste");
+    wait_for_save(&save_path, |s| {
+        s["actions"].as_array().is_some_and(|a| a.len() == 3)
+    })
+    .await;
 
     // Stato atteso ricavato dal save: `public` e la view di A sono fermi a
     // prima dell'azione appena inviata.
@@ -636,9 +641,11 @@ async fn r1_resume_inverted_rejoin_keeps_turn_and_save() {
         },
     ))
     .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let sv = wait_for_save(&save, |s| {
+        s["actions"].as_array().is_some_and(|a| a.len() == 1)
+    })
+    .await;
     a.disconnect().await;
-    let sv = read_save(&save);
     assert_eq!(
         sv["actions"].as_array().unwrap().len(),
         1,
@@ -684,9 +691,9 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
     let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
     let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&save).await;
     let mut raw = read_save(&save);
     let parsed: ttr_server::save::SaveData =
         serde_json::from_value(raw.clone()).expect("parse SaveData");
@@ -752,7 +759,7 @@ async fn r2_partial_resume_start_is_rejected_and_save_survives() {
     let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    wait_for_file(&save).await;
     let original = std::fs::read_to_string(&save).expect("lettura save");
 
     let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
@@ -767,6 +774,7 @@ async fn r2_partial_resume_start_is_rejected_and_save_survives() {
         "detail: {}",
         body
     );
+    // Verifica che qualcosa non accada: il rifiuto non riscrive il save.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     assert_eq!(
         read_save(&save)["players"].as_array().unwrap().len(),
@@ -777,11 +785,15 @@ async fn r2_partial_resume_start_is_rejected_and_save_survives() {
     // Il rifiuto non consuma il motore: Bob entra e la partita parte.
     join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // Lo shutdown svuota la coda del writer: il save su disco è quello finale.
+    ttr_server::shutdown_sessions(&server.state, WAIT).await;
+    let mut before: serde_json::Value = serde_json::from_str(&original).expect("parse save");
+    let mut after = read_save(&save);
+    before.as_object_mut().unwrap().remove("updatedAt");
+    after.as_object_mut().unwrap().remove("updatedAt");
     assert_eq!(
-        std::fs::read_to_string(&save).expect("lettura save"),
-        original,
-        "lo start del resume non deve riscrivere il save"
+        after, before,
+        "lo start del resume riscrive il save senza cambiarne il contenuto"
     );
 
     let backups = backups_of(&server.saves_dir, &g.game_id);
@@ -799,9 +811,9 @@ async fn r3_resume_rejects_game_id_that_is_not_a_canonical_uuid() {
     join_game(&server.base_url, &g.game_id, "Alice", None).await;
     join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&save).await;
     let unique = format!("ciufciuf-pwned-{}", uuid::Uuid::new_v4());
     let absolute = std::env::temp_dir().join(&unique);
     let relative = format!("../{}", unique);
@@ -848,9 +860,9 @@ async fn resume_accepts_saved_names_outside_lobby_limits() {
     let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
     join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&save).await;
     let long_name = "x".repeat(30);
     let mut v = read_save(&save);
     v["players"][0]["name"] = serde_json::json!(long_name);
@@ -974,13 +986,14 @@ fn save_with_names_equal_ignoring_case_is_rejected() {
     assert_rejected(save, "nome giocatore duplicato");
 }
 
-/// I save precedenti a `COLOR_TAKEN` possono avere colori ripetuti.
+/// Il motore rifiuta i colori ripetuti: un save che li contiene non è riproducibile.
 #[test]
-fn save_with_duplicate_color_is_accepted() {
+fn save_with_duplicate_color_is_rejected() {
     let mut save = valid_save();
     save.players[0].color = "RED".into();
     save.players[1].color = "RED".into();
-    assert!(replay(&save).is_ok());
+    let err = replay(&save).err().expect("colori duplicati");
+    assert!(err.contains("motore non inizializzabile"), "{err}");
 }
 
 #[test]
@@ -1017,9 +1030,10 @@ async fn server_writes_rules_version_in_save() {
     join_game(&server.base_url, &g.game_id, "Alice", None).await;
     join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let save = read_save(&server.saves_dir.join(format!("{}.json", g.game_id)));
+    let path = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&path).await;
+    let save = read_save(&path);
     assert_eq!(ttr_core::RULES_VERSION, 2);
     assert_eq!(save["rulesVersion"], 2);
     assert_eq!(save["formatVersion"], 2);
@@ -1033,9 +1047,9 @@ async fn save_contains_only_token_hash() {
     let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
     let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     let path = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&path).await;
     let raw = std::fs::read_to_string(&path).expect("lettura save");
     for secret in [&pa.token, &pb.token, &g.host_token] {
         assert!(!raw.contains(secret.as_str()), "token in chiaro nel save");
@@ -1059,9 +1073,9 @@ async fn resume_keeps_saved_name_when_typed_differently() {
     let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
     let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&save).await;
     let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
     let ra = join_game_resume(&server.base_url, &rid, "  ALICE ", &pa.token).await;
     let _rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
@@ -1083,9 +1097,8 @@ async fn started_two_player_game(
     let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
     let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
-    assert!(save.exists(), "save iniziale scritto");
+    wait_for_file(&save).await;
     (g, pa, pb, save)
 }
 
@@ -1263,4 +1276,120 @@ async fn reassign_on_fresh_game_is_rejected() {
     )
     .await;
     assert_error(&res, 400, "BAD_REQUEST");
+}
+
+// ── Archiviazione all'avvio e durabilità del reassign ────────────────
+
+/// Un save `completed` rimasto su disco (archiviazione fallita) viene
+/// archiviato all'avvio successivo e poi eliminato.
+#[tokio::test]
+async fn completed_save_is_archived_on_startup() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+    // `results.jsonl` è una directory: l'archiviazione fallisce.
+    let results = server.saves_dir.join(ttr_server::save::RESULTS_FILE);
+    std::fs::create_dir(&results).unwrap();
+
+    let g = create_game_with_seed(&server.base_url, "Avvio", Some(42)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    let mut a = Player::new(WsClient::connect(&server, &g.game_id, &pa.player_id, &pa.token).await);
+    let mut b = Player::new(WsClient::connect(&server, &g.game_id, &pb.player_id, &pb.token).await);
+    let final_public = run_game(&mut a, &mut b, &map).await;
+    assert_eq!(final_public.state, GameState::GameOver);
+
+    let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_save(&save, |s| s["status"] == "completed").await;
+    // Un file `profiles.json` accanto ai save non è un save e non dà errori.
+    std::fs::write(server.saves_dir.join("profiles.json"), r#"["Alice"]"#).unwrap();
+
+    std::fs::remove_dir(&results).unwrap();
+    assert_eq!(ttr_server::save::archive_completed_saves(&server.state), 1);
+
+    assert!(!save.exists(), "il save archiviato viene eliminato");
+    let archived = ttr_server::save::read_results(&server.saves_dir);
+    assert_eq!(archived.len(), 1);
+    assert_eq!(archived[0].game_id, g.game_id);
+    assert_eq!(archived[0].game_name, "Avvio");
+    let scores = final_public.final_scores.as_ref().expect("punteggi finali");
+    for fs in scores {
+        let name = if fs.player_id == pa.player_id {
+            "Alice"
+        } else {
+            "Bob"
+        };
+        let row = archived[0]
+            .players
+            .iter()
+            .find(|p| p.name == name)
+            .expect("giocatore archiviato");
+        assert_eq!((row.total, row.winner), (fs.total, fs.winner), "{name}");
+    }
+
+    assert_eq!(
+        ttr_server::save::archive_completed_saves(&server.state),
+        0,
+        "una seconda scansione non trova più nulla"
+    );
+    assert_eq!(ttr_server::save::read_results(&server.saves_dir).len(), 1);
+}
+
+/// All'avvio i `*.tmp` più vecchi di un'ora sono eliminati, quelli recenti restano.
+#[tokio::test]
+async fn stale_tmp_files_are_removed() {
+    let server = TestServer::start().await;
+    let stale = server.saves_dir.join("x.json.1.0.tmp");
+    let fresh = server.saves_dir.join("y.json.1.1.tmp");
+    std::fs::write(&stale, b"{").unwrap();
+    std::fs::write(&fresh, b"{").unwrap();
+    let two_hours_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(2 * 60 * 60);
+    std::fs::File::options()
+        .write(true)
+        .open(&stale)
+        .unwrap()
+        .set_modified(two_hours_ago)
+        .unwrap();
+
+    assert_eq!(ttr_server::save::archive_completed_saves(&server.state), 0);
+    assert!(!stale.exists(), "tmp obsoleto eliminato");
+    assert!(fresh.exists(), "tmp recente intatto");
+}
+
+/// Il token riassegnato dall'host è nel save subito, quindi sopravvive a un riavvio.
+#[tokio::test]
+async fn reassigned_token_survives_restart() {
+    let server = TestServer::start().await;
+    let (_g, pa, _pb, save) = started_two_player_game(&server, "Reassign").await;
+
+    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (status, body) = post_json(
+        &server.base_url,
+        &format!("/api/games/{rid}/reassign"),
+        serde_json::json!({ "hostToken": rtok, "name": "Alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let new_token = body["token"].as_str().expect("nuovo token").to_string();
+    assert_ne!(new_token, pa.token);
+
+    let hash = ttr_server::save::hash_token(&new_token);
+    let saved = wait_for_save(&save, |s| s["players"][0]["tokenHash"] == hash).await;
+    assert_eq!(
+        saved["players"].as_array().unwrap().len(),
+        2,
+        "roster completo"
+    );
+
+    // "Riavvio": un nuovo resume dallo stesso save, poi il join col token nuovo.
+    let (rid2, _) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let old = post_json(
+        &server.base_url,
+        &format!("/api/games/{rid2}/join"),
+        serde_json::json!({ "name": "Alice", "token": pa.token }),
+    )
+    .await;
+    assert_eq!(old.0, 401, "il token vecchio non vale più: {}", old.1);
+    let back = join_game_resume(&server.base_url, &rid2, "Alice", &new_token).await;
+    assert_eq!(back.player_id, pa.player_id);
 }

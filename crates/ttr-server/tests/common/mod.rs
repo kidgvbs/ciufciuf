@@ -6,6 +6,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use tokio_tungstenite::tungstenite::Message;
@@ -57,8 +58,9 @@ impl TestServer {
     pub async fn start() -> Self {
         let data = data_dir();
         let saves = temp_saves_dir();
-        let state =
-            ttr_server::AppState::new(data.clone(), saves.clone(), 0).expect("AppState::new");
+        let state = ttr_server::AppState::new(data.clone(), saves.clone(), 0)
+            .expect("AppState::new")
+            .with_allow_client_seed(true);
         Self::start_with_state(state, saves).await
     }
 
@@ -68,6 +70,7 @@ impl TestServer {
         let saves = temp_saves_dir();
         let state = ttr_server::AppState::new(data_dir(), saves.clone(), 0)
             .expect("AppState::new")
+            .with_allow_client_seed(true)
             .with_limits(limits);
         Self::start_with_state(state, saves).await
     }
@@ -245,6 +248,19 @@ pub async fn post_json(
     (status, resp.json().await.unwrap_or(serde_json::Value::Null))
 }
 
+/// DELETE con corpo JSON; ritorna lo status.
+#[allow(dead_code)]
+pub async fn delete_json(base: &str, path: &str, body: serde_json::Value) -> u16 {
+    reqwest::Client::new()
+        .delete(format!("{}{}", base, path))
+        .json(&body)
+        .send()
+        .await
+        .unwrap_or_else(|e| panic!("DELETE {}: {}", path, e))
+        .status()
+        .as_u16()
+}
+
 /// GET JSON da un path del server.
 #[allow(dead_code)]
 pub async fn get_json(base: &str, path: &str) -> (u16, serde_json::Value) {
@@ -267,16 +283,66 @@ pub async fn start_game(base: &str, game_id: &str, host_token: &str) {
     assert_eq!(resp.status(), 204, "start deve tornare 204");
 }
 
-/// Attende (fino a 5 s) che il writer asincrono abbia scritto `path`.
+/// Timeout standard delle attese su condizioni osservabili.
+#[allow(dead_code)]
+pub const WAIT: Duration = Duration::from_secs(10);
+
+/// Attende, con polling ogni 20 ms, che `probe` restituisca `Some`; va in
+/// panic allo scadere di `timeout`.
+#[allow(dead_code)]
+pub async fn wait_for<T>(timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> T {
+    let start = tokio::time::Instant::now();
+    loop {
+        if let Some(value) = probe() {
+            return value;
+        }
+        assert!(
+            start.elapsed() < timeout,
+            "condizione non soddisfatta entro {timeout:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Come `wait_for`, con una condizione asincrona (es. una richiesta REST).
+#[allow(dead_code)]
+pub async fn wait_for_async<T, F>(timeout: Duration, mut probe: impl FnMut() -> F) -> T
+where
+    F: std::future::Future<Output = Option<T>>,
+{
+    let start = tokio::time::Instant::now();
+    loop {
+        if let Some(value) = probe().await {
+            return value;
+        }
+        assert!(
+            start.elapsed() < timeout,
+            "condizione non soddisfatta entro {timeout:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Attende che il writer asincrono abbia scritto `path`.
 #[allow(dead_code)]
 pub async fn wait_for_file(path: &std::path::Path) {
-    for _ in 0..100 {
-        if path.exists() {
-            return;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-    panic!("file non scritto entro 5 s: {:?}", path);
+    wait_for(WAIT, || path.exists().then_some(())).await;
+}
+
+/// Legge e interpreta un save, se esiste ed è completo (il rename atomico
+/// garantisce che non sia parziale).
+#[allow(dead_code)]
+pub fn try_read_save(path: &std::path::Path) -> Option<serde_json::Value> {
+    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+}
+
+/// Attende un save il cui contenuto soddisfa `pred`.
+#[allow(dead_code)]
+pub async fn wait_for_save(
+    path: &std::path::Path,
+    pred: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    wait_for(WAIT, || try_read_save(path).filter(|v| pred(v))).await
 }
 
 // ── Client WebSocket "scemo" ────────────────────────────────────────
@@ -388,7 +454,7 @@ impl WsClient {
     pub async fn send(&mut self, action: &InboundAction) {
         let json = serde_json::to_string(action).expect("serializza InboundAction");
         self.write
-            .send(Message::Text(json))
+            .send(Message::Text(json.into()))
             .await
             .expect("send action");
     }
@@ -398,7 +464,7 @@ impl WsClient {
     #[allow(dead_code)]
     pub async fn send_raw(&mut self, text: &str) {
         self.write
-            .send(Message::Text(text.to_string()))
+            .send(Message::Text(text.into()))
             .await
             .expect("send raw");
     }

@@ -11,3 +11,5 @@ resolver = "2"
 edition = "2024"
 license = "UNLICENSED"
 repository = "https://github.com/kidgvbs/ciufciuf"
+publish = false
+rust-version = "1.98"

@@ -5,6 +5,7 @@
 //! differiscono solo per maiuscole o forma di normalizzazione Unicode sono lo
 //! stesso profilo e vince il primo.
 
+use std::collections::HashSet;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
@@ -47,7 +48,7 @@ impl ProfilesError {
 }
 
 /// Legge i profili, ordinati alfabeticamente senza distinzione di maiuscole.
-/// Un file assente è un elenco vuoto; un file illeggibile o non interpretabile
+/// Se due voci hanno la stessa `name_key` resta la prima. Un file assente è un elenco vuoto; un file illeggibile o non interpretabile
 /// è un errore.
 pub fn read_profiles(saves_dir: &Path) -> Result<Vec<String>, ProfilesError> {
     let path = saves_dir.join(PROFILES_FILE);
@@ -56,8 +57,17 @@ pub fn read_profiles(saves_dir: &Path) -> Result<Vec<String>, ProfilesError> {
         Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Vec::new()),
         Err(e) => return Err(ProfilesError::io("lettura", &path, e)),
     };
-    let mut profiles: Vec<String> =
+    let stored: Vec<String> =
         serde_json::from_str(&json).map_err(|source| ProfilesError::Parse { path, source })?;
+    let mut seen = HashSet::new();
+    let mut profiles = Vec::with_capacity(stored.len());
+    for name in stored {
+        if seen.insert(name_key(&name)) {
+            profiles.push(name);
+        } else {
+            tracing::warn!(name = %name, "profilo duplicato per chiave di confronto: tenuto il primo");
+        }
+    }
     profiles.sort_by_key(|p| name_key(p));
     Ok(profiles)
 }
@@ -238,6 +248,20 @@ mod tests {
         let profiles = read_profiles(dir).unwrap();
         assert_eq!(profiles.len(), MAX_PROFILES);
         assert!(!profiles.contains(&"uno-di-troppo".to_string()));
+    }
+
+    #[test]
+    fn loading_dedupes_profiles_by_name_key() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join(PROFILES_FILE),
+            r#"["Anna", "Anna\u3164x", "\u0410nna", "ANNA", "Bob", "\uFF22ob"]"#,
+        )
+        .unwrap();
+        assert_eq!(
+            read_profiles(dir.path()).unwrap(),
+            ["Anna", "Anna\u{3164}x", "Bob"]
+        );
     }
 
     #[test]

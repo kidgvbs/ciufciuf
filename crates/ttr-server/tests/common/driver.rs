@@ -230,39 +230,49 @@ pub async fn recv_from(p: &mut Player) -> ServerMessage {
 /// Entrambi i giocatori devono essere connessi.
 #[allow(dead_code)]
 pub async fn run_game(a: &mut Player, b: &mut Player, map: &MapData) -> ttr_proto::PublicState {
-    let mut public: Option<ttr_proto::PublicState> = None;
+    // Stato pubblico per giocatore: i due stream non sono ordinati tra loro, quindi uno
+    // stato condiviso potrebbe tornare indietro e far decidere su dati vecchi.
+    let (mut public_a, mut public_b): (
+        Option<ttr_proto::PublicState>,
+        Option<ttr_proto::PublicState>,
+    ) = (None, None);
     let mut actions = 0usize;
     let max_actions = 5000;
+    // Una decisione resta in sospeso finché il giocatore non agisce: lo stato pubblico
+    // dell'altro stream può arrivare dopo lo stato privato.
+    let (mut pending_a, mut pending_b) = (false, false);
 
     loop {
         tokio::select! {
             msg = recv_from(a) => {
-                let fresh = apply_msg(&msg, a, &mut public);
-                let Some(p) = public.clone() else { continue; };
+                pending_a |= apply_msg(&msg, a, &mut public_a);
+                let Some(p) = public_a.clone() else { continue; };
                 if p.state == GameState::GameOver {
                     return p;
                 }
-                if fresh {
+                if pending_a {
                     let act = decide(&a.player_id, &mut a.client.as_mut().unwrap().view, &p, map, &mut a.drafted)
                         .expect("decisione giocatore A");
                     if let Some(act) = act {
                         a.client.as_mut().unwrap().send(&act).await;
                         actions += 1;
+                        pending_a = false;
                     }
                 }
             }
             msg = recv_from(b) => {
-                let fresh = apply_msg(&msg, b, &mut public);
-                let Some(p) = public.clone() else { continue; };
+                pending_b |= apply_msg(&msg, b, &mut public_b);
+                let Some(p) = public_b.clone() else { continue; };
                 if p.state == GameState::GameOver {
                     return p;
                 }
-                if fresh {
+                if pending_b {
                     let act = decide(&b.player_id, &mut b.client.as_mut().unwrap().view, &p, map, &mut b.drafted)
                         .expect("decisione giocatore B");
                     if let Some(act) = act {
                         b.client.as_mut().unwrap().send(&act).await;
                         actions += 1;
+                        pending_b = false;
                     }
                 }
             }

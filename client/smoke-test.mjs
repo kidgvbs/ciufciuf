@@ -4,8 +4,9 @@
 // ricezione SNAPSHOT, disconnect, reconnect con REQUEST_SNAPSHOT,
 // spettatore (N1: senza playerId) con REQUEST_SNAPSHOT, statici SPA.
 //
-// Uso: node smoke-test.mjs [host]
-// (il server deve essere avviato con --client-dist per i check sui statici)
+// Uso: bun smoke-test.mjs [host]
+// (il server deve essere avviato con --client-dist per i check sui statici
+// e con --allow-client-seed perché il test crea la partita con un seed)
 
 const HOST = process.argv[2] || 'http://localhost:18921';
 const BASE = HOST.replace(/\/$/, '');

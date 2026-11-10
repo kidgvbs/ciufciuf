@@ -2,7 +2,7 @@
 //!
 //! Il motore è puro: nessun I/O, nessuna rete.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ttr_proto::CardColor;
 
@@ -106,6 +106,21 @@ impl Engine {
                 first_player,
                 players: num_players,
             });
+        }
+        let mut seen_ids: BTreeSet<&str> = BTreeSet::new();
+        for id in &player_ids {
+            if !seen_ids.insert(id.as_str()) {
+                return Err(EngineInitError::DuplicatePlayerId {
+                    player_id: id.clone(),
+                });
+            }
+        }
+        for (i, color) in player_colors.iter().enumerate() {
+            if player_colors[..i].contains(color) {
+                return Err(EngineInitError::DuplicatePlayerColor {
+                    color: format!("{color:?}"),
+                });
+            }
         }
         ruleset.check_setup(&map, num_players)?;
         let Some(longest_path_bonus_points) = ruleset

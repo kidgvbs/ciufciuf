@@ -177,8 +177,24 @@ async fn reconnect_mid_game() {
         }
     }
 
-    // Dai tempo al server di processare l'azione di B prima del reconnect.
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    // B conclude il proprio turno: il PrivateState di risposta prova che il
+    // server ha processato l'azione prima del reconnect di A.
+    loop {
+        let msg = b.client.as_mut().unwrap().recv().await;
+        if !apply_msg(&msg, &mut b, &mut public) {
+            continue;
+        }
+        let p = public.as_ref().unwrap();
+        if p.state == GameState::GameOver
+            || p.current_turn_player_id.as_deref() != Some(&b.player_id)
+        {
+            break;
+        }
+        let b_c = b.client.as_mut().unwrap();
+        if let Some(act) = decide(&b.player_id, &mut b_c.view, p, &map, &mut b.drafted).unwrap() {
+            b_c.send(&act).await;
+        }
+    }
 
     // Riconnetti A: il server deve inviare uno SNAPSHOT.
     a.reconnect(&server, &game.game_id).await;
@@ -825,6 +841,8 @@ async fn presence_connected_flag() {
 
     // ── Chiudi a2 (non ultima → NO broadcast) ─────────────────────
     a2.disconnect().await;
+    // Verifica che qualcosa non accada: dopo la chiusura di a2 non parte
+    // nessun broadcast, quindi il prossimo messaggio di B è lo SNAPSHOT richiesto.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     // B chiede SNAPSHOT: A deve risultare ancora connected.

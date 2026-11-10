@@ -147,16 +147,20 @@ GET  /api/lan        → {"port":8080,"candidates":[{"ip":"192.168.1.10",
 GET  /qr?data=<url>  → 200 image/svg+xml (QR dell'URL; crate `qrcode`)
 POST /api/games      {"rulesetId":"usa_v2","name":"Serata"} → 201
                        {"gameId","hostToken","rulesetId","maxPlayers"}
-                       (oltre 20 partite attive → 429 TOO_MANY_GAMES; nome con
-                        caratteri di controllo o invisibili → 400 INVALID_NAME)
+                       (oltre 20 partite attive, concluse escluse → 429 TOO_MANY_GAMES; nome con
+                        caratteri di controllo o invisibili → 400 INVALID_NAME; `seed` nel
+                        corpo → 400 SEED_NOT_ALLOWED salvo `--allow-client-seed`; durante lo
+                        shutdown → 503 SHUTTING_DOWN)
 GET  /api/games      → {"games":[{gameId,name,rulesetId,playersJoined,maxPlayers,started}]}
+DELETE /api/games/{id} {"hostToken"} → 204 (l'attore termina e la partita sparisce;
+                       un save su disco resta); token errato → 401 UNAUTHORIZED
 GET  /api/games/{id} → lobby: {gameId,name,rulesetId,players:[{playerId,name,color}],started,
                        maxPlayers,missingPlayers:["Alice"]}  (missingPlayers = nomi del save
                        non ancora rientrati; [] fuori dal resume)
 POST /api/games/{id}/join  {"name":"Gino","color":"BLUE","token":"…"} → {"playerId","token","wsUrl":"/ws/{id}"}
                        (color facoltativa → primo colore libero in ordine
-                        RED,BLUE,GREEN,YELLOW,BLACK; nome univoco dopo normalizzazione NFC e
-                        minuscolo; pieno → 409 GAME_FULL; già started → 409 GAME_STARTED;
+                        RED,BLUE,GREEN,YELLOW,BLACK; nome normalizzato NFKC e univoco per
+                        `name_key` (skeleton confusabile UTS #39, minuscolo); pieno → 409 GAME_FULL; già started → 409 GAME_STARTED;
                         `token` serve solo in resume, vedi §8)
 POST /api/games/{id}/reassign {"hostToken","name"} → {"playerId","token"}
                        (solo partite riprese: token nuovo per un giocatore del save;
@@ -169,7 +173,8 @@ WS   /ws/{gameId}?playerId=…&token=…   (senza parametri = spettatore/table v
 
 Semantica lobby: il creatore joina come tutti gli altri. `start` costruisce il motore
 (`Engine::new`) con i giocatori **in ordine di join**, `first_player = 0`, seed
-time-based (registrato nel save). `playersSummary` in lobby: treni = `trainsPerPlayer`
+da CSPRNG (`getrandom::u64`, o quello del client se ammesso; registrato nel save, mai
+esposto da API o WS). `playersSummary` in lobby: treni = `trainsPerPlayer`
 del ruleset, tutto il resto 0.
 
 `/api/lan`: enumera gli IPv4 con `local-ip-address`, esclude loopback; `preferred` le
@@ -333,16 +338,24 @@ Costanti in `session.rs`, riunite in `SessionLimits` (campo `AppState::limits`, 
 
 | Costante | Valore | Effetto |
 |---|---|---|
-| `LOBBY_IDLE_TTL` | 30 min | lobby non avviata senza `Join`/`Start`/`Connect`/`Reassign`: l'attore termina |
+| `LOBBY_IDLE_TTL` | 30 min | lobby non avviata senza `Join`/`Start`/`Reassign` né `Connect` di un giocatore (gli spettatori non contano): l'attore termina |
+| `EMPTY_LOBBY_TTL` | 5 min | come sopra, ma per una lobby senza giocatori |
 | `ABANDONED_TTL` | 6 h | partita avviata senza connessioni attive: l'attore termina, il save resta su disco |
 | `GAME_OVER_LINGER` | 30 min | partita conclusa: schermata finale, poi l'attore termina |
-| `MAX_ACTIVE_GAMES` | 20 | oltre, `POST /api/games` risponde 429 `TOO_MANY_GAMES` |
+| `MAX_ACTIVE_GAMES` | 20 | oltre, `POST /api/games` risponde 429 `TOO_MANY_GAMES`; le partite concluse (`GameHandle.finished`) non contano |
+| `MAX_CONNECTIONS_PER_PLAYER` | 4 | la quinta connessione dello stesso giocatore chiude la più vecchia |
+| `WS_PING_INTERVAL` | 15 s | `Ping` WebSocket verso ogni client |
+| `WS_IDLE_TIMEOUT` | 45 s | nessun messaggio (`Pong` compresi): il server chiude e invia `Disconnect` |
 | `MAX_SPECTATORS_PER_GAME` | 8 | oltre, il WS risponde `ERROR GAME_FULL` (detail `TOO_MANY_SPECTATORS`) e chiude |
 
 WebSocket: messaggi e frame in ingresso oltre 16 KiB chiudono la connessione; il canale
 outbound è `mpsc::channel(64)` con `try_send`: se è pieno la connessione viene chiusa e il
-client si riconnette ricevendo lo SNAPSHOT. Su SIGINT/SIGTERM il server ferma le partite,
-attende le scritture in coda e poi chiude le connessioni.
+client si riconnette ricevendo lo SNAPSHOT. Ogni invio su un socket ha un timeout di 10 s.
+Su SIGINT/SIGTERM il server imposta `shutting_down` (creazioni, join e upgrade WS → 503),
+ripete `Shutdown` finché il registro non è vuoto, attende le scritture in coda e chiude
+entro 15 s; un secondo segnale esce subito con codice 130. All'avvio `archive_completed_saves`
+archivia i save `completed` rimasti (archiviazione fallita in una sessione precedente) e
+cancella i `*.tmp` più vecchi di un'ora.
 
 ## 9. Test e criteri di accettazione (Fase 2)
 

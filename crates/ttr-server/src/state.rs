@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
 use tokio::sync::RwLock;
 use ttr_core::{MapData, Ruleset};
@@ -30,6 +31,11 @@ pub struct AppState {
     pub results_lock: Arc<std::sync::Mutex<()>>,
     /// Durate e limiti delle sessioni; i test li riducono.
     pub limits: SessionLimits,
+    /// Se `true`, `POST /api/games` accetta un seed scelto dal client.
+    pub allow_client_seed: bool,
+    /// Impostato allo spegnimento: le creazioni, i join e i WebSocket nuovi
+    /// ricevono 503.
+    pub shutting_down: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -50,12 +56,20 @@ impl AppState {
             profiles_lock: Arc::new(std::sync::Mutex::new(())),
             results_lock: Arc::new(std::sync::Mutex::new(())),
             limits: SessionLimits::default(),
+            allow_client_seed: false,
+            shutting_down: Arc::new(AtomicBool::new(false)),
         })
     }
 
     /// Sostituisce i limiti delle sessioni.
     pub fn with_limits(mut self, limits: SessionLimits) -> Self {
         self.limits = limits;
+        self
+    }
+
+    /// Ammette o vieta il seed scelto dal client alla creazione di una partita.
+    pub fn with_allow_client_seed(mut self, allow: bool) -> Self {
+        self.allow_client_seed = allow;
         self
     }
 

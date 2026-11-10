@@ -1,7 +1,8 @@
 // Client REST per la lobby CiufCiuf!.
 //
-// Copre: creazione/join/reassign/start partita, seed opzionale per test, `hostToken` per start.
-// Persistenza identità (playerId+token) per partita in localStorage, per il reconnect dopo standby.
+// Copre: creazione/join/reassign/start partita, seed opzionale (solo dev), `hostToken` per start.
+// Persistenza identità (playerId+token) per partita in localStorage con scadenza di 24 ore, per il
+// reconnect dopo standby; l'`hostToken` vive solo in sessionStorage.
 
 import type { PlayerColor } from './proto';
 import { isAllowedHost, currentHostEnv, type HostEnv } from './server-host';
@@ -114,6 +115,24 @@ function removeStorage(key: string): void {
   }
 }
 
+function sessionGet(key: string): string | null {
+  try {
+    return globalThis.sessionStorage?.getItem(key) ?? null;
+  } catch (e) {
+    console.warn('[storage] lettura sessione fallita:', key, e);
+    return null;
+  }
+}
+
+function sessionSet(key: string, value: string): void {
+  try {
+    if (value) globalThis.sessionStorage?.setItem(key, value);
+    else globalThis.sessionStorage?.removeItem(key);
+  } catch (e) {
+    console.warn('[storage] scrittura sessione fallita:', key, e);
+  }
+}
+
 function readJson(key: string): unknown {
   const raw = readStorage(key);
   if (!raw) return null;
@@ -130,33 +149,42 @@ function readJson(key: string): unknown {
 const IDENTITY_PREFIX = 'ciufciuf-identity:';
 const LAST_IDENTITY_KEY = 'ciufciuf-last-identity';
 
+/** Un'identità salvata più di 24 ore fa viene ignorata. */
+export const IDENTITY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
 export interface StoredIdentity {
   playerId: string;
   token: string;
   gameId: string;
   host: string;
+  /** Nome del giocatore, se noto (mostrato nella schermata di riconnessione). */
+  name?: string;
 }
 
 /** Salva l'identità sotto la chiave della sua partita e la ricorda come ultima usata. */
-export function saveIdentity(identity: StoredIdentity): void {
-  writeStorage(IDENTITY_PREFIX + identity.gameId, JSON.stringify(identity));
+export function saveIdentity(identity: StoredIdentity, now: number = Date.now()): void {
+  writeStorage(IDENTITY_PREFIX + identity.gameId, JSON.stringify({ ...identity, savedAt: now }));
   writeStorage(LAST_IDENTITY_KEY, identity.gameId);
 }
 
 /**
  * Identità salvata per `gameId` (default: l'ultima partita usata).
- * Un'identità completa il cui host non coincide con l'ambiente corrente viene ignorata.
+ * Un'identità scaduta, senza `savedAt` o il cui host non coincide con l'ambiente corrente
+ * viene ignorata.
  */
 export function loadIdentity(
   gameId?: string,
   env: HostEnv = currentHostEnv(),
+  now: number = Date.now(),
 ): StoredIdentity | null {
   const id = gameId ?? readStorage(LAST_IDENTITY_KEY);
   if (!id) return null;
   const v = readJson(IDENTITY_PREFIX + id);
   if (!isRecord(v)) return null;
-  const { playerId, token, gameId: storedGame, host } = v;
+  const { playerId, token, gameId: storedGame, host, savedAt, name } = v;
   if (
+    typeof savedAt !== 'number' || !Number.isFinite(savedAt) ||
+    now - savedAt > IDENTITY_MAX_AGE_MS || savedAt > now + IDENTITY_MAX_AGE_MS ||
     typeof playerId !== 'string' || !playerId ||
     typeof token !== 'string' || !token ||
     typeof storedGame !== 'string' || storedGame !== id ||
@@ -164,7 +192,9 @@ export function loadIdentity(
   ) {
     return null;
   }
-  return { playerId, token, gameId: storedGame, host };
+  const identity: StoredIdentity = { playerId, token, gameId: storedGame, host };
+  if (typeof name === 'string' && name) identity.name = name;
+  return identity;
 }
 
 /** Rimuove l'identità di `gameId` (default: l'ultima partita usata). */
@@ -197,20 +227,34 @@ export interface StoredLastGame {
   hostToken: string;
 }
 
+const LAST_HOST_TOKEN_KEY = 'ciufciuf-last-host-token';
+
+/** L'id partita resta in localStorage; l'`hostToken` solo in sessionStorage (muore con la scheda). */
 export function saveLastGame(last: StoredLastGame): void {
-  writeStorage(LAST_GAME_KEY, JSON.stringify(last));
+  writeStorage(LAST_GAME_KEY, JSON.stringify({ gameId: last.gameId }));
+  sessionSet(LAST_HOST_TOKEN_KEY, last.hostToken);
 }
 
 export function loadLastGame(): StoredLastGame | null {
   const v = readJson(LAST_GAME_KEY);
-  if (!isRecord(v) || typeof v.gameId !== 'string' || typeof v.hostToken !== 'string') {
-    return null;
-  }
-  return { gameId: v.gameId, hostToken: v.hostToken };
+  if (!isRecord(v) || typeof v.gameId !== 'string' || !v.gameId) return null;
+  return { gameId: v.gameId, hostToken: sessionGet(LAST_HOST_TOKEN_KEY) ?? '' };
 }
 
 export function clearLastGame(): void {
   removeStorage(LAST_GAME_KEY);
+  sessionSet(LAST_HOST_TOKEN_KEY, '');
+}
+
+// ── Seed (solo dev) ──────────────────────────────────────────────────
+
+/** Seed dal campo di testo: `undefined` se vuoto, `null` se non è un intero non negativo sicuro. */
+export function parseSeed(raw: string): number | undefined | null {
+  const text = raw.trim();
+  if (text === '') return undefined;
+  if (!/^\d+$/.test(text)) return null;
+  const n = Number(text);
+  return Number.isSafeInteger(n) ? n : null;
 }
 
 // ── Errori ───────────────────────────────────────────────────────────
@@ -254,14 +298,12 @@ export class LobbyClient {
     method: string,
     path: string,
     body?: unknown,
-    signal?: AbortSignal,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const init: RequestInit = {
       method,
       headers: { 'Content-Type': 'application/json' },
     };
-    if (signal) init.signal = signal;
     if (body !== undefined) {
       init.body = JSON.stringify(body);
     }
@@ -308,11 +350,6 @@ export class LobbyClient {
     return data.profiles;
   }
 
-  // GET /qr?data=<url> → restituisce l'URL dell'immagine SVG
-  qrUrl(data: string): string {
-    return `${this.baseUrl}/qr?data=${encodeURIComponent(data)}`;
-  }
-
   // POST /api/games
   async createGame(
     rulesetId: string,
@@ -344,12 +381,11 @@ export class LobbyClient {
     name: string,
     color?: PlayerColor,
     token?: string,
-    signal?: AbortSignal,
   ): Promise<JoinedPlayer> {
     const body: Record<string, string> = { name };
     if (color) body['color'] = color;
     if (token) body['token'] = token;
-    return this.request<JoinedPlayer>('POST', `${this.gamePath(gameId)}/join`, body, signal);
+    return this.request<JoinedPlayer>('POST', `${this.gamePath(gameId)}/join`, body);
   }
 
   // POST /api/games/{id}/reassign — nuova identità per un nome del salvataggio (solo host)

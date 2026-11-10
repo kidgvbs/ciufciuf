@@ -132,14 +132,18 @@ impl PlayerConnectivity {
 
 // ── Longest Continuous Path ──────────────────────────────────────────
 
-/// Massimo di stati `(città, rotte usate)` memorizzati per componente.
+/// Max `(city, used routes)` states memoized per component.
 const MAX_MEMO_STATES: usize = 2_000_000;
 
-/// Massimo di nodi visitati senza memo, sommato su tutte le componenti.
-const MAX_SEARCH_NODES: u64 = 20_000_000;
+/// Max nodes visited without memo, summed over all components.
+pub(crate) const MAX_SEARCH_NODES: u64 = 20_000_000;
 
-/// Massimo di rotte per componente per cui la maschera di rotte usate sta in un `u64`.
+/// Max routes per component for which the used-route mask fits in a `u64`.
 const MAX_MEMO_EDGES: usize = 64;
+
+/// Max cyclomatic number (routes minus cities plus one) that map validation admits for a
+/// component a player can build; random dense graphs up to 14 were always solved exactly.
+pub(crate) const MAX_CYCLOMATIC_NUMBER: u32 = 20;
 
 /// Lato orientato del grafo delle rotte reclamate.
 #[derive(Debug, Clone, Copy)]
@@ -152,13 +156,17 @@ struct Arc {
     len: u32,
 }
 
-/// Hasher moltiplicativo per le chiavi del memo, che non sono controllate da un avversario.
+/// Hasher for the memo keys: a multiply-xorshift mix, then a splitmix64 finalizer so the
+/// low bits that hashbrown uses for buckets depend on every input bit.
 #[derive(Default)]
 struct MemoHasher(u64);
 
 impl Hasher for MemoHasher {
     fn finish(&self) -> u64 {
-        self.0
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
     }
 
     fn write(&mut self, bytes: &[u8]) {
@@ -177,7 +185,7 @@ impl Hasher for MemoHasher {
 }
 
 type MemoMap = HashMap<(usize, u64), u32, BuildHasherDefault<MemoHasher>>;
-/// Ricerca esaustiva del cammino più lungo (trail) su una componente ciclica.
+/// Exhaustive search for the longest trail on a cyclic component.
 struct TrailSearch<'a> {
     adj: &'a [Vec<Arc>],
     used: Vec<bool>,
@@ -185,53 +193,121 @@ struct TrailSearch<'a> {
     memo_enabled: bool,
     component_total: u32,
     nodes: u64,
+    /// Longest trail found so far over all components.
     best: u32,
+    /// Trail length the current pass looks for; shorter branches are pruned.
+    goal: u32,
+    /// Longest trail length seen in the current component (never below `best`).
+    reached: u32,
     stopped: bool,
+    /// Unused routes still incident to each city (a self-loop counts twice).
+    unused_degree: Vec<usize>,
+    /// Cities with an odd `unused_degree` in the current component.
+    odd_cities: u32,
+    /// `skip_cost[j]`: total length of the `j` shortest routes of the current component.
+    skip_cost: Vec<u32>,
+    /// Set when the node budget ended the search before it was complete.
+    exhausted: bool,
 }
 
 impl TrailSearch<'_> {
-    /// Cerca da ogni città in `starts`, aggiornando `best`.
+    /// Finds the longest trail of the component made of `starts`, raising `best`.
+    ///
+    /// Passes look for a trail of `goal` length, from the parity upper bound down: the first
+    /// pass that finds one proves it is the maximum, and each pass is pruned hard by `goal`.
     fn run_component(&mut self, starts: &[usize], edge_count: usize, total_len: u32) {
-        self.memo.clear();
         self.memo_enabled = edge_count <= MAX_MEMO_EDGES;
         self.component_total = total_len;
-        self.stopped = self.nodes > MAX_SEARCH_NODES;
-        for &start in starts {
-            if self.stopped {
+        self.odd_cities = 0;
+        let mut lens: Vec<u32> = Vec::with_capacity(edge_count);
+        for &city in starts {
+            let degree = self.adj[city].len();
+            self.unused_degree[city] = degree;
+            self.odd_cities += u32::from(degree % 2 == 1);
+            lens.extend(
+                self.adj[city]
+                    .iter()
+                    .filter(|a| a.to >= city)
+                    .map(|a| a.len),
+            );
+        }
+        lens.sort_unstable();
+        self.skip_cost.clear();
+        self.skip_cost.push(0);
+        let mut sum = 0u32;
+        for len in lens {
+            sum = sum.saturating_add(len);
+            self.skip_cost.push(sum);
+        }
+
+        self.reached = self.best;
+        let mut goal = self.length_bound();
+        while goal > self.best {
+            self.goal = goal;
+            self.memo.clear();
+            self.stopped = self.nodes > MAX_SEARCH_NODES;
+            self.exhausted |= self.stopped;
+            for &start in starts {
+                if self.stopped {
+                    break;
+                }
+                self.dfs(start, 0, 0);
+            }
+            if self.reached >= goal || self.exhausted {
                 break;
             }
-            self.dfs(start, 0, 0, total_len);
+            goal -= 1;
+        }
+        self.best = self.best.max(self.reached);
+    }
+
+    /// Upper bound on the length of any trail through the component given the routes used
+    /// so far: each unused route changes the parity of two cities, and a trail leaves at
+    /// most two cities with odd unused degree, so at least `(odd - 2) / 2` unused routes
+    /// are never taken.
+    fn length_bound(&self) -> u32 {
+        let skipped = self.odd_cities.saturating_sub(2).div_ceil(2) as usize;
+        let last = self.skip_cost.len() - 1;
+        self.component_total
+            .saturating_sub(self.skip_cost[skipped.min(last)])
+    }
+
+    /// Marks one more route end at `city` as used (`delta = -1`) or free (`delta = 1`).
+    fn shift_degree(&mut self, city: usize, delta: isize) {
+        let degree = &mut self.unused_degree[city];
+        *degree = degree.wrapping_add_signed(delta);
+        // The parity just flipped: an odd degree adds an odd city, an even one removes it.
+        if *degree % 2 == 1 {
+            self.odd_cities += 1;
+        } else {
+            self.odd_cities -= 1;
         }
     }
 
     /// Lunghezza massima ancora percorribile da `(city, mask)`.
     ///
-    /// Con il memo attivo il valore è esatto; senza memo il ramo viene
-    /// potato quando non può superare `best`, e il valore restituito è solo
-    /// un limite inferiore (`best` resta corretto).
-    fn dfs(&mut self, city: usize, mask: u64, cur: u32, remaining: u32) -> u32 {
-        self.best = self.best.max(cur);
-        if self.best >= self.component_total {
-            // La componente non può migliorare il risultato.
+    /// Un ramo che non può raggiungere `goal` viene potato e il valore
+    /// restituito è solo un limite inferiore: `reached` resta corretto.
+    fn dfs(&mut self, city: usize, mask: u64, cur: u32) -> u32 {
+        self.reached = self.reached.max(cur);
+        if self.reached >= self.goal {
             self.stopped = true;
         }
-        if self.stopped {
+        if self.stopped || self.length_bound() < self.goal {
             return 0;
         }
 
         let memoize = self.memo_enabled && self.memo.len() < MAX_MEMO_STATES;
         if memoize {
             if let Some(&rest) = self.memo.get(&(city, mask)) {
-                self.best = self.best.max(cur.saturating_add(rest));
+                self.reached = self.reached.max(cur.saturating_add(rest));
                 return rest;
             }
         } else {
             self.nodes += 1;
             if self.nodes > MAX_SEARCH_NODES {
                 self.stopped = true;
-                return 0;
-            }
-            if cur.saturating_add(remaining) <= self.best {
+                self.exhausted = true;
                 return 0;
             }
         }
@@ -243,17 +319,16 @@ impl TrailSearch<'_> {
                 continue;
             }
             self.used[arc.edge] = true;
+            self.shift_degree(city, -1);
+            self.shift_degree(arc.to, -1);
             let bit = if self.memo_enabled {
                 1u64 << arc.bit
             } else {
                 0
             };
-            let sub = self.dfs(
-                arc.to,
-                mask | bit,
-                cur.saturating_add(arc.len),
-                remaining.saturating_sub(arc.len),
-            );
+            let sub = self.dfs(arc.to, mask | bit, cur.saturating_add(arc.len));
+            self.shift_degree(arc.to, 1);
+            self.shift_degree(city, 1);
             self.used[arc.edge] = false;
             rest_best = rest_best.max(arc.len.saturating_add(sub));
             if self.stopped {
@@ -294,31 +369,41 @@ fn root_of(parent: &mut [usize], mut x: usize) -> usize {
     x
 }
 
-/// Calcola il Longest Continuous Path su un multigrafo di rotte reclamate.
+/// Longest continuous path (a trail: no route is reused, cities may repeat) over the
+/// claimed routes, as the sum of the route lengths along the trail.
 ///
-/// Il cammino è un trail: nessuna rotta viene riutilizzata, le città sì.
-/// Restituisce la somma delle lunghezze delle rotte del trail più lungo.
-///
-/// Le componenti connesse si risolvono separatamente: un albero con il
-/// diametro pesato, le altre con una ricerca esaustiva con memo
-/// `(città, rotte usate)` limitato a `MAX_MEMO_STATES` stati e un budget di
-/// `MAX_SEARCH_NODES` nodi. Oltre il budget il risultato è la migliore
-/// lunghezza trovata, cioè un'approssimazione per difetto (mai raggiunta con
-/// i 45 treni di una partita reale).
+/// Tree components use the weighted diameter, the others an exhaustive search memoized on
+/// `(city, used routes)`. `Ruleset::validate` bounds the cyclomatic number of any component
+/// a player can build, so on validated maps the `MAX_SEARCH_NODES` budget is a safety net
+/// that is never reached.
 pub fn longest_continuous_path(
     claimed_routes: &[&ClaimedRouteInfo],
     routes: &BTreeMap<RouteId, Route>,
 ) -> u32 {
-    // Rotte distinte e note alla mappa, nell'ordine di input.
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    let mut graph_routes: Vec<&Route> = Vec::new();
+    longest_path_report(claimed_routes, routes).length
+}
+
+/// Result of the longest path search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LongestPath {
+    pub length: u32,
+    /// False when the node budget stopped the search: `length` is then a lower bound.
+    pub exact: bool,
+}
+
+/// Longest path with the exactness flag; the search order depends only on route and city
+/// ids, never on the order of `claimed_routes`.
+pub(crate) fn longest_path_report(
+    claimed_routes: &[&ClaimedRouteInfo],
+    routes: &BTreeMap<RouteId, Route>,
+) -> LongestPath {
+    let mut by_id: BTreeMap<&str, &Route> = BTreeMap::new();
     for cri in claimed_routes {
-        if seen.insert(cri.route_id.as_str())
-            && let Some(route) = routes.get(&cri.route_id)
-        {
-            graph_routes.push(route);
+        if let Some(route) = routes.get(&cri.route_id) {
+            by_id.insert(cri.route_id.as_str(), route);
         }
     }
+    let graph_routes: Vec<&Route> = by_id.into_values().collect();
 
     let cities: BTreeSet<&str> = graph_routes
         .iter()
@@ -378,7 +463,13 @@ pub fn longest_continuous_path(
         component_total: 0,
         nodes: 0,
         best: 0,
+        goal: 0,
+        reached: 0,
         stopped: false,
+        unused_degree: vec![0; city_count],
+        odd_cities: 0,
+        skip_cost: Vec::new(),
+        exhausted: false,
     };
     for (root, edges) in component_edges.iter().enumerate() {
         if edges.is_empty() {
@@ -396,7 +487,10 @@ pub fn longest_continuous_path(
             search.run_component(cities_here, edges.len(), total_len);
         }
     }
-    search.best
+    LongestPath {
+        length: search.best,
+        exact: !search.exhausted,
+    }
 }
 
 // ── Final scoring ────────────────────────────────────────────────────
@@ -466,10 +560,14 @@ pub fn compute_final_scores(
             if let Some(ticket) = tickets.iter().find(|t| &t.id == tid) {
                 let completed = connectivity.ticket_completed(pi, &ticket.from, &ticket.to);
                 if completed {
-                    scores[pi].completed_tickets += points_to_score(ticket.points);
+                    scores[pi].completed_tickets = scores[pi]
+                        .completed_tickets
+                        .saturating_add(points_to_score(ticket.points));
                     scores[pi].completed_count += 1;
                 } else {
-                    scores[pi].failed_tickets -= points_to_score(ticket.points);
+                    scores[pi].failed_tickets = scores[pi]
+                        .failed_tickets
+                        .saturating_sub(points_to_score(ticket.points));
                 }
             }
         }
@@ -482,6 +580,7 @@ pub fn compute_final_scores(
 mod tests {
     use super::*;
     use crate::types::ClaimedRouteInfo;
+    use proptest::prelude::*;
 
     fn make_route(id: &str, from: &str, to: &str, len: u32) -> Route {
         Route {
@@ -629,6 +728,7 @@ mod tests {
                 }
             }
             let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
+            assert!(longest_path_report(&refs, &routes).exact, "caso {case}");
             assert_eq!(
                 longest_continuous_path(&refs, &routes),
                 reference_longest(&refs, &routes),
@@ -653,7 +753,12 @@ mod tests {
         route_map(routes)
     }
 
-    /// Limite di tempo per K7 e K8: 2 s in release; il codice di debug è molto più lento.
+    fn report(claimed: &[ClaimedRouteInfo], routes: &BTreeMap<RouteId, Route>) -> LongestPath {
+        let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
+        longest_path_report(&refs, routes)
+    }
+
+    /// Time limit for K7 and K8: 2 s in release; debug code is much slower.
     #[test]
     fn longest_path_dense_graph_is_bounded() {
         let limit = if cfg!(debug_assertions) {
@@ -661,17 +766,126 @@ mod tests {
         } else {
             std::time::Duration::from_secs(2)
         };
-        for (n, expected_at_least) in [(7usize, 21u32), (8, 24)] {
+        for (n, expected) in [(7usize, 21u32), (8, 25)] {
             let routes = complete_graph(n);
             let claimed = claim_all(&routes);
             let started = std::time::Instant::now();
-            let result = longest(&claimed, &routes);
+            let result = report(&claimed, &routes);
             let elapsed = started.elapsed();
             assert!(elapsed < limit, "K{n}: {elapsed:?}");
-            assert!(
-                result >= expected_at_least,
-                "K{n}: trovato {result}, atteso almeno {expected_at_least}"
+            assert_eq!(
+                result,
+                LongestPath {
+                    length: expected,
+                    exact: true
+                },
+                "K{n}"
             );
+        }
+    }
+
+    /// K10 with 45 length-1 routes is the densest graph 45 trains can build.
+    #[test]
+    fn longest_path_k10_is_fast() {
+        let routes = complete_graph(10);
+        let claimed = claim_all(&routes);
+        let started = std::time::Instant::now();
+        let result = report(&claimed, &routes);
+        let elapsed = started.elapsed();
+        assert!(elapsed < std::time::Duration::from_secs(5), "{elapsed:?}");
+        assert_eq!(
+            result,
+            LongestPath {
+                length: 41,
+                exact: true
+            }
+        );
+    }
+
+    #[test]
+    fn longest_path_does_not_depend_on_claim_order() {
+        let routes = complete_graph(7);
+        let forward = claim_all(&routes);
+        let mut backward = forward.clone();
+        backward.reverse();
+        assert_eq!(report(&forward, &routes), report(&backward, &routes));
+    }
+
+    /// Complete-graph routes among `n` cities named after `names[i]`, with the given lengths.
+    fn labelled_graph(n: usize, keep: &[bool], lens: &[u32], names: &[usize]) -> Vec<Route> {
+        let mut routes = Vec::new();
+        let mut edge = 0;
+        for a in 0..n {
+            for b in (a + 1)..n {
+                if keep[edge] {
+                    let (from, to) = (format!("c{:02}", names[a]), format!("c{:02}", names[b]));
+                    routes.push(make_route(
+                        &format!("{from}_{to}_1"),
+                        &from,
+                        &to,
+                        lens[edge],
+                    ));
+                }
+                edge += 1;
+            }
+        }
+        routes
+    }
+
+    /// Cyclomatic number of the graph on `n` cities with the kept edges.
+    fn cyclomatic(n: usize, keep: &[bool]) -> u32 {
+        let mut parent: Vec<usize> = (0..n).collect();
+        let mut touched: BTreeSet<usize> = BTreeSet::new();
+        let mut edges = 0u32;
+        let mut edge = 0;
+        for a in 0..n {
+            for b in (a + 1)..n {
+                if keep[edge] {
+                    edges += 1;
+                    touched.extend([a, b]);
+                    let (ra, rb) = (root_of(&mut parent, a), root_of(&mut parent, b));
+                    parent[ra] = rb;
+                }
+                edge += 1;
+            }
+        }
+        let components: BTreeSet<usize> =
+            touched.iter().map(|&c| root_of(&mut parent, c)).collect();
+        let (components, touched) = (components.len(), touched.len());
+        edges + u32::try_from(components).unwrap() - u32::try_from(touched).unwrap()
+    }
+
+    /// Dense graphs the relabeling test builds: the range the search always solves exactly.
+    const RELABELING_MAX_CYCLOMATIC_NUMBER: u32 = 14;
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 12, ..ProptestConfig::default() })]
+
+        /// Renaming the cities of a dense graph never changes the longest path.
+        #[test]
+        fn longest_path_invariant_under_city_relabeling(
+            keep in proptest::collection::vec(any::<bool>(), 36),
+            lens in proptest::collection::vec(1u32..=3, 36),
+            perms in [
+                Just((0..9usize).collect::<Vec<_>>()).prop_shuffle(),
+                Just((0..9usize).collect::<Vec<_>>()).prop_shuffle(),
+                Just((0..9usize).collect::<Vec<_>>()).prop_shuffle(),
+                Just((0..9usize).collect::<Vec<_>>()).prop_shuffle(),
+            ],
+        ) {
+            let n = 9;
+            prop_assume!(cyclomatic(n, &keep[..]) <= RELABELING_MAX_CYCLOMATIC_NUMBER);
+            let total: u32 = (0..36).filter(|&e| keep[e]).map(|e| lens[e]).sum();
+            prop_assume!(total <= 45);
+
+            let identity: Vec<usize> = (0..n).collect();
+            let reference_routes = route_map(labelled_graph(n, &keep[..], &lens[..], &identity));
+            let reference = report(&claim_all(&reference_routes), &reference_routes);
+            prop_assert!(reference.exact);
+            for perm in &perms {
+                let routes = route_map(labelled_graph(n, &keep[..], &lens[..], perm));
+                prop_assert_eq!(report(&claim_all(&routes), &routes), reference);
+            }
         }
     }
 

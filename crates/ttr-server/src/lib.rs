@@ -6,6 +6,8 @@
 
 use axum::Router;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 mod bridge;
@@ -60,7 +62,10 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
             "/api/games",
             post(lobby::create_game).get(lobby::list_games),
         )
-        .route("/api/games/{id}", get(lobby::get_game))
+        .route(
+            "/api/games/{id}",
+            get(lobby::get_game).delete(lobby::delete_game),
+        )
         .route("/api/games/{id}/join", post(lobby::join_game))
         .route("/api/games/{id}/reassign", post(lobby::reassign_player))
         .route("/api/games/{id}/start", post(lobby::start_game))
@@ -88,14 +93,22 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
 }
 
 /// Ferma tutte le partite e attende, fino a `timeout`, che le scritture in
-/// coda siano su disco. I save delle partite in corso restano dove sono.
+/// coda siano su disco. Imposta `shutting_down` (creazioni, join e WebSocket
+/// nuovi ricevono 503) e ripete `Shutdown` finché l'elenco non è vuoto, così
+/// anche le partite create durante il drain si fermano. I save delle partite
+/// in corso restano dove sono.
 pub async fn shutdown_sessions(state: &AppState, timeout: Duration) {
-    let handles: Vec<session::GameHandle> = state.games.read().await.values().cloned().collect();
-    for handle in &handles {
-        let _ = handle.tx.send(session::GameCommand::Shutdown).await;
-    }
+    state.shutting_down.store(true, Ordering::Release);
     let drained = async {
-        while !state.games.read().await.is_empty() {
+        loop {
+            let handles: Vec<session::GameHandle> =
+                state.games.read().await.values().cloned().collect();
+            if handles.is_empty() {
+                break;
+            }
+            for handle in &handles {
+                let _ = handle.tx.try_send(session::GameCommand::Shutdown);
+            }
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
     };
@@ -148,6 +161,7 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
     let save_path = state.saves_dir.join(format!("{}.json", game_id));
     save::backup_before_resume(&save_path)?;
     let (tx, rx) = mpsc::channel(256);
+    let finished = Arc::new(AtomicBool::new(false));
 
     let players = save_data
         .players
@@ -173,6 +187,7 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
             save_path: Some(save_path),
             results_lock: state.results_lock.clone(),
             limits: state.limits,
+            finished: finished.clone(),
         },
         rx,
         session::ResumedGame {
@@ -191,6 +206,7 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
         max_players,
         players_joined: 0,
         started: false,
+        finished,
     };
 
     {

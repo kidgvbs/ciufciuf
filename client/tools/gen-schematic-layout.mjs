@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // gen-schematic-layout.mjs — Generatore deterministico del layout schematico USA.
 //
 // Input:  client/src/lib/data/usa.json       (città + rotte, la "mappa")
@@ -62,7 +62,7 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  node client/tools/gen-schematic-layout.mjs [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--svg OUT.svg]
 //   --svg OUT.svg  (opzionale) scrive un preview SVG per ispezione visiva.
 
 import { readFileSync, writeFileSync } from 'node:fs';

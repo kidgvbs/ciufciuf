@@ -35,6 +35,22 @@ struct ReplayAction {
     cards_discarded: Option<Vec<String>>,
 }
 
+/// Stampa un errore d'uso ed esce con codice 2.
+fn usage_error(message: &str) -> ! {
+    eprintln!("Errore: {message}");
+    std::process::exit(2);
+}
+
+/// Valore che segue il flag in `args[*i]`; avanza `*i` oltre il valore.
+fn flag_value<'a>(args: &'a [String], i: &mut usize) -> &'a str {
+    let flag = &args[*i];
+    *i += 1;
+    match args.get(*i) {
+        Some(value) => value,
+        None => usage_error(&format!("manca il valore dopo {flag}")),
+    }
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
@@ -49,43 +65,27 @@ fn main() {
 
     let mut i = 1;
     while i < args.len() {
-        match args[i].as_str() {
-            "--map" => {
-                i += 1;
-                map_path = Some(PathBuf::from(&args[i]));
-            }
-            "--ruleset" => {
-                i += 1;
-                ruleset_path = Some(PathBuf::from(&args[i]));
-            }
-            "--players" => {
-                i += 1;
-                num_players = args[i].parse().unwrap_or(3);
-            }
-            "--seed" => {
-                i += 1;
-                seed = args[i].parse().unwrap_or(42);
-            }
-            "--first" => {
-                i += 1;
-                first_player = args[i].parse().unwrap_or(0);
-            }
-            "--replay" => {
-                i += 1;
-                replay_path = Some(PathBuf::from(&args[i]));
-            }
+        let flag = args[i].as_str();
+        match flag {
+            "--map" => map_path = Some(PathBuf::from(flag_value(&args, &mut i))),
+            "--ruleset" => ruleset_path = Some(PathBuf::from(flag_value(&args, &mut i))),
+            "--players" => num_players = flag_value(&args, &mut i).parse().unwrap_or(3),
+            "--seed" => seed = flag_value(&args, &mut i).parse().unwrap_or(42),
+            "--first" => first_player = flag_value(&args, &mut i).parse().unwrap_or(0),
+            "--replay" => replay_path = Some(PathBuf::from(flag_value(&args, &mut i))),
             "--interactive" | "-i" => {
                 interactive = true;
             }
             _ => {
-                eprintln!("Argomento sconosciuto: {}", args[i]);
+                eprintln!("Argomento sconosciuto: {flag}");
             }
         }
         i += 1;
     }
 
-    let map_path = map_path.expect("Specifica --map <file.json>");
-    let ruleset_path = ruleset_path.expect("Specifica --ruleset <file.json>");
+    let map_path = map_path.unwrap_or_else(|| usage_error("Specifica --map <file.json>"));
+    let ruleset_path =
+        ruleset_path.unwrap_or_else(|| usage_error("Specifica --ruleset <file.json>"));
 
     let map_json = fs::read_to_string(&map_path).unwrap_or_else(|e| {
         eprintln!("Errore leggendo {}: {}", map_path.display(), e);
@@ -203,7 +203,10 @@ fn run_replay(engine: &mut Engine, path: &PathBuf) {
     });
 
     for (step, ra) in actions.iter().enumerate() {
-        let action = parse_replay_action(ra, engine);
+        let action = parse_replay_action(ra, engine).unwrap_or_else(|e| {
+            eprintln!("Step {}: ERRORE: {}", step + 1, e);
+            std::process::exit(1);
+        });
         match engine.apply(action) {
             Ok(events) => {
                 println!("Step {}: OK ({:?})", step + 1, ra.action_type);
@@ -222,43 +225,45 @@ fn run_replay(engine: &mut Engine, path: &PathBuf) {
     print_state(engine);
 }
 
-fn parse_replay_action(ra: &ReplayAction, engine: &Engine) -> Action {
+fn parse_replay_action(ra: &ReplayAction, engine: &Engine) -> Result<Action, String> {
     let pi = ra.player_index.unwrap_or(engine.current_player());
     match ra.action_type.as_str() {
-        "INITIAL_DRAFT_CHOOSE" | "CHOOSE_TICKETS" => Action::ChooseTickets {
+        "INITIAL_DRAFT_CHOOSE" | "CHOOSE_TICKETS" => Ok(Action::ChooseTickets {
             player_index: pi,
             keep: ra.keep.clone().unwrap_or_default(),
-        },
-        "DRAW_TICKETS" => Action::DrawTickets { player_index: pi },
-        "DRAW_DECK" => Action::DrawTrainCard {
+        }),
+        "DRAW_TICKETS" => Ok(Action::DrawTickets { player_index: pi }),
+        "DRAW_DECK" => Ok(Action::DrawTrainCard {
             player_index: pi,
             source: DrawSource::Deck,
-        },
+        }),
         "DRAW_FACEUP" => {
             let idx = ra.index.unwrap_or(0);
-            Action::DrawTrainCard {
+            Ok(Action::DrawTrainCard {
                 player_index: pi,
                 source: DrawSource::FaceUp { index: idx },
-            }
+            })
         }
-        "CLAIM_ROUTE" => Action::ClaimRoute {
-            player_index: pi,
-            route_id: ra.route_id.clone().unwrap_or_default(),
-            cards_discarded: ra
+        "CLAIM_ROUTE" => {
+            let cards: Result<Vec<_>, String> = ra
                 .cards_discarded
-                .clone()
-                .unwrap_or_default()
                 .iter()
+                .flatten()
                 .map(|s| parse_card_color(s))
-                .collect(),
-        },
-        _ => panic!("Azione sconosciuta: {}", ra.action_type),
+                .collect();
+            Ok(Action::ClaimRoute {
+                player_index: pi,
+                route_id: ra.route_id.clone().unwrap_or_default(),
+                cards_discarded: cards?,
+            })
+        }
+        other => Err(format!("Azione sconosciuta: {other}")),
     }
 }
 
-fn parse_card_color(s: &str) -> ttr_proto::CardColor {
+fn parse_card_color(s: &str) -> Result<ttr_proto::CardColor, String> {
     use ttr_proto::CardColor;
-    match s.to_uppercase().as_str() {
+    Ok(match s.to_uppercase().as_str() {
         "RED" => CardColor::Red,
         "ORANGE" => CardColor::Orange,
         "YELLOW" => CardColor::Yellow,
@@ -268,8 +273,8 @@ fn parse_card_color(s: &str) -> ttr_proto::CardColor {
         "BLACK" => CardColor::Black,
         "WHITE" => CardColor::White,
         "LOCOMOTIVE" | "LOCO" => CardColor::Locomotive,
-        _ => panic!("Colore sconosciuto: {}", s),
-    }
+        _ => return Err(format!("Colore sconosciuto: {s}")),
+    })
 }
 
 fn run_interactive(engine: &mut Engine) {
@@ -359,7 +364,12 @@ fn run_interactive(engine: &mut Engine) {
             }
             "initkeep" | "ik" => {
                 let pi = parts.get(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-                let keep: Vec<String> = parts[2..].iter().map(|s| s.to_string()).collect();
+                let keep: Vec<String> = parts
+                    .get(2..)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect();
                 engine.apply(Action::ChooseTickets {
                     player_index: pi,
                     keep,
@@ -372,13 +382,16 @@ fn run_interactive(engine: &mut Engine) {
                     })
                 } else {
                     let rid = parts[1].to_string();
-                    let cards: Vec<ttr_proto::CardColor> =
+                    let cards: Result<Vec<ttr_proto::CardColor>, String> =
                         parts[2..].iter().map(|s| parse_card_color(s)).collect();
-                    engine.apply(Action::ClaimRoute {
-                        player_index: engine.current_player(),
-                        route_id: rid,
-                        cards_discarded: cards,
-                    })
+                    match cards {
+                        Ok(cards_discarded) => engine.apply(Action::ClaimRoute {
+                            player_index: engine.current_player(),
+                            route_id: rid,
+                            cards_discarded,
+                        }),
+                        Err(reason) => Err(ttr_core::EngineError::InvalidPayload { reason }),
+                    }
                 }
             }
             _ => {

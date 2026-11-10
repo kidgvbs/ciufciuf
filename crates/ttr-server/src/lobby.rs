@@ -3,6 +3,9 @@
 //! Tutti gli endpoint REST usano `axum::extract::State<AppState>` e
 //! producono JSON. Errori nel formato `{"error":"REASON","detail":"…"}`.
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -138,8 +141,9 @@ pub struct CreateGameRequest {
     #[serde(rename = "rulesetId")]
     pub ruleset_id: String,
     pub name: Option<String>,
-    /// Seed del RNG opzionale: permette partite deterministiche
-    /// (test deterministici + replay). `None` = seed time-based.
+    /// Seed del RNG opzionale per partite deterministiche; accettato solo se il
+    /// server è avviato con `--allow-client-seed`, altrimenti 400. `None` = seed
+    /// casuale da CSPRNG.
     pub seed: Option<u64>,
 }
 
@@ -188,6 +192,10 @@ pub async fn create_game(
         }
     };
 
+    if body.seed.is_some() && !state.allow_client_seed {
+        return error_response(LobbyError::SeedNotAllowed);
+    }
+
     let game_name = match game_name(body.name.as_deref()) {
         Ok(name) => name,
         Err(e) => return error_response(e),
@@ -199,6 +207,7 @@ pub async fn create_game(
 
     let save_path = state.saves_dir.join(format!("{}.json", game_id));
     let (tx, rx) = mpsc::channel(256);
+    let finished = Arc::new(AtomicBool::new(false));
 
     let session = GameSession::new_lobby(
         SessionConfig {
@@ -211,6 +220,7 @@ pub async fn create_game(
             save_path: Some(save_path),
             results_lock: state.results_lock.clone(),
             limits: state.limits,
+            finished: finished.clone(),
         },
         rx,
         body.seed,
@@ -224,12 +234,22 @@ pub async fn create_game(
         max_players,
         players_joined: 0,
         started: false,
+        finished,
     };
 
-    // Il controllo del limite e l'inserimento stanno nella stessa sezione critica.
+    // I controlli e l'inserimento stanno nella stessa sezione critica: lo
+    // shutdown imposta il flag prima di leggere l'elenco, quindi una partita
+    // inserita qui è sempre vista dal suo giro di `Shutdown`.
     {
         let mut games = state.games.write().await;
-        if games.len() >= state.limits.max_active_games {
+        if state.shutting_down.load(Ordering::Acquire) {
+            return error_response(LobbyError::ShuttingDown);
+        }
+        let active = games
+            .values()
+            .filter(|h| !h.finished.load(Ordering::Acquire))
+            .count();
+        if active >= state.limits.max_active_games {
             return error_response(LobbyError::TooManyGames);
         }
         games.insert(game_id.clone(), handle.clone());
@@ -483,6 +503,9 @@ pub async fn join_game(
     Path(game_id): Path<String>,
     Json(body): Json<JoinRequest>,
 ) -> axum::response::Response {
+    if state.shutting_down.load(Ordering::Acquire) {
+        return error_response(LobbyError::ShuttingDown);
+    }
     let handle = match find_game(&state, &game_id).await {
         Ok(h) => h,
         Err(e) => return error_response(e),
@@ -561,6 +584,47 @@ pub async fn reassign_player(
             token: resp.token,
         })
         .into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+// ── /api/games/{id} (DELETE) ───────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct DeleteRequest {
+    #[serde(rename = "hostToken")]
+    pub host_token: String,
+}
+
+/// DELETE /api/games/{id} — l'host chiude la partita: l'attore termina e la
+/// partita sparisce dall'elenco. Un save su disco resta dov'è.
+pub async fn delete_game(
+    State(state): State<AppState>,
+    Path(game_id): Path<String>,
+    Json(body): Json<DeleteRequest>,
+) -> axum::response::Response {
+    let handle = match find_game(&state, &game_id).await {
+        Ok(h) => h,
+        Err(e) => return error_response(e),
+    };
+
+    let result = ask_actor(&handle, |reply| GameCommand::Delete {
+        host_token: body.host_token,
+        reply,
+    })
+    .await;
+
+    match result {
+        Ok(()) => {
+            let mut games = state.games.write().await;
+            if games
+                .get(&game_id)
+                .is_some_and(|h| h.tx.same_channel(&handle.tx))
+            {
+                games.remove(&game_id);
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => error_response(e),
     }
 }

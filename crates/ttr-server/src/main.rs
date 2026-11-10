@@ -10,10 +10,15 @@ use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
+use ttr_server::save::archive_completed_saves;
 use ttr_server::{AppState, build_router, resume_game, shutdown_sessions};
 
 /// Attesa massima per le scritture in coda alla chiusura.
 const SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Tempo massimo tra il primo segnale e l'uscita del server, connessioni
+/// ancora aperte comprese.
+const SHUTDOWN_TOTAL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Argomenti da riga di comando.
 #[derive(Parser, Debug)]
@@ -42,6 +47,11 @@ struct Args {
     /// Ripristina la partita di questo save.
     #[arg(long, value_name = "FILE")]
     resume: Option<PathBuf>,
+
+    /// Ammette il seed scelto dal client in `POST /api/games` (solo per test e
+    /// partite riproducibili: con il seed si ricostruiscono le mani).
+    #[arg(long)]
+    allow_client_seed: bool,
 }
 
 /// Completa all'arrivo di SIGINT o SIGTERM.
@@ -91,12 +101,17 @@ async fn main() {
     }
 
     let state = match AppState::new(args.data_dir.clone(), args.saves_dir.clone(), args.port) {
-        Ok(s) => s,
+        Ok(s) => s.with_allow_client_seed(args.allow_client_seed),
         Err(e) => {
             eprintln!("ERRORE: impossibile inizializzare AppState: {}", e);
             std::process::exit(1);
         }
     };
+
+    let archived = archive_completed_saves(&state);
+    if archived > 0 {
+        info!("{archived} save conclusi archiviati in classifica all'avvio");
+    }
 
     // Flusso di resume: carica il save, ricostruisce il motore,
     // registra la partita in lobby col roster salvato.
@@ -128,15 +143,37 @@ async fn main() {
 
     info!("CiufCiuf! server in ascolto su http://{}", addr);
 
+    // Primo segnale: parte lo shutdown. Secondo segnale: uscita immediata.
+    let (stop_tx, mut stop_rx) = tokio::sync::watch::channel(false);
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        let _ = stop_tx.send(true);
+        shutdown_signal().await;
+        tracing::warn!(
+            "secondo segnale: uscita immediata, i save in coda potrebbero non essere su disco"
+        );
+        std::process::exit(130);
+    });
+
     // Le partite si fermano prima del rilascio delle connessioni: i WebSocket
     // si chiudono quando il loro attore termina.
     let shutdown_state = state.clone();
-    let served = axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            shutdown_signal().await;
-            shutdown_sessions(&shutdown_state, SHUTDOWN_FLUSH_TIMEOUT).await;
-        })
-        .await;
+    let mut graceful_stop = stop_rx.clone();
+    let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
+        let _ = graceful_stop.wait_for(|stopped| *stopped).await;
+        shutdown_sessions(&shutdown_state, SHUTDOWN_FLUSH_TIMEOUT).await;
+    });
+    let hard_deadline = async {
+        let _ = stop_rx.wait_for(|stopped| *stopped).await;
+        tokio::time::sleep(SHUTDOWN_TOTAL_TIMEOUT).await;
+    };
+    let served = tokio::select! {
+        served = serve => served,
+        _ = hard_deadline => {
+            tracing::warn!("chiusura: connessioni ancora aperte dopo {:?}, uscita forzata", SHUTDOWN_TOTAL_TIMEOUT);
+            Ok(())
+        }
+    };
 
     info!("server fermato");
 

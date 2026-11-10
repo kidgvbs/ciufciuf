@@ -12,9 +12,13 @@ use subtle::ConstantTimeEq;
 
 use crate::names::name_key;
 use crate::session::GameSession;
+use crate::state::AppState;
 
 /// Versione del formato di scrittura del save; `validate_save` accetta anche la 1.
 pub const FORMAT_VERSION: u32 = 2;
+
+/// Età oltre la quale un file `*.tmp` lasciato da un crash viene eliminato.
+const STALE_TMP_AGE: std::time::Duration = std::time::Duration::from_secs(60 * 60);
 
 /// Tentativi di nome per i backup creati nello stesso secondo.
 const MAX_BACKUP_ATTEMPTS: u32 = 1000;
@@ -32,6 +36,33 @@ pub struct GameResult {
     pub ruleset_id: String,
     pub finished_at: String,
     pub players: Vec<ResultPlayer>,
+}
+
+impl GameResult {
+    /// Costruisce il risultato da `(nome, totale, vincitore)` per giocatore;
+    /// lo usano sia la sessione sia l'archiviazione all'avvio.
+    pub fn from_scores(
+        game_id: &str,
+        game_name: &str,
+        ruleset_id: &str,
+        finished_at: String,
+        players: impl IntoIterator<Item = (String, i32, bool)>,
+    ) -> Self {
+        Self {
+            game_id: game_id.to_string(),
+            game_name: game_name.to_string(),
+            ruleset_id: ruleset_id.to_string(),
+            finished_at,
+            players: players
+                .into_iter()
+                .map(|(name, total, winner)| ResultPlayer {
+                    name,
+                    total,
+                    winner,
+                })
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -119,7 +150,8 @@ pub(crate) fn durable_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 ///
 /// Sotto `lock` scrive la riga con un solo `write_all`; se il file non
 /// termina con `\n` (riga parziale di un crash) ne antepone uno. Un `gameId`
-/// già presente non viene aggiunto: ritorna `Ok(false)`.
+/// già presente non viene aggiunto: ritorna `Ok(false)`. Un errore di
+/// `sync_dir` dopo l'append riuscito è solo un avviso.
 pub(crate) fn append_result(
     saves_dir: &Path,
     lock: &Mutex<()>,
@@ -157,8 +189,10 @@ pub(crate) fn append_result(
         .map_err(|e| format!("scrittura {:?}: {}", path, e))?;
     file.sync_all()
         .map_err(|e| format!("sync {:?}: {}", path, e))?;
-    if existing.is_empty() {
-        sync_dir(saves_dir).map_err(|e| format!("sync {:?}: {}", saves_dir, e))?;
+    if existing.is_empty()
+        && let Err(e) = sync_dir(saves_dir)
+    {
+        tracing::warn!(dir = %saves_dir.display(), error = %e, "sync della directory dopo l'append fallita");
     }
     Ok(true)
 }
@@ -304,7 +338,8 @@ pub struct SaveActionRecord {
 
 /// Costruisce i dati di salvataggio dalla sessione corrente.
 pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
-    let engine = session.engine.as_ref();
+    // Prima dello start di un resume il motore è ancora in `resumed_engine`.
+    let engine = session.engine.as_ref().or(session.resumed_engine.as_ref());
 
     let seed = engine.map(|e| e.seed()).unwrap_or(0);
     let actions: Vec<SaveActionRecord> = engine
@@ -327,7 +362,7 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
 
     // I giocatori sono in ordine di indice del motore: `replay_engine` passa
     // `save.players` a `Engine::new` in quest'ordine.
-    let players: Vec<SavePlayer> = {
+    let players: Vec<SavePlayer> = if session.saved_roster.is_empty() {
         let mut ordered: Vec<(usize, &String)> = session
             .player_index
             .iter()
@@ -343,6 +378,29 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
                     name: p.name.clone(),
                     color: format!("{:?}", p.color).to_uppercase(),
                     token_hash: Some(hash_token(&p.token)),
+                }
+            })
+            .collect()
+    } else {
+        // Partita ripresa: il roster salvato è completo anche quando non tutti
+        // sono rientrati; i token cambiati da join o reassign sostituiscono l'hash.
+        let mut entries: Vec<&crate::session::SavedEntry> = session.saved_roster.values().collect();
+        entries.sort_by_key(|e| e.engine_index);
+        entries
+            .into_iter()
+            .map(|e| {
+                let joined = session
+                    .player_index
+                    .get(&e.id)
+                    .and_then(|&pos| session.players.get(pos));
+                SavePlayer {
+                    id: e.id.clone(),
+                    name: e.name.clone(),
+                    color: format!("{:?}", e.color).to_uppercase(),
+                    token_hash: match joined {
+                        Some(p) => Some(hash_token(&p.token)),
+                        None => e.token_hash.clone(),
+                    },
                 }
             })
             .collect()
@@ -431,6 +489,16 @@ pub fn replay_engine(
     map: &ttr_core::MapData,
     ruleset: &ttr_core::Ruleset,
 ) -> Result<ttr_core::Engine, String> {
+    replay_with_final_scores(save, map, ruleset).map(|(engine, _)| engine)
+}
+
+/// Come `replay_engine`, e restituisce anche i punteggi finali se il replay
+/// arriva al game over.
+fn replay_with_final_scores(
+    save: &SaveData,
+    map: &ttr_core::MapData,
+    ruleset: &ttr_core::Ruleset,
+) -> Result<(ttr_core::Engine, Option<Vec<ttr_core::event::FinalScore>>), String> {
     validate_save(save, ruleset)?;
 
     let player_ids: Vec<String> = save.players.iter().map(|p| p.id.clone()).collect();
@@ -452,13 +520,110 @@ pub fn replay_engine(
     )
     .map_err(|e| format!("motore non inizializzabile: {}", e))?;
 
+    let mut final_scores = None;
     for rec in &save.actions {
-        engine
+        let events = engine
             .apply(rec.action.clone())
             .map_err(|e| format!("replay azione: {}", e))?;
+        for event in events {
+            if let ttr_core::event::GameEvent::GameOver {
+                final_scores: scores,
+                ..
+            } = event
+            {
+                final_scores = Some(scores);
+            }
+        }
     }
 
-    Ok(engine)
+    Ok((engine, final_scores))
+}
+
+/// All'avvio archivia in `results.jsonl` i save `completed` rimasti su disco
+/// (archiviazione fallita in una sessione precedente) e li elimina; elimina
+/// anche i `*.tmp` più vecchi di un'ora. Ritorna il numero di save archiviati;
+/// i save illeggibili o non riproducibili restano dove sono, con un avviso.
+pub fn archive_completed_saves(state: &AppState) -> usize {
+    let dir = &state.saves_dir;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            if e.kind() != ErrorKind::NotFound {
+                tracing::warn!(dir = %dir.display(), error = %e, "lettura della cartella dei save fallita");
+            }
+            return 0;
+        }
+    };
+
+    let mut archived = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if name.ends_with(".tmp") {
+            remove_if_stale(&path);
+        } else if name.ends_with(".json") && name != crate::profiles::PROFILES_FILE {
+            match archive_if_completed(state, &path) {
+                Ok(true) => archived += 1,
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(path = %path.display(), error = %e, "save non archiviato");
+                }
+            }
+        }
+    }
+    archived
+}
+
+fn remove_if_stale(path: &Path) {
+    let age = std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|modified| std::time::SystemTime::now().duration_since(modified).ok());
+    if age.is_some_and(|age| age > STALE_TMP_AGE) {
+        match std::fs::remove_file(path) {
+            Ok(()) => tracing::info!(path = %path.display(), "file temporaneo obsoleto eliminato"),
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "eliminazione del file temporaneo fallita");
+            }
+        }
+    }
+}
+
+/// Archivia e elimina il save se è `completed`; `Ok(false)` se non lo è.
+fn archive_if_completed(state: &AppState, path: &Path) -> Result<bool, String> {
+    let save = read_save(path)?;
+    if save.status != "completed" {
+        return Ok(false);
+    }
+    let ruleset = state
+        .ruleset(&save.ruleset_id)
+        .ok_or_else(|| format!("ruleset '{}' sconosciuto", save.ruleset_id))?;
+    let map = state
+        .map(&ruleset.map)
+        .ok_or_else(|| format!("mappa '{}' sconosciuta", ruleset.map))?;
+    let (_, scores) = replay_with_final_scores(&save, map, ruleset)?;
+    let scores = scores.ok_or("save completed senza game over nel replay")?;
+
+    let result = GameResult::from_scores(
+        &save.game_id,
+        &save.game_name,
+        &save.ruleset_id,
+        save.updated_at.clone(),
+        scores.iter().map(|fs| {
+            let name = save
+                .players
+                .get(fs.player_index)
+                .map(|p| p.name.clone())
+                .unwrap_or_default();
+            (name, fs.total, fs.winner)
+        }),
+    );
+    append_result(&state.saves_dir, &state.results_lock, &result)?;
+    std::fs::remove_file(path).map_err(|e| format!("eliminazione {:?}: {}", path, e))?;
+    tracing::info!(game_id = %save.game_id, "save completed archiviato all'avvio");
+    Ok(true)
 }
 
 /// Rifiuta i save che il motore non può riprodurre o che il resume non può

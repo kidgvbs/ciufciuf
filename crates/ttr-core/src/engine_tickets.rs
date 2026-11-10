@@ -165,7 +165,17 @@ impl Engine {
 
         match self.ruleset.setup_discards {
             SetupDiscards::ReshuffleBottom => {
-                let mut disc = discarded.clone();
+                // Only tickets of the draw deck go back to the pile; other decks' discards are dropped.
+                let draw_deck = &self.ruleset.ticket_draw.deck;
+                let mut disc: Vec<TicketId> = discarded
+                    .iter()
+                    .filter(|tid| {
+                        self.tickets_by_id
+                            .get(*tid)
+                            .is_some_and(|t| &t.deck == draw_deck)
+                    })
+                    .cloned()
+                    .collect();
                 self.rng.shuffle(&mut disc);
                 self.ticket_draw_pile.extend(disc);
             }

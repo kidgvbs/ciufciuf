@@ -140,7 +140,7 @@ impl Engine {
 
         let player = &mut self.players[player_index];
         player.trains_remaining -= len;
-        player.score += points_to_score(points);
+        player.score = player.score.saturating_add(points_to_score(points));
         player.claimed_routes.insert(
             route_id.to_string(),
             ClaimedRouteRecord {
@@ -265,7 +265,11 @@ impl Engine {
                 } else {
                     0
                 };
-                let total = p.score + s.completed_tickets + s.failed_tickets + bonus_val;
+                let total = p
+                    .score
+                    .saturating_add(s.completed_tickets)
+                    .saturating_add(s.failed_tickets)
+                    .saturating_add(bonus_val);
                 FinalScore {
                     player_index: i,
                     route_points: p.score,

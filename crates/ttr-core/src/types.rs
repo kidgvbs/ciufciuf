@@ -30,7 +30,7 @@ pub struct Route {
     pub from: String,
     pub to: String,
     pub len: u32,
-    pub color: String, // "Red", "Blue", ... "Gray", "Locomotive"
+    pub color: String, // "Gray" or a card color in PascalCase ("Red", "Blue", ...)
     pub double: bool,
 }
 
@@ -235,17 +235,22 @@ impl RouteColor {
     }
 }
 
+/// Id of the other route of a double pair (`_1` ↔ `_2`), from the id suffix alone.
+pub(crate) fn sister_route_id(route_id: &str) -> Option<RouteId> {
+    if let Some(base) = route_id.strip_suffix(DOUBLE_ROUTE_FIRST_SUFFIX) {
+        Some(format!("{base}{DOUBLE_ROUTE_SECOND_SUFFIX}"))
+    } else {
+        let base = route_id.strip_suffix(DOUBLE_ROUTE_SECOND_SUFFIX)?;
+        Some(format!("{base}{DOUBLE_ROUTE_FIRST_SUFFIX}"))
+    }
+}
+
 /// Id della rotta gemella in una coppia doppia (`_1` ↔ `_2`), se esiste.
 pub(crate) fn find_sister_route(
     route_id: &str,
     routes: &BTreeMap<RouteId, Route>,
 ) -> Option<RouteId> {
-    let sister_id = if let Some(base) = route_id.strip_suffix(DOUBLE_ROUTE_FIRST_SUFFIX) {
-        format!("{base}{DOUBLE_ROUTE_SECOND_SUFFIX}")
-    } else {
-        let base = route_id.strip_suffix(DOUBLE_ROUTE_SECOND_SUFFIX)?;
-        format!("{base}{DOUBLE_ROUTE_FIRST_SUFFIX}")
-    };
+    let sister_id = sister_route_id(route_id)?;
     routes.contains_key(&sister_id).then_some(sister_id)
 }
 

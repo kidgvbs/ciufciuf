@@ -6,10 +6,13 @@
 
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Path, Query, WebSocketUpgrade};
-use axum::response::IntoResponse;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 use crate::session::{ConnectOutcome, GameCommand, GameHandle};
@@ -20,6 +23,10 @@ const MAX_WS_MESSAGE_BYTES: usize = 16 * 1024;
 
 /// Messaggi in coda per connessione prima che venga chiusa.
 const OUTBOUND_BUFFER: usize = 64;
+
+/// Attesa massima per scrivere un messaggio su un socket: un peer che non
+/// legge viene scollegato invece di bloccare il task di uscita.
+const SEND_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Parametri query string per il WS.
 #[derive(Debug, Deserialize)]
@@ -35,7 +42,10 @@ pub async fn ws_handler(
     Query(params): Query<WsParams>,
     ws: WebSocketUpgrade,
     state: axum::extract::State<AppState>,
-) -> impl IntoResponse {
+) -> Response {
+    if state.shutting_down.load(Ordering::Acquire) {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
     ws.max_message_size(MAX_WS_MESSAGE_BYTES)
         .max_frame_size(MAX_WS_MESSAGE_BYTES)
         .on_upgrade(move |socket| handle_ws(socket, game_id, params, state.0))
@@ -116,21 +126,41 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
 
     // Task per inoltrare messaggi dall'attore al WS; chiude il socket quando
     // il canale si chiude.
+    let ping_interval = state.limits.ws_ping_interval;
+    let idle_timeout = state.limits.ws_idle_timeout;
     let mut outbound_task = tokio::spawn(async move {
         let mut sender = sender;
-        while let Some(msg) = rx.recv().await {
-            let json = serde_json::to_string(&msg).unwrap_or_default();
-            if sender.send(Message::Text(json.into())).await.is_err() {
+        let mut pings = tokio::time::interval(ping_interval);
+        pings.tick().await;
+        loop {
+            let msg = tokio::select! {
+                msg = rx.recv() => match msg {
+                    Some(msg) => Message::Text(
+                        serde_json::to_string(&msg).unwrap_or_default().into(),
+                    ),
+                    None => break,
+                },
+                _ = pings.tick() => Message::Ping(Vec::new().into()),
+            };
+            // Un invio che non termina in tempo o fallisce chiude la connessione.
+            if !matches!(
+                tokio::time::timeout(SEND_TIMEOUT, sender.send(msg)).await,
+                Ok(Ok(()))
+            ) {
                 return;
             }
         }
-        let _ = sender.close().await;
+        let _ = tokio::time::timeout(SEND_TIMEOUT, sender.close()).await;
     });
 
     // Loop inbound: l'identità della connessione decide se l'azione è autorizzata.
+    // Ogni messaggio ricevuto, `Pong` compresi, riarma il timeout di silenzio.
     loop {
         let msg = tokio::select! {
-            msg = receiver.next() => msg,
+            msg = tokio::time::timeout(idle_timeout, receiver.next()) => match msg {
+                Ok(msg) => msg,
+                Err(_) => break,
+            },
             _ = &mut outbound_task => break,
         };
         match msg {

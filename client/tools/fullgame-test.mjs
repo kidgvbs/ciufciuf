@@ -1,10 +1,10 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // fullgame-test.mjs — Partita completa E2E via REST+WS con due bot.
 //
 // Gioca una partita intera fino a GAME_OVER: draft iniziale e mid-game,
 // turni alternati, claim rotte, pesca mazzo/face-up, ultimo giro, punteggi.
 //
-// Uso: node client/tools/fullgame-test.mjs [base=http://localhost:18956]
+// Uso: bun client/tools/fullgame-test.mjs [base=http://localhost:18956]
 //   --spawn-server  avvia automaticamente ttr-server su :18956
 
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
@@ -52,7 +52,7 @@ async function startServer() {
 
   tmpDir = mkdtempSync(join(tmpdir(), 'ciufciuf-fullgame-'));
   const bin = join(ROOT, 'target', 'release', 'ttr-server');
-  const args = ['--port', String(PORT), '--client-dist', join(ROOT, 'client', 'dist'), '--saves-dir', tmpDir];
+  const args = ['--port', String(PORT), '--client-dist', join(ROOT, 'client', 'dist'), '--saves-dir', tmpDir, '--allow-client-seed'];
   console.log(`   Avvio server: ${bin} ${args.join(' ')}`);
 
   let stderr = '';
