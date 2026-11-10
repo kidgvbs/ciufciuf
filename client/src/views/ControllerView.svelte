@@ -21,6 +21,8 @@
   } from '../lib/lobby';
   import { createGameConnection, type GameConnection } from '../lib/ws';
   import { createActionGate } from '../lib/action-gate';
+  import { notConnectedError } from '../lib/errors';
+  import { rankedScores, winnerNames } from '../lib/scores';
   import type { Snapshot, PublicState, PrivateState, ErrorPayload, InboundAction, PlayerColor } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import JoinScreen from '../lib/components/JoinScreen.svelte';
@@ -38,7 +40,8 @@
   let view: 'join' | 'waiting' | 'game' | 'gameover' = $state('join');
   let joinError = $state('');
 
-  // Anti doppio tap sulle pescate (ogni tap consumerebbe una pescata del turno).
+  // Anti doppio tap su tutte le azioni di gioco (ogni tap doppio consumerebbe
+  // una pescata, o invierebbe due volte la stessa rotta/scelta).
   let drawBusy = $state(false);
   const drawGate = createActionGate({
     minMs: 350,
@@ -170,12 +173,26 @@
   }
 
   // ── Azioni ─────────────────────────────────────────────────────
-  function sendAction(action: InboundAction) {
-    if (action.actionType === 'DRAW_TRAIN_CARD') {
-      if (!connection?.connected) return;
-      if (!drawGate.tryAcquire()) return;
+  /** Invia un'azione; `false` se non è partita (doppio tap o socket chiuso). */
+  function sendAction(action: InboundAction): boolean {
+    if (!connection?.connected) {
+      connectionStore.lastError = notConnectedError();
+      return false;
     }
-    connection?.send(action);
+    if (action.actionType !== 'REQUEST_SNAPSHOT' && !drawGate.tryAcquire()) return false;
+    if (!connection.send(action)) {
+      drawGate.settle();
+      connectionStore.lastError = notConnectedError();
+      return false;
+    }
+    return true;
+  }
+
+  function confirmLeave() {
+    if (view === 'game' && !window.confirm(
+      'Uscire dalla partita? Perderai il tuo posto e non potrai rientrare.',
+    )) return;
+    onLeave();
   }
 
   function onLeave() {
@@ -263,17 +280,17 @@
     <div class="gameover-screen">
       <h1>🏁 Fine partita!</h1>
       {#if publicStore.finalScores}
+        {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
+        {#if winners}<p class="winner-line">🥇 Vince {winners}!</p>{/if}
         <div class="scores-list">
-          {#each publicStore.finalScores as fs}
+          {#each rankedScores(publicStore.finalScores) as fs}
             {@const p = publicStore.playersSummary.find(
               (ps) => ps.player_id === fs.playerId,
             )}
             <div
               class="score-card"
               class:mine={fs.playerId === playerId}
-              class:winner={publicStore.longestPathPlayerIds?.includes(
-                fs.playerId,
-              )}
+              class:winner={fs.winner}
             >
               <div class="score-header">
                 <span
@@ -282,7 +299,7 @@
                     ? PLAYER_COLOR_CSS[p.color]
                     : '#666'}"
                 ></span>
-                <span class="score-name">{p?.name ?? fs.playerId}</span>
+                <span class="score-name">{fs.winner ? '🥇 ' : ''}{p?.name ?? fs.playerId}</span>
                 <span class="score-total">{fs.total}</span>
               </div>
               <div class="score-detail">
@@ -310,7 +327,7 @@
     </div>
 
   {:else}
-    <ControllerGameView {playerId} {sendAction} {onLeave} {drawBusy} />
+    <ControllerGameView {playerId} {sendAction} onLeave={confirmLeave} {drawBusy} />
   {/if}
 </div>
 
@@ -438,6 +455,12 @@
   }
   .score-card.winner {
     background: #2c3a1c;
+  }
+  .winner-line {
+    font-size: 1.2rem;
+    font-weight: 800;
+    color: var(--gold);
+    margin: 0 0 0.75rem;
   }
   .score-header {
     display: flex;

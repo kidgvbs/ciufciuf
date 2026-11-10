@@ -5,7 +5,7 @@
   // Riutilizzata da: mano a ventaglio del controller, face-up (controller e
   // TV, con `badge` = numero posizione), pannello pagamento.
   import type { CardColor } from '../proto';
-  import { CARD_COLOR_CSS } from '../colors';
+  import { CARD_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
   import TrainIcon from './TrainIcon.svelte';
 
   let {
@@ -37,18 +37,6 @@
   // Id unico per il gradient SVG della locomotiva (niente collisioni nel DOM).
   const uid = Math.random().toString(36).slice(2, 8);
 
-  const NAMES: Record<CardColor, string> = {
-    RED: 'Rossa',
-    ORANGE: 'Arancio',
-    YELLOW: 'Gialla',
-    GREEN: 'Verde',
-    BLUE: 'Blu',
-    PURPLE: 'Viola',
-    BLACK: 'Nera',
-    WHITE: 'Bianca',
-    LOCOMOTIVE: 'Jolly',
-  };
-
   // Testo leggibile sulla banda colore (bianco sulle tonalità scure).
   const darkTextColors: CardColor[] = ['YELLOW', 'WHITE'];
   const bandText = $derived(darkTextColors.includes(color) ? '#453416' : '#fbf6e9');
@@ -59,7 +47,7 @@
   <div class="art">
     <TrainIcon {color} {uid} />
   </div>
-  <div class="card-name">{NAMES[color]}</div>
+  <div class="card-name">{CARD_COLOR_NAME[color]}</div>
   {#if count !== null}
     <span class="count-badge" aria-label="{count} carte">{count}×</span>
   {/if}
@@ -111,18 +99,24 @@
     padding-bottom: 7%;
     line-height: 1;
   }
+  /* In alto a SINISTRA: nel ventaglio ogni carta copre il lato destro della
+     precedente, quindi solo l'angolo sinistro resta sempre visibile. */
   .count-badge {
     position: absolute;
-    top: 19%;
-    right: 6%;
+    top: 3%;
+    left: 4%;
     background: var(--board-ink);
     color: var(--board-1);
-    font-size: 0.6rem;
+    font-size: 0.8rem;
     font-weight: 800;
     line-height: 1;
-    padding: 0.18rem 0.3rem;
+    padding: 0.2rem 0.32rem;
     border-radius: 999px;
+    border: 1px solid rgba(251, 246, 233, 0.6);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  }
+  .small .count-badge {
+    font-size: 0.65rem;
   }
   .pos-badge {
     position: absolute;

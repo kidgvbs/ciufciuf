@@ -11,6 +11,102 @@ use crate::session::GameSession;
 /// Tentativi di nome per i backup creati nello stesso secondo.
 const MAX_BACKUP_ATTEMPTS: u32 = 1000;
 
+/// File con i risultati delle partite concluse, una riga JSON per partita.
+pub const RESULTS_FILE: &str = "results.jsonl";
+
+/// Risultato di una partita conclusa: tutto ciò che resta dopo che il save
+/// della partita è stato eliminato.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GameResult {
+    pub game_id: String,
+    pub game_name: String,
+    pub ruleset_id: String,
+    pub finished_at: String,
+    pub players: Vec<ResultPlayer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultPlayer {
+    pub name: String,
+    pub total: i32,
+    pub winner: bool,
+}
+
+/// Riga della classifica generale, aggregata per nome giocatore.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct StandingRow {
+    pub name: String,
+    pub games: u32,
+    pub wins: u32,
+    pub total_points: i64,
+    pub best: i32,
+}
+
+/// Aggiunge un risultato in coda a `results.jsonl` (crea il file se manca).
+pub(crate) fn append_result(saves_dir: &Path, result: &GameResult) -> Result<(), String> {
+    use std::io::Write;
+    std::fs::create_dir_all(saves_dir).map_err(|e| format!("mkdir {:?}: {}", saves_dir, e))?;
+    let path = saves_dir.join(RESULTS_FILE);
+    let line = serde_json::to_string(result).map_err(|e| format!("serializzazione: {}", e))?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|e| format!("apertura {:?}: {}", path, e))?;
+    writeln!(file, "{}", line).map_err(|e| format!("scrittura {:?}: {}", path, e))?;
+    file.sync_all().map_err(|e| format!("sync {:?}: {}", path, e))
+}
+
+/// Legge tutti i risultati; le righe illeggibili vengono saltate.
+pub fn read_results(saves_dir: &Path) -> Vec<GameResult> {
+    let Ok(text) = std::fs::read_to_string(saves_dir.join(RESULTS_FILE)) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str(l).ok())
+        .collect()
+}
+
+/// Classifica generale: vittorie, poi punti totali. Nomi senza distinzione
+/// di maiuscole ("Anna" e "anna" sono lo stesso giocatore).
+pub fn standings(results: &[GameResult]) -> Vec<StandingRow> {
+    let mut rows: Vec<StandingRow> = Vec::new();
+    for r in results {
+        for p in &r.players {
+            let key = p.name.to_lowercase();
+            let idx = match rows.iter().position(|row| row.name.to_lowercase() == key) {
+                Some(i) => i,
+                None => {
+                    rows.push(StandingRow {
+                        name: p.name.clone(),
+                        games: 0,
+                        wins: 0,
+                        total_points: 0,
+                        best: i32::MIN,
+                    });
+                    rows.len() - 1
+                }
+            };
+            let row = &mut rows[idx];
+            row.games += 1;
+            row.wins += u32::from(p.winner);
+            row.total_points += i64::from(p.total);
+            row.best = row.best.max(p.total);
+        }
+    }
+    rows.sort_by(|a, b| {
+        b.wins
+            .cmp(&a.wins)
+            .then(b.total_points.cmp(&a.total_points))
+            .then(a.name.cmp(&b.name))
+    });
+    rows
+}
+
 /// Dati di salvataggio di una partita.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SaveData {
@@ -281,7 +377,7 @@ pub fn parse_color(s: &str) -> Result<ttr_proto::PlayerColor, String> {
     }
 }
 
-fn chrono_now() -> String {
+pub(crate) fn chrono_now() -> String {
     // ISO 8601 semplice senza dipendenza chrono
     use std::time::SystemTime;
     let dur = SystemTime::now()
@@ -345,6 +441,55 @@ mod tests {
         assert!(now.ends_with("Z"));
         assert!(now.contains("T"));
         assert_eq!(now.len(), 20); // "YYYY-MM-DDTHH:MM:SSZ"
+    }
+
+    #[test]
+    fn standings_aggregate_by_name_and_rank_by_wins() {
+        let game = |players: &[(&str, i32, bool)]| GameResult {
+            game_id: "g".into(),
+            game_name: "g".into(),
+            ruleset_id: "usa_v2".into(),
+            finished_at: "t".into(),
+            players: players
+                .iter()
+                .map(|&(name, total, winner)| ResultPlayer {
+                    name: name.into(),
+                    total,
+                    winner,
+                })
+                .collect(),
+        };
+        let results = vec![
+            game(&[("Anna", 100, true), ("Bob", 90, false)]),
+            game(&[("anna", 70, false), ("Bob", 120, true), ("Ciro", 30, false)]),
+            game(&[("Bob", 80, true), ("Ciro", 60, false)]),
+        ];
+        let rows = standings(&results);
+        let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["Bob", "Anna", "Ciro"]);
+        assert_eq!(rows[0].wins, 2);
+        assert_eq!(rows[0].games, 3);
+        assert_eq!(rows[1].games, 2, "Anna e anna sono lo stesso giocatore");
+        assert_eq!(rows[1].total_points, 170);
+        assert_eq!(rows[1].best, 100);
+    }
+
+    #[test]
+    fn results_append_and_read_back() {
+        let dir = std::env::temp_dir().join(format!("ciuf-results-{}", uuid::Uuid::new_v4()));
+        let r = GameResult {
+            game_id: "g1".into(),
+            game_name: "Prova".into(),
+            ruleset_id: "usa_v2".into(),
+            finished_at: "t".into(),
+            players: vec![ResultPlayer { name: "Anna".into(), total: 42, winner: true }],
+        };
+        append_result(&dir, &r).unwrap();
+        append_result(&dir, &r).unwrap();
+        let back = read_results(&dir);
+        assert_eq!(back.len(), 2);
+        assert_eq!(back[0].players[0].total, 42);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

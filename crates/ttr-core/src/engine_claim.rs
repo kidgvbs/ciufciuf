@@ -288,7 +288,7 @@ impl Engine {
         );
 
         // Aggiorna punteggi giocatori
-        let final_scores: Vec<FinalScore> = self
+        let mut final_scores: Vec<FinalScore> = self
             .players
             .iter()
             .enumerate()
@@ -307,9 +307,26 @@ impl Engine {
                     ticket_failed: s.failed_tickets,
                     longest_path_bonus: bonus_val,
                     total,
+                    winner: false,
                 }
             })
             .collect();
+
+        // Vincitore: totale più alto; spareggio sul numero di biglietti
+        // completati, poi sul bonus del percorso più lungo. Pari merito
+        // residui restano tutti vincitori.
+        let rank_key = |fs: &FinalScore| {
+            (
+                fs.total,
+                scores[fs.player_index].completed_count,
+                fs.longest_path_bonus,
+            )
+        };
+        if let Some(best) = final_scores.iter().map(rank_key).max() {
+            for fs in &mut final_scores {
+                fs.winner = rank_key(fs) == best;
+            }
+        }
 
         vec![GameEvent::GameOver {
             final_scores,

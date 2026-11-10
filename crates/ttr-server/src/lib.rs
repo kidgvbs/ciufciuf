@@ -8,12 +8,33 @@ use std::path::{Path, PathBuf};
 
 mod bridge;
 mod lobby;
+pub mod profiles;
 pub mod save;
 mod session;
 mod state;
 mod ws;
 
 pub use state::AppState;
+
+/// Avvia l'attore di una partita. Quando termina (partita conclusa da
+/// tempo), la partita sparisce dall'elenco, ma solo se l'entry è ancora la
+/// sua: un resume con lo stesso game_id registra un attore nuovo.
+pub(crate) fn spawn_session(
+    state: &AppState,
+    game_id: String,
+    tx: &tokio::sync::mpsc::Sender<session::GameCommand>,
+    session: session::GameSession,
+) {
+    let games = state.games.clone();
+    let own_tx = tx.clone();
+    tokio::spawn(async move {
+        session.run().await;
+        let mut games = games.write().await;
+        if games.get(&game_id).is_some_and(|h| h.tx.same_channel(&own_tx)) {
+            games.remove(&game_id);
+        }
+    });
+}
 
 /// Costruisce il router Axum con tutti gli endpoint.
 ///
@@ -32,6 +53,8 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
         .route("/api/games/{id}", get(lobby::get_game))
         .route("/api/games/{id}/join", post(lobby::join_game))
         .route("/api/games/{id}/start", post(lobby::start_game))
+        .route("/api/standings", get(lobby::standings))
+        .route("/api/profiles", get(lobby::list_profiles))
         .route("/ws/{game_id}", get(ws::ws_handler));
 
     // Serving statici del client con fallback SPA (Fase 3b)
@@ -130,9 +153,8 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
         games.insert(game_id.clone(), handle.clone());
     }
 
-    tokio::spawn(async move {
-        session.run().await;
-    });
+    let tx_for_cleanup = handle.tx.clone();
+    spawn_session(state, game_id.clone(), &tx_for_cleanup, session);
 
     Ok((game_id, host_token))
 }

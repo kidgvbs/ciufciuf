@@ -4,4 +4,8 @@ import type { ErrorReason } from "./ErrorReason";
 /**
  * Payload di errore (dentro `ServerMessage::Error`).
  */
-export type ErrorPayload = { seq: bigint, reason: ErrorReason, action_ref: string | null, };
+export type ErrorPayload = { seq: bigint, reason: ErrorReason, action_ref: string | null, 
+/**
+ * Messaggio leggibile (italiano) per l'utente, se disponibile.
+ */
+detail: string | null, };

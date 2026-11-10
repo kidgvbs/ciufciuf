@@ -13,8 +13,12 @@
     onCancel?: () => void;
   } = $props();
 
-  // Nome precompilato dall'ultimo join (localStorage)
+  // Nome precompilato dall'ultimo join su questo telefono (localStorage)
   let name = $state(loadPlayerName());
+  // Profili salvati sul server (creati al primo join, solo il nome)
+  let profiles = $state<string[]>([]);
+  // Campo libero per un profilo nuovo (aperto se non ci sono profili)
+  let creating = $state(false);
   let gameId = $state('');
   let color = $state<PlayerColor | ''>('');
   let takenColors = $state<Set<string>>(new Set());
@@ -38,6 +42,18 @@
 
   $effect(() => {
     loadGames();
+  });
+
+  $effect(() => {
+    lobby.getProfiles()
+      .then((p) => {
+        profiles = p;
+        // Mostra il campo libero se non ci sono profili o se il nome ricordato
+        // da questo telefono non è (ancora) tra quelli salvati.
+        const known = p.some((x) => x.toLowerCase() === name.trim().toLowerCase());
+        if (p.length === 0 || (name.trim() !== '' && !known)) creating = true;
+      })
+      .catch(() => { creating = true; });
   });
 
   // Quando cambia la partita selezionata, recupera i colori già presi.
@@ -76,8 +92,36 @@
   <h1>🚂 CiufCiuf!</h1>
 
   <div class="join-form">
-    <label for="player-name">Nome giocatore</label>
-    <input id="player-name" bind:value={name} placeholder="Il tuo nome" disabled={joining} />
+    <span class="form-label">Chi sei?</span>
+    {#if profiles.length > 0}
+      <div class="profile-list">
+        {#each profiles as p (p)}
+          <button
+            type="button"
+            class="profile-chip"
+            class:selected={!creating && name.toLowerCase() === p.toLowerCase()}
+            onclick={() => { name = p; creating = false; }}
+            disabled={joining}
+          >{p}</button>
+        {/each}
+        <button
+          type="button"
+          class="profile-chip new"
+          class:selected={creating}
+          onclick={() => { creating = true; name = ''; }}
+          disabled={joining}
+        >+ Nuovo profilo</button>
+      </div>
+    {/if}
+    {#if creating}
+      <input
+        id="player-name"
+        bind:value={name}
+        placeholder="Il tuo nome (lo salviamo per le prossime partite)"
+        maxlength="24"
+        disabled={joining}
+      />
+    {/if}
 
     <label for="game-select">Partita</label>
     {#if loading}
@@ -240,6 +284,34 @@
     color: var(--danger);
     font-size: 0.85rem;
     margin: 0;
+  }
+  .profile-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .profile-chip {
+    background: var(--chrome-bg-2);
+    color: var(--chrome-text);
+    border: 2px solid var(--chrome-line);
+    border-radius: 999px;
+    padding: 0.45rem 0.9rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    min-height: 40px;
+  }
+  .profile-chip.selected {
+    border-color: var(--gold);
+    background: var(--chrome-bg-1);
+  }
+  .profile-chip.new {
+    border-style: dashed;
+    color: var(--chrome-muted);
+  }
+  .profile-chip:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .muted {
     color: var(--chrome-faint);

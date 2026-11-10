@@ -3,4 +3,9 @@
 /**
  * Punteggio finale per giocatore (E4).
  */
-export type FinalScoreInfo = { playerId: string, routePoints: number, ticketCompleted: number, ticketFailed: number, longestPathBonus: number, total: number, };
+export type FinalScoreInfo = { playerId: string, routePoints: number, ticketCompleted: number, ticketFailed: number, longestPathBonus: number, total: number, 
+/**
+ * Vincitore (pari merito: più vincitori). Calcolato dal motore con gli
+ * spareggi: totale, biglietti completati, bonus percorso più lungo.
+ */
+winner: boolean, };

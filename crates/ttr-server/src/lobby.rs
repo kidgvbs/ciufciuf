@@ -251,11 +251,8 @@ pub async fn create_game(
         games.insert(game_id.clone(), handle.clone());
     }
 
-    // Avvia l'attore
-    tokio::spawn(async move {
-        session.run().await;
-        // Cleanup alla chiusura
-    });
+    // Avvia l'attore (si rimuove dall'elenco quando termina).
+    crate::spawn_session(&state, game_id.clone(), &handle.tx, session);
 
     let response = CreateGameResponse {
         game_id,
@@ -286,6 +283,25 @@ struct GameListItem {
 #[derive(Debug, Serialize)]
 struct ListGamesResponse {
     games: Vec<GameListItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct StandingsResponse {
+    /// Partite concluse archiviate.
+    games: usize,
+    standings: Vec<crate::save::StandingRow>,
+}
+
+/// GET /api/standings — classifica generale dalle partite concluse.
+pub async fn standings(State(state): State<AppState>) -> impl IntoResponse {
+    let dir = state.saves_dir.clone();
+    let results = tokio::task::spawn_blocking(move || crate::save::read_results(&dir))
+        .await
+        .unwrap_or_default();
+    Json(StandingsResponse {
+        games: results.len(),
+        standings: crate::save::standings(&results),
+    })
 }
 
 /// GET /api/games — elenca le partite attive, interrogando l'attore (F4).
@@ -408,6 +424,35 @@ struct JoinResponseBody {
     ws_url: String,
 }
 
+/// Salva il nome come profilo (se nuovo). Errori solo nel log: il join è
+/// già riuscito e un profilo mancato non deve farlo fallire.
+async fn remember_profile(state: &AppState, name: String) {
+    let dir = state.saves_dir.clone();
+    let lock = state.profiles_lock.clone();
+    let res = tokio::task::spawn_blocking(move || {
+        let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+        crate::profiles::add_profile(&dir, &name)
+    })
+    .await;
+    if let Ok(Err(e)) = res {
+        tracing::warn!(error = %e, "salvataggio profilo fallito");
+    }
+}
+
+#[derive(Debug, Serialize)]
+struct ProfilesResponse {
+    profiles: Vec<String>,
+}
+
+/// GET /api/profiles — nomi dei profili salvati.
+pub async fn list_profiles(State(state): State<AppState>) -> impl IntoResponse {
+    let dir = state.saves_dir.clone();
+    let profiles = tokio::task::spawn_blocking(move || crate::profiles::read_profiles(&dir))
+        .await
+        .unwrap_or_default();
+    Json(ProfilesResponse { profiles })
+}
+
 /// POST /api/games/{id}/join — join di un giocatore in lobby.
 pub async fn join_game(
     State(state): State<AppState>,
@@ -452,12 +497,16 @@ pub async fn join_game(
     }
 
     match reply_rx.await {
-        Ok(Ok(resp)) => Json(JoinResponseBody {
-            player_id: resp.player_id,
-            token: resp.token,
-            ws_url: format!("/ws/{}", game_id),
-        })
-        .into_response(),
+        Ok(Ok(resp)) => {
+            // Profilo: il nome resta salvato per le partite future.
+            remember_profile(&state, body.name.trim().to_string()).await;
+            Json(JoinResponseBody {
+                player_id: resp.player_id,
+                token: resp.token,
+                ws_url: format!("/ws/{}", game_id),
+            })
+            .into_response()
+        }
         Ok(Err(reason)) => ErrorResponse::new(&reason, reason_detail(&reason)).into_response(),
         Err(_) => ErrorResponse::new("GAME_NOT_FOUND", Some("timeout risposta attore".into()))
             .into_response(),

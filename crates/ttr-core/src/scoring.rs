@@ -204,6 +204,8 @@ fn dfs_longest<'a>(
 pub struct PlayerScore {
     pub route_points: i32,
     pub completed_tickets: i32,
+    /// Numero di biglietti completati (spareggio).
+    pub completed_count: u32,
     pub failed_tickets: i32,
     pub longest_path: u32,
 }
@@ -227,6 +229,7 @@ pub fn compute_final_scores(
         .map(|_| PlayerScore {
             route_points: 0,
             completed_tickets: 0,
+            completed_count: 0,
             failed_tickets: 0,
             longest_path: 0,
         })
@@ -262,6 +265,7 @@ pub fn compute_final_scores(
                 let completed = connectivity.ticket_completed(pi, &ticket.from, &ticket.to);
                 if completed {
                     scores[pi].completed_tickets += ticket.points as i32;
+                    scores[pi].completed_count += 1;
                 } else {
                     scores[pi].failed_tickets -= ticket.points as i32;
                 }

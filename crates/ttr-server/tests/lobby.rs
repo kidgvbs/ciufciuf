@@ -118,6 +118,34 @@ async fn lobby_name_duplicate_returns_409() {
     );
 }
 
+/// Il primo join salva il nome come profilo, riusabile in ogni partita.
+#[tokio::test]
+async fn join_saves_profile_once() {
+    let server = TestServer::start().await;
+    let profiles = |base: String| async move {
+        let body: serde_json::Value = reqwest::get(format!("{}/api/profiles", base))
+            .await
+            .expect("GET /api/profiles")
+            .json()
+            .await
+            .expect("parse profiles");
+        body["profiles"].clone()
+    };
+    assert_eq!(profiles(server.base_url.clone()).await, serde_json::json!([]));
+
+    let g1 = create_game(&server.base_url, "P1").await;
+    join_game(&server.base_url, &g1.game_id, "Zoe", None).await;
+    join_game(&server.base_url, &g1.game_id, "Alice", None).await;
+    let g2 = create_game(&server.base_url, "P2").await;
+    join_game(&server.base_url, &g2.game_id, "alice", None).await;
+
+    // Stesso profilo con altre maiuscole: nessun duplicato; ordine alfabetico.
+    assert_eq!(
+        profiles(server.base_url.clone()).await,
+        serde_json::json!(["Alice", "Zoe"])
+    );
+}
+
 // ── Lobby: auto color ────────────────────────────────────────────────
 
 #[tokio::test]

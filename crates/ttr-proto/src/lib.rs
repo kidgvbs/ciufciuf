@@ -257,6 +257,10 @@ pub struct FinalScoreInfo {
     pub ticket_failed: i32,
     pub longest_path_bonus: i32,
     pub total: i32,
+    /// Vincitore (pari merito: più vincitori). Calcolato dal motore con gli
+    /// spareggi: totale, biglietti completati, bonus percorso più lungo.
+    #[serde(default)]
+    pub winner: bool,
 }
 
 /// Broadcast unicast privato: stato visibile solo al giocatore interessato.
@@ -296,6 +300,9 @@ pub struct ErrorPayload {
     pub seq: u64,
     pub reason: ErrorReason,
     pub action_ref: Option<String>,
+    /// Messaggio leggibile (italiano) per l'utente, se disponibile.
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -521,6 +528,7 @@ mod tests {
                 ticket_failed: -10,
                 longest_path_bonus: 10,
                 total: 72,
+                winner: true,
             }]),
             longest_path_player_ids: Some(vec!["p1".into()]),
         };
@@ -638,6 +646,7 @@ mod tests {
             seq: 7,
             reason: ErrorReason::InsufficientCards,
             action_ref: Some("CLAIM_ROUTE denver_phoenix_1".into()),
+            detail: Some("carte insufficienti".into()),
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"ERROR\""));
@@ -646,6 +655,7 @@ mod tests {
             ServerMessage::Error(ep) => {
                 assert_eq!(ep.seq, 7);
                 assert_eq!(ep.action_ref.unwrap(), "CLAIM_ROUTE denver_phoenix_1");
+                assert_eq!(ep.detail.as_deref(), Some("carte insufficienti"));
             }
             _ => panic!("wrong variant"),
         }

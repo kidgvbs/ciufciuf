@@ -7,7 +7,7 @@ Gioco in stile *Ticket to Ride* per la **LAN di casa**: la TV mostra la mappa co
 
 ## Stato
 
-Giocabile dall'inizio alla fine sulla mappa **USA** (`usa_v2`), da 2 a 5 giocatori. Motore, server e client sono completi per questo primo traguardo. La mappa Europe, il bot e le statistiche per profilo non ci sono ancora.
+Giocabile dall'inizio alla fine sulla mappa **USA** (`usa_v2`), da 2 a 5 giocatori, con **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Motore, server e client sono completi per questo primo traguardo. La mappa Europe e il bot non ci sono ancora.
 
 Per orientarsi nel dettaglio:
 
@@ -26,11 +26,26 @@ cargo build --release
 
 Poi:
 
-1. Apri `http://<ip-del-mac>:8080` sul browser della TV e crea la partita.
+1. Apri `http://<ip-del-mac>:8080` sul browser della TV: la home mostra la classifica generale. Crea la partita.
 2. Ogni giocatore scansiona il QR col telefono, che deve stare sulla stessa rete Wi-Fi. Se macOS lo chiede, consenti le connessioni in entrata a `ttr-server`.
-3. Quando sono entrati tutti, avvia la partita dalla TV.
+3. Sul telefono, alla voce **Chi sei?**, tocca il tuo nome; la prima volta usa **+ Nuovo profilo**. Il colore si sceglie a ogni partita.
+4. Quando sono entrati tutti, avvia la partita dalla TV.
+
+Nella mano sul telefono il numero di carte per colore sta in alto a sinistra di ogni carta; toccando una carta la si porta in primo piano.
 
 Dopo ogni modifica va ricompilato ciò che è cambiato: `npm run build` per il client, `cargo build --release` per il server. Il server serve i file di `client/dist`, quindi un client non ricompilato resta alla versione vecchia.
+
+### Profili, classifica e fine partita
+
+I dati restano in `--saves-dir` (ignorata da git):
+
+| File | Contenuto |
+|---|---|
+| `<id>.json` | Save di una partita **in corso** |
+| `profiles.json` | Nomi dei profili, salvati al primo ingresso in partita (maiuscole ignorate) |
+| `results.jsonl` | Una riga per partita conclusa: nome, totale e vincitore di ogni giocatore |
+
+A fine partita il motore calcola il vincitore (totale più alto; a parità più biglietti completati, poi bonus del percorso più lungo), il risultato viene aggiunto a `results.jsonl` e il save della partita viene **eliminato**. La schermata finale resta per 30 minuti, poi la partita sparisce dall'elenco. La classifica generale (vittorie, poi punti totali, aggregata per nome) è in `GET /api/standings`; i profili in `GET /api/profiles`.
 
 ### Opzioni del server
 
@@ -38,7 +53,7 @@ Dopo ogni modifica va ricompilato ciò che è cambiato: `npm run build` per il c
 |---|---|---|
 | `--port` | `8080` | |
 | `--data-dir` | `data` | Mappe e ruleset |
-| `--saves-dir` | `saves` | Una partita è un file JSON |
+| `--saves-dir` | `saves` | Save delle partite in corso, profili e risultati |
 | `--client-dist` | `../client/dist` | Il default vale solo se si parte da una sottocartella: dalla radice va passato `./client/dist` |
 | `--resume <file>` | | Ripristina una partita salvata |
 
@@ -61,10 +76,12 @@ A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>
 ## Da sapere
 
 - **Rientro in partita:** un telefono disconnesso rientra da solo, ma da un telefono diverso il rientro non funziona ancora.
+- **Profili:** un profilo è solo un nome, senza password: chiunque può toccare qualsiasi nome. Le partite concluse prima dell'introduzione della classifica non vi compaiono.
+- **Uscita:** "Esci" durante la partita chiede conferma, perché fa perdere il posto.
 - **Telefono in standby:** alla riattivazione il client si riconnette e riceve lo stato aggiornato. Non c'è HTTPS, quindi niente Wake Lock.
 - **Save vecchi:** un save che aveva già esaurito mazzo e scarti può divergere al replay senza dare errore. Tutti gli altri restano identici.
 - **Partite infinite:** una partita non finisce solo se chi può ancora reclamare rotte smette di farlo.
-- **Test:** `full_game_over_ws` e `save_and_replay` ogni tanto si appendono, perché il driver fa `recv` senza timeout. Se un test resta fermo, va interrotto e rilanciato.
+- **Test:** ogni tanto un test di integrazione WebSocket si appende, perché il driver fa `recv` senza timeout. Se un test resta fermo, va interrotto e rilanciato.
 
 ## Regole
 
@@ -75,6 +92,7 @@ Le regole vincolanti sono nel piano, §3. Il motore le applica così, e tre casi
 - **D26:** con 3 o più locomotive scoperte si scartano le 5 carte e se ne scoprono altre. Se tra mazzo e scarti restano al massimo 2 carte non-locomotiva, si rimescola una volta sola e ci si ferma, anche con 3 locomotive scoperte.
 - **D27:** se finiscono sia il mazzo sia gli scarti, entra in gioco un mazzo completo nuovo. Le carte in mano restano ai giocatori.
 - **D28:** se nessuno può più reclamare alcuna rotta, parte l'ultimo giro.
+- **Pagamento:** il client indica le carte; se ne manca una del colore dichiarato il motore usa una locomotiva (sempre un pagamento legale).
 
 ## Sviluppo
 
@@ -110,6 +128,7 @@ node tools/fullgame-test.mjs --spawn-server     # partita completa con un server
 - **`RULES_VERSION`** (`ttr-core`) va incrementata quando una modifica cambia il replay di una partita esistente.
 - **Il client non conosce le regole:** le mosse legali arrivano dal server.
 - **Protocollo:** i tipi nascono in `ttr-proto`; `npm run copy-bindings` li copia nel client.
+- **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
 - **Layout della mappa:** `cd client && node tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
 ## Prossimi fix
@@ -117,11 +136,12 @@ node tools/fullgame-test.mjs --spawn-server     # partita completa con un server
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
 1. Rientro da un telefono diverso
-2. Ripresa di una partita avviabile dalla TV
+2. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi")
 3. Identità al resume, oggi basata solo sul nome
 4. Timeout nei test che si appendono
-5. Save e lobby: fsync, metadati del save, rotazione dei backup
-6. Limiti contro gli abusi e prestazioni del longest path
-7. Rifiniture grafiche
+5. TV: riquadro con le ultime mosse; WebSocket: ping per rilevare i telefoni in standby
+6. Save e lobby: fsync, metadati del save, rotazione dei backup
+7. Limiti contro gli abusi e prestazioni del longest path
+8. Mappa Europe: deck dei biglietti iniziali preso dal ruleset (oggi fisso a `regular`)
 
-Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR. Poi la mappa Europe.
+Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.

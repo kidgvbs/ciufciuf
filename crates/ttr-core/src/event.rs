@@ -82,4 +82,8 @@ pub struct FinalScore {
     pub ticket_failed: i32,
     pub longest_path_bonus: i32,
     pub total: i32,
+    /// Vincitore (o pari merito dopo gli spareggi): totale più alto, poi
+    /// più biglietti completati, poi bonus percorso più lungo.
+    #[serde(default)]
+    pub winner: bool,
 }

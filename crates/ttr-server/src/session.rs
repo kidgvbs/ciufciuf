@@ -151,7 +151,12 @@ pub(crate) struct GameSession {
     pub resumed_map_data: Option<ttr_core::MapData>,
     /// Roster salvato: nome (lowercase) → (player_id, engine_index, colore).
     pub saved_roster: BTreeMap<String, (String, usize, ttr_proto::PlayerColor)>,
+    /// Istante di fine partita: dopo `GAME_OVER_LINGER` l'attore termina.
+    pub finished_at: Option<tokio::time::Instant>,
 }
+
+/// Quanto resta viva una partita conclusa (schermata finale su TV e telefoni).
+const GAME_OVER_LINGER: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 impl GameSession {
     #[allow(clippy::too_many_arguments)]
@@ -189,6 +194,7 @@ impl GameSession {
             resumed_engine: None,
             resumed_map_data: None,
             saved_roster: BTreeMap::new(),
+            finished_at: None,
         }
     }
 
@@ -237,11 +243,24 @@ impl GameSession {
             resumed_engine: Some(engine),
             resumed_map_data: Some(map_data),
             saved_roster,
+            finished_at: None,
         }
     }
 
     pub async fn run(mut self) {
-        while let Some(cmd) = self.rx.recv().await {
+        loop {
+            // A partita conclusa l'attore resta vivo per GAME_OVER_LINGER, così
+            // TV e telefoni vedono la schermata finale, poi termina.
+            let cmd = match self.finished_at {
+                Some(t) => {
+                    tokio::select! {
+                        cmd = self.rx.recv() => cmd,
+                        _ = tokio::time::sleep_until(t + GAME_OVER_LINGER) => None,
+                    }
+                }
+                None => self.rx.recv().await,
+            };
+            let Some(cmd) = cmd else { break };
             match cmd {
                 GameCommand::Join {
                     player_id,
@@ -593,12 +612,20 @@ impl GameSession {
 
                 self.broadcast_public_state();
                 self.push_private_states();
-                self.write_save();
+                if self.final_scores.is_some() {
+                    // Partita conclusa: restano solo i punteggi per la
+                    // classifica generale; il save della partita sparisce.
+                    self.archive_result_and_delete_save();
+                    self.finished_at = Some(tokio::time::Instant::now());
+                } else {
+                    self.write_save();
+                }
             }
             Err(err) => {
                 let reason = bridge::engine_error_to_reason(&err);
                 let action_ref = bridge::error_action_ref(&err);
-                let _ = self.send_error(&player_id, reason, action_ref);
+                let detail = Some(err.to_string());
+                let _ = self.send_error_detail(&player_id, reason, action_ref, detail);
             }
         }
     }
@@ -759,6 +786,16 @@ impl GameSession {
         reason: ttr_proto::ErrorReason,
         action_ref: Option<String>,
     ) -> Result<(), ()> {
+        self.send_error_detail(player_id, reason, action_ref, None)
+    }
+
+    fn send_error_detail(
+        &mut self,
+        player_id: &str,
+        reason: ttr_proto::ErrorReason,
+        action_ref: Option<String>,
+        detail: Option<String>,
+    ) -> Result<(), ()> {
         let seq = self.outbound_seq.get(player_id).copied().unwrap_or(0) + 1;
         self.outbound_seq.insert(player_id.to_string(), seq);
 
@@ -766,6 +803,7 @@ impl GameSession {
             seq,
             reason,
             action_ref,
+            detail,
         });
 
         if let Some(senders) = self.connections.get(player_id) {
@@ -826,6 +864,46 @@ impl GameSession {
     }
 
     // ── Save ─────────────────────────────────────────────────────
+
+    /// Partita conclusa: aggiunge i punteggi a `results.jsonl` (classifica
+    /// generale) ed elimina il save della partita. Se l'archiviazione fallisce
+    /// il save resta su disco, così i punteggi non vanno persi.
+    fn archive_result_and_delete_save(&self) {
+        let Some(ref path) = self.save_path else { return };
+        let Some(ref scores) = self.final_scores else { return };
+        let players = scores
+            .iter()
+            .map(|fs| crate::save::ResultPlayer {
+                name: self
+                    .player_index
+                    .get(&fs.player_id)
+                    .and_then(|&i| self.players.get(i))
+                    .map(|p| p.name.clone())
+                    .unwrap_or_else(|| fs.player_id.clone()),
+                total: fs.total,
+                winner: fs.winner,
+            })
+            .collect();
+        let result = crate::save::GameResult {
+            game_id: self.game_id.clone(),
+            game_name: self.game_name.clone(),
+            ruleset_id: self.ruleset_id.clone(),
+            finished_at: crate::save::chrono_now(),
+            players,
+        };
+        let saves_dir = path.parent().unwrap_or(std::path::Path::new("."));
+        if let Err(e) = crate::save::append_result(saves_dir, &result) {
+            tracing::error!(game_id = %self.game_id, error = %e, "archiviazione risultato fallita");
+            self.write_save();
+            return;
+        }
+        if let Err(e) = std::fs::remove_file(path)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            tracing::warn!(game_id = %self.game_id, error = %e, "eliminazione save fallita");
+        }
+        tracing::info!(game_id = %self.game_id, "partita conclusa: risultato archiviato, save eliminato");
+    }
 
     fn write_save(&self) {
         if let Some(ref path) = self.save_path {

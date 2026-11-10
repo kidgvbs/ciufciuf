@@ -24,6 +24,8 @@ pub struct AppState {
     pub data_dir: PathBuf,
     /// Porta su cui il server è in ascolto.
     pub port: u16,
+    /// Serializza le scritture di `saves/profiles.json`.
+    pub profiles_lock: Arc<std::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -39,6 +41,7 @@ impl AppState {
             saves_dir,
             data_dir,
             port,
+            profiles_lock: Arc::new(std::sync::Mutex::new(())),
         })
     }
 

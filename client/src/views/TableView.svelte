@@ -12,10 +12,12 @@
     type LanCandidate,
     type GameDetailPlayer,
     type GameListItem,
+    type Standings,
   } from '../lib/lobby';
   import { createGameConnection, type GameConnection } from '../lib/ws';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
+  import { rankedScores, winnerNames } from '../lib/scores';
   import { RULESETS, DEFAULT_RULESET_ID } from '../lib/rulesets';
   import MapSvg from '../lib/components/MapSvg.svelte';
   import MapCard from '../lib/components/MapCard.svelte';
@@ -40,6 +42,7 @@
   let lobbyPlayers = $state<GameDetailPlayer[]>([]);
   let lanPort = $state<number>(8080);
   let availableGames = $state<GameListItem[]>([]);
+  let standings = $state<Standings | null>(null);
 
   const lobby = $derived(new LobbyClient(host));
   const gameState = $derived(publicStore.state);
@@ -74,6 +77,7 @@
 
   async function refreshGames() {
     try { availableGames = await lobby.listGames(); } catch { /* ignorato */ }
+    try { standings = await lobby.getStandings(); } catch { /* ignorato */ }
   }
 
   async function startGame() {
@@ -270,6 +274,33 @@
               <button class="btn leave-game-btn" onclick={leaveGame}>✕ Cambia partita</button>
             </div>
           {/if}
+
+          <!-- Classifica generale: visibile prima di ogni partita -->
+          <div class="existing-games standings">
+            <h2>🏆 Classifica generale</h2>
+            {#if standings && standings.standings.length > 0}
+              <p class="game-meta">{standings.games} partite concluse</p>
+              <table>
+                <thead>
+                  <tr><th>#</th><th>Giocatore</th><th>Vittorie</th><th>Partite</th><th>Punti</th><th>Record</th></tr>
+                </thead>
+                <tbody>
+                  {#each standings.standings as row, i (row.name)}
+                    <tr class:winner={i === 0}>
+                      <td>{i + 1}</td>
+                      <td>{row.name}</td>
+                      <td>{row.wins}</td>
+                      <td>{row.games}</td>
+                      <td>{row.totalPoints}</td>
+                      <td>{row.best}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            {:else}
+              <p class="game-meta">Ancora nessuna partita conclusa: la prima fa classifica!</p>
+            {/if}
+          </div>
         </div>
       </div>
     </div>
@@ -278,13 +309,15 @@
     <div class="game-over">
       <h1>🏁 Fine partita!</h1>
       {#if publicStore.finalScores}
+        {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
+        {#if winners}<div class="winner-line">🥇 Vince {winners}!</div>{/if}
         <table>
           <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th><th>Bonus</th><th>Totale</th></tr></thead>
           <tbody>
-            {#each publicStore.finalScores as fs}
+            {#each rankedScores(publicStore.finalScores) as fs}
               {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
-              <tr class:winner={publicStore.longestPathPlayerIds?.includes(fs.playerId)}>
-                <td><span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span> {p?.name ?? fs.playerId}</td>
+              <tr class:winner={fs.winner}>
+                <td><span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span> {fs.winner ? '🥇 ' : ''}{p?.name ?? fs.playerId}</td>
                 <td>{fs.routePoints}</td><td>+{fs.ticketCompleted}</td>
                 <td>{fs.ticketFailed < 0 ? fs.ticketFailed : '0'}</td>
                 <td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>
@@ -402,6 +435,7 @@
     box-shadow: var(--shadow-panel);
   }
   .existing-games { margin-top:1rem; }
+  .standings table { margin-top:0.5rem; }
   .create-game label { display:block; margin:0.5rem 0; font-size:0.9rem; }
   .create-game input {
     margin-left:0.5rem; background:var(--chrome-bg-2); border:1px solid var(--chrome-line);
@@ -446,6 +480,7 @@
   .total { font-weight:800; font-size:1.2rem; color:var(--gold-deep); }
   .winner td { background:rgba(30,132,73,0.14); }
   .longest-path { margin-top:1rem; font-size:1.2rem; color:var(--gold); }
+  .winner-line { font-size:2rem; font-weight:800; color:var(--gold); margin-bottom:1rem; }
 
   /* Game layout — plancia segnapunti + board */
   .game-layout { display:flex; width:100vw; height:100vh; }

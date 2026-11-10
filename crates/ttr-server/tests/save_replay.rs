@@ -11,8 +11,9 @@ use common::driver::*; // Player, decide, apply_msg, run_game, recv_from
 use common::*;
 use ttr_proto::GameState;
 
-/// §9.4: a fine partita il file `saves/{id}.json` esiste, `status: completed`,
-/// N azioni > 0; replay da file → stessi `final_scores`.
+/// A fine partita il save `saves/{id}.json` viene eliminato e restano solo i
+/// punteggi, in coda a `saves/results.jsonl` (classifica generale), coerenti
+/// con i `final_scores` del PUBLIC_STATE finale.
 #[tokio::test]
 async fn save_and_replay() {
     let server = TestServer::start().await;
@@ -32,82 +33,40 @@ async fn save_and_replay() {
     let final_public = run_game(&mut a, &mut b, &map).await;
     assert_eq!(final_public.state, GameState::GameOver);
 
-    // Lascia tempo al server per scrivere il save file.
+    // Lascia tempo al server per archiviare il risultato.
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
-    assert!(
-        save_path.exists(),
-        "save file {:?} deve esistere",
-        save_path
-    );
+    assert!(!save_path.exists(), "il save della partita conclusa va eliminato");
 
-    // Legge il save file e verifica i contenuti.
-    let save_json = std::fs::read_to_string(&save_path).expect("lettura save file");
-    let save: serde_json::Value = serde_json::from_str(&save_json).expect("parse JSON save");
+    let results = ttr_server::save::read_results(&server.saves_dir);
+    assert_eq!(results.len(), 1, "un risultato archiviato");
+    let r = &results[0];
+    assert_eq!(r.game_id, game.game_id);
+    assert_eq!(r.game_name, "SaveReplay");
 
-    assert_eq!(
-        save["status"].as_str().unwrap(),
-        "completed",
-        "status deve essere completed"
-    );
-    let actions = save["actions"].as_array().expect("actions array");
-    assert!(!actions.is_empty(), "deve esserci almeno 1 azione nel save");
-    assert_eq!(save["gameId"].as_str().unwrap(), game.game_id);
-
-    // Replay: ricostruisci il motore dal save e verifica che arrivi a GameOver
-    // con lo stesso stato.
-    let save_data: ttr_server::save::SaveData =
-        serde_json::from_str(&save_json).expect("parse SaveData");
-    let ruleset = load_usa_ruleset();
-    let map_data = usa_map();
-    let replayed =
-        ttr_server::save::replay_engine(&save_data, &map_data, &ruleset).expect("replay engine");
-
-    // Verifica che il motore riprodotto sia in GameOver.
-    assert!(
-        matches!(replayed.phase(), ttr_core::error::GamePhase::GameOver),
-        "replay deve terminare in GameOver, fase attuale: {:?}",
-        replayed.phase()
-    );
-
-    // Confronta i final_scores del final_public con i punteggi dei giocatori
-    // nel motore riprodotto.
     let orig_scores = final_public
         .final_scores
         .as_ref()
         .expect("final_scores originali");
-    assert_eq!(
-        replayed.num_players(),
-        orig_scores.len(),
-        "stesso numero di giocatori nel replay"
-    );
-
-    for (i, orig_fs) in orig_scores.iter().enumerate() {
-        let replayed_player = replayed.player(i).expect("giocatore nel replay");
-        // `PlayerState.score` contiene solo i punti rotta, come `route_points`.
-        assert_eq!(
-            replayed_player.score, orig_fs.route_points,
-            "punti rotta coerenti per giocatore {}: replay={}, orig={}",
-            i, replayed_player.score, orig_fs.route_points
-        );
-        // Verifica anche il totale dei biglietti (non salvato su PlayerState).
-        assert_eq!(
-            orig_fs.ticket_completed + orig_fs.ticket_failed,
-            orig_fs.total - orig_fs.route_points - orig_fs.longest_path_bonus,
-            "coerenza interna final_scores per giocatore {}",
-            i
-        );
+    assert_eq!(r.players.len(), orig_scores.len());
+    for fs in orig_scores {
+        let name = if fs.player_id == pa.player_id { "Alice" } else { "Bob" };
+        let p = r.players.iter().find(|p| p.name == name).expect("giocatore archiviato");
+        assert_eq!(p.total, fs.total, "totale archiviato di {}", name);
+        assert_eq!(p.winner, fs.winner, "vincitore archiviato di {}", name);
     }
+    assert!(r.players.iter().any(|p| p.winner), "almeno un vincitore");
 
-    // Verifica che il numero di rotte claimate coincida.
-    let orig_claimed = final_public.claimed_routes.len();
-    let replayed_claimed = replayed.claimed_route_ids().len();
-    assert_eq!(
-        replayed_claimed, orig_claimed,
-        "stesso numero di rotte claimate: replay={}, orig={}",
-        replayed_claimed, orig_claimed
-    );
+    // La classifica generale li espone via REST.
+    let body: serde_json::Value = reqwest::get(format!("{}/api/standings", server.base_url))
+        .await
+        .expect("GET /api/standings")
+        .json()
+        .await
+        .expect("parse standings");
+    assert_eq!(body["games"], 1);
+    assert_eq!(body["standings"].as_array().unwrap().len(), 2);
 }
 
 /// §9.5: partita salvata a metà → `resume_game` → join col nome salvato →

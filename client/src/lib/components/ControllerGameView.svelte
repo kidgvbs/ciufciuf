@@ -3,7 +3,8 @@
   // Mostra: mano, biglietti, azioni legali, scelta biglietti.
 
   import { publicStore, privateStore, connectionStore } from '../stores.svelte.ts';
-  import { PLAYER_COLOR_CSS } from '../colors';
+  import { PLAYER_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
+  import { errorMessage } from '../errors';
   import { routePoints } from '../map-utils';
   import type { InboundAction, CardColor, TicketInfo, LegalMoves } from '../proto';
   import TicketChoiceDialog from './TicketChoiceDialog.svelte';
@@ -38,7 +39,7 @@
   let { playerId, onLeave, sendAction, drawBusy }: {
     playerId: string;
     onLeave: () => void;
-    sendAction: (a: InboundAction) => void;
+    sendAction: (a: InboundAction) => boolean;
     drawBusy: boolean;
   } = $props();
 
@@ -65,6 +66,8 @@
   // Stato locale
   let choosingRoute = $state(false);
   let showTicketDialog = $state(false);
+  // Carta della mano toccata: mostrata ingrandita in primo piano
+  let focusedColor = $state<CardColor | null>(null);
   let ticketMinKeep = $state(1);
   // Mappa sul telefono (D25): visibile di default, collassabile
   let showMap = $state(true);
@@ -131,19 +134,17 @@
     }
   });
 
-  // E8: il banner di errore si auto-chiude dopo pochi secondi
-  let errorTimer: ReturnType<typeof setTimeout> | null = null;
+  // E8: il banner di errore si auto-chiude dopo pochi secondi. Il cleanup
+  // cancella il timer quando arriva un nuovo errore o allo smontaggio.
   $effect(() => {
-    if (connectionStore.lastError) {
-      if (errorTimer) clearTimeout(errorTimer);
-      errorTimer = setTimeout(() => { connectionStore.lastError = null; }, 4000);
-    }
+    if (!connectionStore.lastError) return;
+    const t = setTimeout(() => { connectionStore.lastError = null; }, 4000);
+    return () => clearTimeout(t);
   });
 
   // F1: cancella i timer one-shot allo smontaggio del componente
   $effect(() => () => {
     if (flashTimer) clearTimeout(flashTimer);
-    if (errorTimer) clearTimeout(errorTimer);
   });
 
   // D3: vibrazione quando diventa il mio turno (silenziosa dove non supportata)
@@ -261,26 +262,28 @@
       }
     }
 
-    sendAction({
+    const sent = sendAction({
       actionType: 'CLAIM_ROUTE',
       player_id: playerId,
       route_id: route.id,
       cards_discarded: cards,
       client_seq: null,
     });
+    // Se l'azione non è partita il pannello resta aperto per riprovare.
+    if (!sent) return;
 
     payingRouteId = null;
     choosingRoute = false;
   }
 
   function confirmTicketChoice(keep: string[]) {
-    showTicketDialog = false;
-    sendAction({
+    const sent = sendAction({
       actionType: 'CHOOSE_TICKETS',
       player_id: playerId,
       keep,
       client_seq: null,
     });
+    if (sent) showTicketDialog = false;
   }
 
   function cancelTicketChoice() {
@@ -602,9 +605,16 @@
         <div class="hand-fan">
           {#each hbc as [color, count], i}
             {@const rot = (i - (hbc.length - 1) / 2) * 6}
-            <div class="fan-card" style="--rot:{rot}deg">
+            <button
+              type="button"
+              class="fan-card"
+              class:focused={focusedColor === color}
+              style="--rot:{rot}deg"
+              aria-label="{CARD_COLOR_NAME[color]}: {count} in mano"
+              onclick={() => (focusedColor = focusedColor === color ? null : color)}
+            >
               <TrainCard color={color as CardColor} {count} handSize={hand.length} />
-            </div>
+            </button>
           {/each}
         </div>
       {:else}
@@ -621,9 +631,13 @@
   {/if}
 
   {#if connectionStore.lastError}
-    <div class="error-banner">
-      ❌ {connectionStore.lastError.reason ?? 'Errore dal server'}
-    </div>
+    <button
+      class="error-banner"
+      aria-live="assertive"
+      onclick={() => (connectionStore.lastError = null)}
+    >
+      ❌ {errorMessage(connectionStore.lastError)}
+    </button>
   {/if}
 
   {#if ticketFlash.length > 0}
@@ -756,6 +770,12 @@
     padding: 0.4rem 0.2rem 0.2rem;
   }
   .fan-card {
+    /* reset del <button> */
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
     transform: rotate(var(--rot, 0deg));
     transform-origin: 50% 110%;
     transition: transform 0.15s ease;
@@ -765,6 +785,13 @@
   }
   .fan-card:hover {
     transform: rotate(var(--rot, 0deg)) translateY(-6px);
+  }
+  /* Carta toccata: sopra le altre, dritta, sollevata e un po' più grande,
+     così colore e numero si leggono anche nel ventaglio sovrapposto. */
+  .fan-card.focused {
+    position: relative;
+    z-index: 2;
+    transform: rotate(0deg) translateY(-14px) scale(1.25);
   }
 
   /* Tickets (fila di tagliandi) */
@@ -1086,15 +1113,18 @@
   }
   .error-banner {
     position: fixed;
-    bottom: 2.5rem;
-    left: 0;
-    right: 0;
+    /* In alto: in basso coprirebbe la mano e i pulsanti di conferma. */
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
     background: #c0392b;
     color: #fff;
     text-align: center;
-    padding: 0.4rem;
-    font-size: 0.8rem;
-    z-index: 50;
+    padding: 0.6rem;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 8px;
+    z-index: 60;
   }
 
   /* ── Landscape (telefono orizzontale): esperienza "tavolo da gioco" ──
@@ -1211,15 +1241,18 @@
     }
     .hand-dock .hand-fan {
       padding: 0.05rem 0.1rem;
-      overflow: hidden;
+      /* visible: la carta toccata si solleva sopra il ventaglio. Con la
+         sovrapposizione a -18px 9 colori stanno in ~360px. */
+      overflow: visible;
     }
     .hand-dock :global(.train-card) {
       width: 56px;
     }
-    /* Ventaglio orizzontale compatto: overlap più stretto della mano
-       portrait, le carte si aprono a ventaglio dal bordo inferiore. */
+    /* Ventaglio orizzontale compatto. La sovrapposizione lascia scoperta una
+       striscia di almeno ~28px per carta: quanto basta per il badge del
+       conteggio in alto a sinistra (max 9 colori → ~350px). */
     .hand-dock .fan-card + .fan-card {
-      margin-left: -32px;
+      margin-left: -18px;
     }
     .hand-dock .fan-card:hover {
       transform: rotate(var(--rot, 0deg)) translateY(-4px);

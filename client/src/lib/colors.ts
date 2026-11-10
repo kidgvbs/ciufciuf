@@ -16,6 +16,19 @@ export const CARD_COLOR_CSS: Record<CardColor, string> = {
   LOCOMOTIVE: '#8a7a68',
 };
 
+/** Nome italiano di ogni carta treno. */
+export const CARD_COLOR_NAME: Record<CardColor, string> = {
+  RED: 'Rossa',
+  ORANGE: 'Arancio',
+  YELLOW: 'Gialla',
+  GREEN: 'Verde',
+  BLUE: 'Blu',
+  PURPLE: 'Viola',
+  BLACK: 'Nera',
+  WHITE: 'Bianca',
+  LOCOMOTIVE: 'Jolly',
+};
+
 /** Mappa PlayerColor → colore CSS per trenini/plance. */
 export const PLAYER_COLOR_CSS: Record<PlayerColor, string> = {
   RED: '#c0392b',

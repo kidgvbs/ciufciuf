@@ -57,12 +57,19 @@ class PublicStore {
 
   reset(): void {
     this.gameId = '';
+    this.protocolVersion = 0;
     this.state = 'WAITING_FOR_PLAYERS';
+    this.currentTurnPlayerId = null;
+    this.lastRound = false;
+    this.lastRoundTriggerPlayerId = null;
     this.visibleDeck = [];
     this.deckSize = 0;
     this.claimedRoutes = [];
     this.playersSummary = [];
+    this.tunnelReveal = null;
+    this.stations = [];
     this.finalScores = null;
+    this.longestPathPlayerIds = null;
   }
 }
 

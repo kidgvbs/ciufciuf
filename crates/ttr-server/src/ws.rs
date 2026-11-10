@@ -49,6 +49,7 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
                             seq: 0,
                             reason: ttr_proto::ErrorReason::GameNotFound,
                             action_ref: None,
+                            detail: None,
                         },
                     ))
                     .unwrap_or_default()
@@ -85,6 +86,7 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
                             seq: 0,
                             reason: ttr_proto::ErrorReason::Unauthorized,
                             action_ref: None,
+                            detail: None,
                         },
                     ))
                     .unwrap_or_default()
@@ -101,6 +103,7 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
                             seq: 0,
                             reason: ttr_proto::ErrorReason::GameNotFound,
                             action_ref: None,
+                            detail: None,
                         },
                     ))
                     .unwrap_or_default()
@@ -156,6 +159,7 @@ async fn handle_ws(socket: WebSocket, game_id: String, params: WsParams, state: 
                                             seq: 0,
                                             reason: ttr_proto::ErrorReason::Unauthorized,
                                             action_ref: None,
+                                            detail: None,
                                         },
                                     ));
                                 }

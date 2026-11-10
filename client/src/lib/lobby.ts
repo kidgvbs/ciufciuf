@@ -61,6 +61,20 @@ export interface ApiError {
   detail: string;
 }
 
+/** Riga della classifica generale (partite concluse archiviate). */
+export interface StandingRow {
+  name: string;
+  games: number;
+  wins: number;
+  totalPoints: number;
+  best: number;
+}
+
+export interface Standings {
+  games: number;
+  standings: StandingRow[];
+}
+
 // ── LocalStorage identity ────────────────────────────────────────────
 
 const STORAGE_KEY = 'ciufciuf-identity';
@@ -169,6 +183,17 @@ export class LobbyClient {
   // GET /api/lan
   async getLan(): Promise<LanInfo> {
     return this.request<LanInfo>('GET', '/api/lan');
+  }
+
+  // GET /api/standings
+  async getStandings(): Promise<Standings> {
+    return this.request<Standings>('GET', '/api/standings');
+  }
+
+  // GET /api/profiles — nomi salvati (creati al primo join)
+  async getProfiles(): Promise<string[]> {
+    const data = await this.request<{ profiles: string[] }>('GET', '/api/profiles');
+    return data.profiles;
   }
 
   // GET /qr?data=<url> → restituisce l'URL dell'immagine SVG

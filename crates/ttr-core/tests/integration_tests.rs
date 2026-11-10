@@ -727,6 +727,50 @@ fn golden_wrong_color_for_route() {
     assert!(r.is_err());
 }
 
+/// Il vincitore è calcolato dal motore: totale più alto, non chi ha il
+/// percorso più lungo; esattamente i migliori sono marcati `winner`.
+#[test]
+fn golden_game_over_marks_winner_by_total() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(57, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    complete_initial_draft(&mut eng);
+    // Ultimo giro innescato dal giocatore 0, poi tutti pescano fino alla fine.
+    eng.set_player_trains(0, 3);
+    eng.set_player_hand(0, vec![CardColor::Red]);
+    let mut events = eng
+        .apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: "A_B_1".into(),
+            cards_discarded: vec![CardColor::Red],
+        })
+        .unwrap();
+    while eng.phase() != GamePhase::GameOver {
+        events.extend(
+            eng.apply(Action::DrawTrainCard {
+                player_index: eng.current_player(),
+                source: DrawSource::Deck,
+            })
+            .unwrap(),
+        );
+    }
+    let final_scores = events
+        .iter()
+        .find_map(|e| match e {
+            GameEvent::GameOver { final_scores, .. } => Some(final_scores.clone()),
+            _ => None,
+        })
+        .expect("evento GameOver");
+    let best = final_scores.iter().map(|fs| fs.total).max().unwrap();
+    assert!(final_scores.iter().any(|fs| fs.winner));
+    for fs in &final_scores {
+        if fs.winner {
+            assert_eq!(fs.total, best, "un vincitore ha il totale massimo");
+        } else {
+            assert!(fs.total <= best);
+        }
+    }
+}
+
 #[test]
 fn golden_initial_draft_must_keep_minimum() {
     let (ids, names, colors) = two_players();

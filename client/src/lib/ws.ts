@@ -39,8 +39,8 @@ export interface GameConnectionConfig {
 
 /** Connessione attiva a una partita. */
 export interface GameConnection {
-  /** Invia un'azione inbound (client → server). */
-  send(action: InboundAction): void;
+  /** Invia un'azione inbound (client → server). `false` se il socket è chiuso. */
+  send(action: InboundAction): boolean;
   /** Richiedi uno SNAPSHOT esplicito (es. dopo reconnect). */
   requestSnapshot(clientSeq?: bigint): void;
   /** Chiudi la connessione e rimuovi i listener. */
@@ -142,7 +142,9 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
     callbacks.onConnectionChange(true);
   }
 
-  function onClose(_event: CloseEvent): void {
+  function onClose(event: CloseEvent): void {
+    // Ignora la chiusura di un socket che non è più quello corrente.
+    if (event.target !== ws) return;
     _connected = false;
     callbacks.onConnectionChange(false);
     ws = null;
@@ -218,12 +220,13 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
 
   // ── API pubblica ─────────────────────────────────────────────
 
-  function send(action: InboundAction): void {
+  function send(action: InboundAction): boolean {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
       console.warn('[ws] Cannot send: not connected');
-      return;
+      return false;
     }
     ws.send(stringifyWithBigInt(action));
+    return true;
   }
 
   function requestSnapshot(clientSeq?: bigint): void {
