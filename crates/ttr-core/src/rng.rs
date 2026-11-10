@@ -1,15 +1,17 @@
 //! RNG seeded deterministico (piano §9.5).
 //!
 //! Usa `ChaCha12Rng` esplicito (non `StdRng`, che può cambiare algoritmo tra
-//! versioni di `rand`) per riproducibilità cross-platform: stessa sequenza dello
-//! `StdRng` di rand 0.8 usato finora, quindi i save esistenti restano validi.
-//! Il seed è un `u64` passato alla creazione del motore.
+//! versioni di `rand`) per riproducibilità cross-platform; la sequenza coincide
+//! con quella di `StdRng` di rand 0.8. Il seed è un `u64` passato alla
+//! creazione del motore.
 //!
-//! L'algoritmo di `SliceRandom::shuffle` resta legato alla versione di `rand`,
-//! bloccata da `Cargo.lock`.
+//! L'algoritmo di `SliceRandom::shuffle` dipende dalla versione di `rand`,
+//! fissata con `=` in `Cargo.toml`.
 
+#[cfg(any(test, feature = "test-helpers"))]
+use rand::Rng;
+use rand::SeedableRng;
 use rand::seq::SliceRandom;
-use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha12Rng;
 use serde::Serialize;
 
@@ -38,51 +40,28 @@ impl SeededRng {
         slice.shuffle(&mut self.rng);
     }
 
-    /// Genera un `u64` casuale.
-    #[allow(dead_code)]
-    pub fn r#gen(&mut self) -> u64 {
+    /// Prossima parola casuale a 64 bit.
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn next_word(&mut self) -> u64 {
         self.rng.r#gen()
     }
 
-    /// Genera un `usize` nell'intervallo [0, max).
-    #[allow(dead_code)]
-    pub fn gen_usize(&mut self, max: usize) -> usize {
-        if max == 0 {
-            return 0;
-        }
-        self.rng.gen_range(0..max)
-    }
-
-    /// Ricrea l'RNG dal seed (per replay).
-    #[allow(dead_code)]
+    /// Ricrea l'RNG dal seed.
+    #[cfg(test)]
     pub fn reset(&mut self) {
         self.rng = ChaCha12Rng::seed_from_u64(self.seed);
     }
-
-    /// Serializza per il log (solo seed).
-    #[allow(dead_code)]
-    pub fn to_log(&self) -> u64 {
-        self.seed
-    }
 }
-
-impl PartialEq for SeededRng {
-    fn eq(&self, other: &Self) -> bool {
-        self.seed == other.seed
-    }
-}
-
-impl Eq for SeededRng {}
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    type Expected = (u64, [usize; 110], [u64; 3], [usize; 3]);
+    type Expected = (u64, [usize; 110], [u64; 3]);
 
-    /// Per seed: `shuffle` di `0..110`, poi tre `r#gen` e tre `gen_usize(110)`.
-    /// Catturati con `rand::rngs::StdRng` (rand 0.8.8): un valore diverso vuol
-    /// dire che i replay dei save esistenti divergono.
+    /// Per seed: `shuffle` di `0..110`, poi tre parole a 64 bit. Catturati con
+    /// `rand::rngs::StdRng` (rand 0.8.8): un valore diverso vuol dire che i
+    /// replay dei save esistenti divergono.
     const EXPECTED: [Expected; 3] = [
         (
             0,
@@ -99,7 +78,6 @@ mod tests {
                 3564269110045988749,
                 10075349004696675567,
             ],
-            [38, 89, 105],
         ),
         (
             42,
@@ -116,7 +94,6 @@ mod tests {
                 13958912327111801715,
                 5906399668772012937,
             ],
-            [37, 42, 79],
         ),
         (
             16045690984503111693,
@@ -133,33 +110,31 @@ mod tests {
                 10672023964031919846,
                 2937878312653908278,
             ],
-            [56, 75, 66],
         ),
     ];
 
-    fn sequence(rng: &mut SeededRng) -> ([usize; 110], [u64; 3], [usize; 3]) {
+    fn sequence(rng: &mut SeededRng) -> ([usize; 110], [u64; 3]) {
         let mut deck: [usize; 110] = std::array::from_fn(|i| i);
         rng.shuffle(&mut deck);
-        let words = [rng.r#gen(), rng.r#gen(), rng.r#gen()];
-        let bounded = [rng.gen_usize(110), rng.gen_usize(110), rng.gen_usize(110)];
-        (deck, words, bounded)
+        let words = [rng.next_word(), rng.next_word(), rng.next_word()];
+        (deck, words)
     }
 
     #[test]
     fn sequence_matches_values_captured_from_std_rng() {
-        for (seed, deck, words, bounded) in EXPECTED {
+        for (seed, deck, words) in EXPECTED {
             let mut rng = SeededRng::new(seed);
-            assert_eq!(sequence(&mut rng), (deck, words, bounded), "seed {seed}");
+            assert_eq!(sequence(&mut rng), (deck, words), "seed {seed}");
         }
     }
 
     #[test]
     fn reset_restarts_the_sequence() {
-        for (seed, deck, words, bounded) in EXPECTED {
+        for (seed, deck, words) in EXPECTED {
             let mut rng = SeededRng::new(seed);
             sequence(&mut rng);
             rng.reset();
-            assert_eq!(sequence(&mut rng), (deck, words, bounded), "seed {seed}");
+            assert_eq!(sequence(&mut rng), (deck, words), "seed {seed}");
         }
     }
 }

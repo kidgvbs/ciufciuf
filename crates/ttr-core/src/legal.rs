@@ -6,7 +6,7 @@ use ttr_proto::CardColor;
 
 use crate::engine::Engine;
 use crate::error::GamePhase;
-use crate::types::*;
+use crate::types::{Route, RouteColor, RouteId, find_sister_route};
 
 /// Mosse legali per un giocatore.
 #[derive(Debug, Clone)]
@@ -19,6 +19,7 @@ pub struct LegalMoves {
 
 impl LegalMoves {
     /// Nessuna mossa valida (fasi dove non si può agire).
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             routes: vec![],
@@ -30,10 +31,9 @@ impl LegalMoves {
 }
 
 impl Engine {
-    /// Mosse legali filtrate per fase (piano §7.3/§9.4).
-    ///
-    /// Il client è "scemo": non deve mai vedere mosse che il motore
+    /// Mosse legali filtrate per fase: mai una mossa che il motore
     /// rifiuterebbe con `WrongState` o `NotYourTurn`.
+    #[must_use]
     pub fn legal_moves(&self, player_index: usize) -> LegalMoves {
         if player_index >= self.players.len() || player_index != self.current_player_index {
             return LegalMoves::empty();
@@ -99,10 +99,10 @@ impl Engine {
             }
             let rid = &route.id;
 
-            let can_pay = self.can_pay_route(
-                hand,
+            let can_pay = Self::can_pay_route(
                 &route.color,
                 route.len as usize,
+                hand.len(),
                 loco_count,
                 &color_counts,
             );
@@ -125,7 +125,7 @@ impl Engine {
         }
 
         if route.double {
-            let sister_id = find_sister_for_legal(rid, &self.routes_by_id);
+            let sister_id = find_sister_route(rid, &self.routes_by_id);
             if let Some(sid) = &sister_id
                 && let Some(cri) = self.claimed_routes.get(sid)
             {
@@ -152,32 +152,25 @@ impl Engine {
     }
 
     fn can_pay_route(
-        &self,
-        hand: &[CardColor],
         route_color: &str,
         len: usize,
+        hand_len: usize,
         loco_count: usize,
         color_counts: &BTreeMap<CardColor, usize>,
     ) -> bool {
-        if hand.len() < len {
+        if hand_len < len {
             return false;
         }
-        if route_color.eq_ignore_ascii_case("Gray") {
-            for color in color_counts.keys() {
-                if *color == CardColor::Locomotive {
-                    continue;
-                }
-                let colored = color_counts.get(color).copied().unwrap_or(0);
-                if colored + loco_count >= len {
-                    return true;
-                }
+        match RouteColor::parse(route_color) {
+            Some(RouteColor::Gray) => {
+                color_counts.iter().any(|(color, count)| {
+                    *color != CardColor::Locomotive && count + loco_count >= len
+                }) || loco_count >= len
             }
-            loco_count >= len
-        } else if let Some(card_color) = parse_route_color_internal(route_color) {
-            let colored = color_counts.get(&card_color).copied().unwrap_or(0);
-            colored + loco_count >= len
-        } else {
-            false
+            Some(RouteColor::Colored(card_color)) => {
+                color_counts.get(&card_color).copied().unwrap_or(0) + loco_count >= len
+            }
+            None => false,
         }
     }
 
@@ -191,12 +184,16 @@ impl Engine {
 
     fn can_draw_tickets(&self) -> bool {
         let deck_name = &self.ruleset.ticket_draw.deck;
-        self.ticket_draw_pile.iter().any(|tid| {
-            self.tickets_by_id
-                .get(tid)
-                .map(|t| &t.deck == deck_name)
-                .unwrap_or(false)
-        })
+        let available = self
+            .ticket_draw_pile
+            .iter()
+            .filter(|tid| {
+                self.tickets_by_id
+                    .get(*tid)
+                    .is_some_and(|t| &t.deck == deck_name)
+            })
+            .count();
+        available >= self.min_tickets_to_draw()
     }
 }
 
@@ -206,35 +203,4 @@ fn count_colors(hand: &[CardColor]) -> BTreeMap<CardColor, usize> {
         *counts.entry(*card).or_default() += 1;
     }
     counts
-}
-
-fn find_sister_for_legal(route_id: &str, routes: &BTreeMap<String, Route>) -> Option<String> {
-    let base = route_id
-        .strip_suffix("_1")
-        .or_else(|| route_id.strip_suffix("_2"))?;
-    let sister_id = if route_id.ends_with("_1") {
-        format!("{}_2", base)
-    } else {
-        format!("{}_1", base)
-    };
-    if routes.contains_key(&sister_id) {
-        Some(sister_id)
-    } else {
-        None
-    }
-}
-
-fn parse_route_color_internal(color_str: &str) -> Option<CardColor> {
-    match color_str {
-        "Gray" | "grey" | "gray" => None,
-        "Red" | "red" => Some(CardColor::Red),
-        "Orange" | "orange" => Some(CardColor::Orange),
-        "Yellow" | "yellow" => Some(CardColor::Yellow),
-        "Green" | "green" => Some(CardColor::Green),
-        "Blue" | "blue" => Some(CardColor::Blue),
-        "Purple" | "purple" => Some(CardColor::Purple),
-        "Black" | "black" => Some(CardColor::Black),
-        "White" | "white" => Some(CardColor::White),
-        _ => None,
-    }
 }

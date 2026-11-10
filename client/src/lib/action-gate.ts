@@ -16,7 +16,7 @@ export interface ActionGate {
   tryAcquire(): boolean;
   /** Segnala l'arrivo della risposta. A gate aperto non fa nulla. */
   settle(): void;
-  /** Cancella i timer e riapre il gate senza notificare `onChange`. */
+  /** Cancella i timer, riapre il gate e notifica `onChange(false)`. */
   dispose(): void;
   readonly locked: boolean;
 }
@@ -65,6 +65,7 @@ export function createActionGate({ minMs, maxMs, onChange }: ActionGateOptions):
     dispose(): void {
       clearTimers();
       locked = false;
+      onChange?.(false);
     },
 
     get locked(): boolean {

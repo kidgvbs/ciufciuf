@@ -115,7 +115,7 @@ describe('createActionGate', () => {
     expect(gate.locked).toBe(true);
   });
 
-  it('dispose() cancella i timer e una settle() successiva non ha effetto', () => {
+  it('dispose() cancella i timer, notifica onChange(false) e una settle() successiva non ha effetto', () => {
     const { gate, onChange } = makeGate();
     gate.tryAcquire();
     gate.dispose();
@@ -124,6 +124,6 @@ describe('createActionGate', () => {
     gate.settle();
     expect(vi.getTimerCount()).toBe(0);
     expect(gate.locked).toBe(false);
-    expect(onChange.mock.calls).toEqual([[true]]);
+    expect(onChange.mock.calls).toEqual([[true], [false]]);
   });
 });

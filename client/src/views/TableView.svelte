@@ -1,11 +1,12 @@
 <script lang="ts">
   // Table view (TV, browser HDMI): mappa condivisa + lobby + game over.
-  // Connessione spettatore senza playerId (N1).
+  // Connessione spettatore senza playerId.
 
   import { onMount } from 'svelte';
   import { publicStore, connectionStore, applySnapshot, resetStores } from '../lib/stores.svelte.ts';
   import {
     LobbyClient,
+    LobbyError,
     saveLastGame,
     loadLastGame,
     clearLastGame,
@@ -14,7 +15,10 @@
     type GameListItem,
     type Standings,
   } from '../lib/lobby';
-  import { createGameConnection, type GameConnection } from '../lib/ws';
+  import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
+  import { resolveServerHost } from '../lib/server-host';
+  import { buildRejoinUrl } from '../lib/rejoin';
+  import { fatalMessage } from '../lib/errors';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import { rankedScores, winnerNames } from '../lib/scores';
@@ -27,10 +31,8 @@
   import type { CardColor } from '../lib/proto';
 
   // Default: stesso server che serve la pagina (statics da ttr-server).
-  // Override per sviluppo: `/?server=http://<ip>:8080`.
-  let host = $state<string>(
-    new URLSearchParams(window.location.search).get('server') ?? window.location.origin,
-  );
+  // Override per sviluppo (solo `vite dev`): `/?server=http://<ip>:8080`.
+  let host = $state<string>(resolveServerHost(window.location.search));
   let gameId = $state<string>('');
   let connection: GameConnection | null = $state(null);
   let hostToken = $state<string>('');
@@ -40,21 +42,45 @@
   let lanCandidates = $state<LanCandidate[]>([]);
   let lanFallback = $state<string>('');
   let lobbyPlayers = $state<GameDetailPlayer[]>([]);
-  let lanPort = $state<number>(8080);
+  // Porta del server, letta da /api/lan.
+  let lanPort = $state<number | null>(null);
   let availableGames = $state<GameListItem[]>([]);
   let standings = $state<Standings | null>(null);
+  // Messaggio d'errore visibile (si chiude da solo).
+  let notice = $state<string>('');
+  // Resume: nomi del salvataggio non ancora rientrati e QR di rientro già emessi (nome → URL).
+  let missingPlayers = $state<string[]>([]);
+  let rejoinLinks = $state<Record<string, string>>({});
+  let reassigning = $state<string>('');
+  // Dopo --resume il token host è solo nel log del server: l'operatore lo incolla qui.
+  let hostTokenInput = $state<string>('');
+  const effectiveHostToken = $derived(hostToken || hostTokenInput.trim());
 
   const lobby = $derived(new LobbyClient(host));
   const gameState = $derived(publicStore.state);
   const isLobby = $derived(gameState === 'WAITING_FOR_PLAYERS');
   const isGameOver = $derived(gameState === 'GAME_OVER');
   const isInGame = $derived(!isLobby && !isGameOver && publicStore.gameId !== '');
+  const isDisconnected = $derived(connection !== null && !connectionStore.connected);
+
+  function describe(e: unknown): string {
+    return e instanceof Error ? e.message : String(e);
+  }
+
+  $effect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => { notice = ''; }, 8000);
+    return () => clearTimeout(t);
+  });
 
   async function loadLan() {
     try {
       const info = await lobby.getLan();
       lanCandidates = info.candidates; lanFallback = info.fallback; lanPort = info.port;
-    } catch { /* ignorato */ }
+    } catch (e) {
+      console.warn('[tv] /api/lan non disponibile:', e);
+      notice = `Indirizzi LAN non disponibili: ${describe(e)}`;
+    }
   }
 
   async function createGame() {
@@ -67,22 +93,63 @@
       saveLastGame({ gameId: result.gameId, hostToken: result.hostToken });
       updateUrlGame(result.gameId);
       await refreshLobby(); connectSpectator();
-    } catch (e) { console.error('Creazione fallita:', e); }
+    } catch (e) {
+      console.error('Creazione fallita:', e);
+      notice = `Creazione partita fallita: ${describe(e)}`;
+    }
   }
 
   async function refreshLobby() {
     if (!gameId) return;
-    try { const d = await lobby.getGame(gameId); lobbyPlayers = d.players; } catch {}
+    try {
+      const d = await lobby.getGame(gameId);
+      lobbyPlayers = d.players;
+      missingPlayers = d.missingPlayers ?? [];
+    } catch (e) {
+      console.warn('[tv] aggiornamento lobby fallito:', e);
+      notice = `Aggiornamento lobby fallito: ${describe(e)}`;
+    }
   }
 
   async function refreshGames() {
-    try { availableGames = await lobby.listGames(); } catch { /* ignorato */ }
-    try { standings = await lobby.getStandings(); } catch { /* ignorato */ }
+    try {
+      availableGames = await lobby.listGames();
+      standings = await lobby.getStandings();
+    } catch (e) {
+      console.warn('[tv] elenco partite non disponibile:', e);
+      notice = `Impossibile leggere partite e classifica: ${describe(e)}`;
+    }
   }
 
   async function startGame() {
     if (!gameId || !hostToken) return;
-    try { await lobby.startGame(gameId, hostToken); } catch (e) { console.error('Start:', e); }
+    try {
+      await lobby.startGame(gameId, hostToken);
+    } catch (e) {
+      console.error('Start:', e);
+      notice = `Avvio partita fallito: ${describe(e)}`;
+    }
+  }
+
+  // Resume: rilascia una nuova identità per un nome salvato e la mostra come QR per il telefono.
+  async function reassign(name: string) {
+    const token = effectiveHostToken;
+    if (!gameId || !token || reassigning) return;
+    reassigning = name;
+    try {
+      const who = await lobby.reassignPlayer(gameId, token, name);
+      rejoinLinks = { ...rejoinLinks, [name]: buildRejoinUrl(controllerBase, { gameId, ...who }) };
+      // Token digitato dall'operatore e accettato dal server: la TV lo adotta (abilita anche Start).
+      if (!hostToken) {
+        hostToken = token;
+        hostTokenInput = '';
+        saveLastGame({ gameId, hostToken });
+      }
+    } catch (e) {
+      console.error('Riassegnazione:', e);
+      notice = `Riassegnazione di ${name} fallita: ${describe(e)}`;
+    }
+    reassigning = '';
   }
 
   // Aggancia la TV a una partita esistente (lista "Partite in LAN").
@@ -97,16 +164,25 @@
     connectSpectator();
   }
 
-  // Stacca la TV dalla partita corrente e torna alla lista.
-  function leaveGame() {
+  // Stacca la TV dalla partita corrente e torna alla lista; `forget` cancella anche
+  // l'ultima partita ricordata.
+  function leaveGame(forget = true) {
     if (connection) { connection.close(); connection = null; }
-    clearLastGame();
+    if (forget) clearLastGame();
     updateUrlGame('');
     gameId = '';
     hostToken = '';
     lobbyPlayers = [];
+    missingPlayers = [];
+    rejoinLinks = {};
     resetStores();
     void refreshGames();
+  }
+
+  function onFatal(reason: FatalReason) {
+    // Una versione incompatibile non invalida la partita: basta ricaricare la pagina.
+    leaveGame(reason !== 'PROTOCOL_VERSION');
+    notice = fatalMessage(reason);
   }
 
   // Sincronizza ?game=<id> nell'URL (così un reload si riaggancia da solo).
@@ -123,13 +199,14 @@
     connection = createGameConnection({
       host, gameId,
       callbacks: {
-        onSnapshot(snap: Snapshot, _isReconnect: boolean) {
+        onSnapshot(snap: Snapshot) {
           applySnapshot(snap);
         },
         onPublicState(state: PublicState) { publicStore.apply(state); },
         onPrivateState() {},
         onError(err: ErrorPayload) { connectionStore.lastError = err; },
         onConnectionChange(connected: boolean) { connectionStore.connected = connected; },
+        onFatal,
       },
     });
   }
@@ -150,38 +227,46 @@
           hostToken = saved && saved.gameId === candidate ? saved.hostToken : '';
           gameNameInput = detail.name;
           lobbyPlayers = detail.players;
+          missingPlayers = detail.missingPlayers ?? [];
           updateUrlGame(candidate);
           connectSpectator();
           return;
-        } catch {
-          // Partita non più esistente (es. server riavviato): dimenticala
-          if (saved?.gameId === candidate) clearLastGame();
-          if (paramGame) updateUrlGame('');
+        } catch (e) {
+          if (e instanceof LobbyError && e.status === 404) {
+            // Partita non più esistente (es. server riavviato): dimenticala
+            if (saved?.gameId === candidate) clearLastGame();
+            if (paramGame) updateUrlGame('');
+          } else {
+            console.warn('[tv] aggancio alla partita fallito:', e);
+            notice = `Impossibile agganciarsi alla partita: ${describe(e)}`;
+          }
         }
       }
       await refreshGames();
     })();
   });
 
-  // F1: chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
+  // Chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
   $effect(() => () => { connection?.close(); connection = null; });
 
   // Helpers
   function isCurrentPlayer(pid: string) { return publicStore.currentTurnPlayerId === pid; }
 
-  // Presence (Fase 3e-server): giocatori senza WebSocket attiva, solo a
+  // Presence: giocatori senza WebSocket attiva, solo a
   // partita avviata (in lobby il QR c'è già; a game over non serve).
   const offlinePlayers = $derived(
     isInGame ? publicStore.playersSummary.filter((p) => !p.connected) : [],
   );
   const offlineNames = $derived(offlinePlayers.map((p) => p.name).join(', '));
 
-  // URL di rientro per il QR: stesso della lobby (controller su host LAN).
-  const rejoinUrl = $derived.by(() => {
+  // Base URL del controller sulla LAN: stesso della lobby.
+  const controllerBase = $derived.by(() => {
     const cand = lanCandidates.find((c) => c.preferred) ?? lanCandidates.at(0);
-    if (cand) return cand.url + '/controller';
-    return lanFallback ? lanFallback + '/controller' : '';
+    return cand?.url ?? (lanFallback || host);
   });
+
+  // URL di rientro per il QR dei giocatori offline.
+  const rejoinUrl = $derived(controllerBase ? controllerBase.replace(/\/$/, '') + '/controller' : '');
 
   // Lista giocatori in lobby: preferisci lo stato live dal WS (broadcast su ogni
   // join), con fallback sul polling REST finché il primo PUBLIC_STATE non arriva.
@@ -201,6 +286,18 @@
 </script>
 
 <div class="tv-root">
+  <div class="tv-banners">
+    {#if isDisconnected}
+      <div class="tv-banner" role="status" aria-live="polite">
+        ⚠️ Disconnesso dal server &mdash; riconnessione in corso...
+      </div>
+    {/if}
+    {#if notice}
+      <div role="alert">
+        <button class="tv-banner" onclick={() => (notice = '')}>❌ {notice}</button>
+      </div>
+    {/if}
+  </div>
   {#if isLobby}
     <div class="lobby">
       <h1>🚂 CiufCiuf!</h1>
@@ -213,7 +310,7 @@
                 {@const controllerUrl = cand.url + '/controller'}
                 <div class="qr-item" class:preferred={cand.preferred}>
                   <img src={lobby.qrUrl(controllerUrl)} alt="QR {cand.ip}" class="qr-img" />
-                  <div class="qr-label">{cand.ip}:{lanPort}{cand.preferred ? ' ⭐' : ''}</div>
+                  <div class="qr-label">{cand.ip}{lanPort !== null ? `:${lanPort}` : ''}{cand.preferred ? ' ⭐' : ''}</div>
                 </div>
               {/each}
             </div>
@@ -271,7 +368,35 @@
               {:else if hostToken}
                 <p class="hint">Minimo 2 giocatori</p>
               {/if}
-              <button class="btn leave-game-btn" onclick={leaveGame}>✕ Cambia partita</button>
+              {#if missingPlayers.length > 0}
+                <div class="missing-players">
+                  <h3>In attesa di rientro</h3>
+                  {#each missingPlayers as missing (missing)}
+                    <div class="missing-row">
+                      <span>{missing}</span>
+                      <button
+                        class="btn"
+                        onclick={() => reassign(missing)}
+                        disabled={reassigning !== '' || !effectiveHostToken}
+                      >{rejoinLinks[missing] ? 'Riassegna di nuovo' : 'Riassegna'}</button>
+                      {#if rejoinLinks[missing]}
+                        <img
+                          class="missing-qr"
+                          src={lobby.qrUrl(rejoinLinks[missing])}
+                          alt="QR per {missing}"
+                        />
+                      {/if}
+                    </div>
+                  {/each}
+                  {#if !hostToken}
+                    <label class="missing-hint">
+                      Token host (dal log del server dopo il resume):
+                      <input bind:value={hostTokenInput} autocomplete="off" spellcheck="false" />
+                    </label>
+                  {/if}
+                </div>
+              {/if}
+              <button class="btn leave-game-btn" onclick={() => leaveGame()}>✕ Cambia partita</button>
             </div>
           {/if}
 
@@ -330,9 +455,9 @@
           <div class="longest-path">🏆 Longest Path: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
         {/if}
       {/if}
-      <!-- F2 (review 3c): via d'uscita dalla schermata di fine partita
+      <!-- Via d'uscita dalla schermata di fine partita
            (l'attach automatico riaggancia questa partita a ogni reload). -->
-      <button class="btn leave-game-btn" onclick={leaveGame}>✕ Cambia partita</button>
+      <button class="btn leave-game-btn" onclick={() => leaveGame()}>✕ Cambia partita</button>
     </div>
 
   {:else if isInGame}
@@ -359,7 +484,7 @@
              da solo (identità in localStorage). Area dedicata in plancia,
              non copre la mappa. -->
         {#if offlinePlayers.length > 0}
-          <div class="offline-strip" role="status">
+          <div class="offline-strip" role="status" aria-live="polite">
             <div class="offline-strip-text">
               <strong>{offlineNames}</strong>
               {offlinePlayers.length === 1 ? 'è offline' : 'sono offline'}
@@ -446,7 +571,7 @@
   .game-row:last-child { border-bottom:none; }
   .game-row-info { display:flex; flex-direction:column; gap:0.15rem; }
   .game-meta { font-size:0.8rem; color:var(--chrome-muted); }
-  /* 4.5:1 con testo #fff (review 3d: #b06f1e era 4.09) */
+  /* Contrasto 4.5:1 con testo #fff */
   button { font-size:1rem; margin-top:0.5rem; padding:0.5rem 1rem; color:#fff; background:#9a5a16; border-radius:var(--btn-radius); }
   button:not(.btn) { border:none; cursor:pointer; }
   button:not(.btn):hover { background:#cf8a2a; }
@@ -552,4 +677,23 @@
     animation:pulse 1s infinite alternate;
   }
   @keyframes pulse { from { opacity:0.8; } to { opacity:1; } }
+
+  /* Banner di stato (errori e disconnessione) */
+  .tv-banners {
+    position:fixed; top:0.5rem; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; gap:0.4rem; align-items:center;
+    z-index:50; pointer-events:none;
+  }
+  .tv-banner {
+    pointer-events:auto;
+    padding:0.5rem 1.2rem; border-radius:8px; font-size:1rem; font-weight:600;
+    background: var(--danger); color:#fff; border:none;
+    box-shadow: var(--shadow-panel);
+  }
+
+  /* Resume: riassegnazione dei posti salvati */
+  .missing-players { margin-top:1rem; }
+  .missing-row { display:flex; align-items:center; gap:0.8rem; margin:0.4rem 0; }
+  .missing-qr { width:120px; height:120px; border-radius:6px; background:#fff; }
+  .missing-hint { color:var(--chrome-muted); font-size:0.85rem; }
 </style>

@@ -1,5 +1,5 @@
 // Palette colori per il rendering della mappa e dell'interfaccia.
-// (Fase 3d: tonalità calde "scatola da gioco" — originali, regola d'oro 2.)
+// Tonalità calde "scatola da gioco", originali.
 
 import type { CardColor, PlayerColor } from './proto';
 

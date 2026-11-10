@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Carta treno disegnata da noi (Fase 3d): cornice pergamena, banda colore,
+  // Carta treno disegnata da noi: cornice pergamena, banda colore,
   // silhouette TrainIcon, nome colore (testo vero, a11y) e badge conteggio.
   //
   // Riutilizzata da: mano a ventaglio del controller, face-up (controller e
@@ -122,8 +122,8 @@
     position: absolute;
     bottom: 4%;
     right: 6%;
-    /* N1 (review 3d): pill scura come il count-badge — contrasto ≥4.5:1
-       su qualunque banda colore (prima: bg = colore banda, ORANGE/LOCO <4). */
+    /* Pill scura come il count-badge: contrasto ≥4.5:1
+       su qualunque banda colore. */
     background: var(--board-ink);
     color: var(--board-1);
     font-size: 0.55rem;

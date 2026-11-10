@@ -19,7 +19,7 @@ Per orientarsi nel dettaglio:
 Servono Rust (edizione 2024) e Node.js. Dalla radice del repo:
 
 ```bash
-(cd client && npm install && npm run build)
+(cd client && bun install --frozen-lockfile && bun run build)
 cargo build --release
 ./target/release/ttr-server --port 8080 --data-dir ./data --saves-dir ./saves --client-dist ./client/dist
 ```
@@ -33,7 +33,7 @@ Poi:
 
 Nella mano sul telefono il numero di carte per colore sta in alto a sinistra di ogni carta; toccando una carta la si porta in primo piano.
 
-Dopo ogni modifica va ricompilato ciò che è cambiato: `npm run build` per il client, `cargo build --release` per il server. Il server serve i file di `client/dist`, quindi un client non ricompilato resta alla versione vecchia.
+Dopo ogni modifica va ricompilato ciò che è cambiato: `bun run build` per il client, `cargo build --release` per il server. Il server serve i file di `client/dist`, quindi un client non ricompilato resta alla versione vecchia.
 
 ### Profili, classifica e fine partita
 
@@ -41,23 +41,32 @@ I dati restano in `--saves-dir` (ignorata da git):
 
 | File | Contenuto |
 |---|---|
-| `<id>.json` | Save di una partita **in corso** |
-| `profiles.json` | Nomi dei profili, salvati al primo ingresso in partita (maiuscole ignorate) |
-| `results.jsonl` | Una riga per partita conclusa: nome, totale e vincitore di ogni giocatore |
+| `<id>.json` | Save di una partita **in corso**: seed, log delle azioni e, per ogni giocatore, solo l'hash SHA-256 del token |
+| `profiles.json` | Nomi dei profili, salvati al primo ingresso in partita (maiuscole e forma Unicode ignorate, massimo 200). Se il file è illeggibile viene spostato in `profiles.json.corrupt-<unix>` e non è mai sovrascritto |
+| `results.jsonl` | Una riga per partita conclusa: nome, totale e vincitore di ogni giocatore. Una partita compare una sola volta |
 
-A fine partita il motore calcola il vincitore (totale più alto; a parità più biglietti completati, poi bonus del percorso più lungo), il risultato viene aggiunto a `results.jsonl` e il save della partita viene **eliminato**. La schermata finale resta per 30 minuti, poi la partita sparisce dall'elenco. La classifica generale (vittorie, poi punti totali, aggregata per nome) è in `GET /api/standings`; i profili in `GET /api/profiles`.
+A fine partita il motore calcola il vincitore (totale più alto; a parità più biglietti completati, poi bonus del percorso più lungo), il risultato viene aggiunto a `results.jsonl` e solo dopo il save della partita viene **eliminato**. La schermata finale resta per 30 minuti, poi la partita sparisce dall'elenco. La classifica generale (vittorie, poi punti totali, aggregata per nome normalizzato) è in `GET /api/standings`; i profili in `GET /api/profiles`. Save, profili e risultati sono scritti in modo durevole (file temporaneo, `fsync`, `rename`, `fsync` della cartella) da un task per partita, fuori dall'attore.
+
+Limiti e durate:
+
+- **Nomi:** giocatori e partite sono normalizzati in NFC; i caratteri di controllo e invisibili (zero-width, bidi) sono rifiutati con `INVALID_NAME`.
+- **Lobby inattiva:** una lobby non avviata senza join, start o connessioni per 30 minuti sparisce.
+- **Partita abbandonata:** una partita avviata senza connessioni per 6 ore sparisce dall'elenco, ma il suo save resta su disco e si può riprendere con `--resume`.
+- **Partite attive:** al massimo 20; oltre, la creazione risponde `429 TOO_MANY_GAMES`. Al massimo 8 spettatori WebSocket per partita.
+- **WebSocket:** messaggi oltre 16 KiB chiudono la connessione; un client che non legge viene scollegato e, riconnettendosi, riceve lo stato aggiornato.
 
 ### Opzioni del server
 
 | Opzione | Default | Note |
 |---|---|---|
-| `--port` | `8080` | |
+| `--port` | `8080` | Porta TCP (`u16`) |
+| `--bind` | `0.0.0.0` | Indirizzo IP su cui ascoltare |
 | `--data-dir` | `data` | Mappe e ruleset |
 | `--saves-dir` | `saves` | Save delle partite in corso, profili e risultati |
 | `--client-dist` | `../client/dist` | Il default vale solo se si parte da una sottocartella: dalla radice va passato `./client/dist` |
 | `--resume <file>` | | Ripristina una partita salvata |
 
-Il server non ha `--help`: le opzioni sconosciute vengono ignorate e il server parte lo stesso.
+`--help` elenca le opzioni; un valore non valido, un valore mancante o un'opzione sconosciuta fanno terminare il server con un errore. Su SIGINT/SIGTERM il server ferma le partite, attende le scritture in coda e chiude.
 
 ### Riprendere una partita salvata
 
@@ -65,9 +74,14 @@ Il server non ha `--help`: le opzioni sconosciute vengono ignorate e il server p
 ./target/release/ttr-server --data-dir ./data --saves-dir ./saves --client-dist ./client/dist --resume saves/<id>.json
 ```
 
-Il log stampa l'id della partita e un `hostToken` nuovo. I giocatori rientrano con gli stessi nomi, e finché non ci sono tutti l'avvio viene rifiutato. La TV non conosce il nuovo token, quindi per ora l'avvio si fa a mano:
+Il log stampa l'id della partita e un `hostToken` nuovo. Il resume rifiuta i save di una partita già conclusa e quelli creati con regole precedenti (`RULES_VERSION` 1 o assente: "save creato con regole precedenti: non riproducibile").
+
+I giocatori rientrano con il nome **e il token originale**, che il telefono conserva: `POST /api/games/<id>/join` con `{"name","token"}` restituisce lo stesso `playerId` e lo stesso token, mentre il solo nome dà `401 RESUME_TOKEN_MISMATCH`. Finché non ci sono tutti l'avvio viene rifiutato.
+
+Se un telefono ha perso il token, o il save è di formato 1 (senza hash dei token), l'host assegna un token nuovo con `reassign`; il vecchio smette di funzionare. L'`hostToken` della ripresa sta solo nel log: la TV lo chiede (campo "Token host") per i pulsanti "Riassegna", oppure si possono usare `curl`:
 
 ```bash
+curl -X POST http://localhost:8080/api/games/<id>/reassign -H 'content-type: application/json' -d '{"hostToken":"<token>","name":"Alice"}'
 curl -X POST http://localhost:8080/api/games/<id>/start -H 'content-type: application/json' -d '{"hostToken":"<token>"}'
 ```
 
@@ -75,13 +89,12 @@ A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>
 
 ## Da sapere
 
-- **Rientro in partita:** un telefono disconnesso rientra da solo, ma da un telefono diverso il rientro non funziona ancora.
+- **Rientro in partita:** un telefono disconnesso rientra da solo. Dopo un resume rientra solo chi ha il token originale; da un telefono diverso serve la riassegnazione dell'host.
 - **Profili:** un profilo è solo un nome, senza password: chiunque può toccare qualsiasi nome. Le partite concluse prima dell'introduzione della classifica non vi compaiono.
 - **Uscita:** "Esci" durante la partita chiede conferma, perché fa perdere il posto.
 - **Telefono in standby:** alla riattivazione il client si riconnette e riceve lo stato aggiornato. Non c'è HTTPS, quindi niente Wake Lock.
-- **Save vecchi:** un save che aveva già esaurito mazzo e scarti può divergere al replay senza dare errore. Tutti gli altri restano identici.
+- **Save vecchi:** `RULES_VERSION` è 2 (rispetto alla 1 cambiano D27, D28 e gli scarti delle carte realmente rimosse). I save creati con regole precedenti, o senza `rulesVersion`, non sono riproducibili e il resume li rifiuta.
 - **Partite infinite:** una partita non finisce solo se chi può ancora reclamare rotte smette di farlo.
-- **Test:** ogni tanto un test di integrazione WebSocket si appende, perché il driver fa `recv` senza timeout. Se un test resta fermo, va interrotto e rilanciato.
 
 ## Regole
 
@@ -117,7 +130,7 @@ FUZZ_GAMES_FULL=6000 cargo test -p ttr-core --release --test integration_tests f
 ./target/release/ttr-validate data/maps/usa.json data/rulesets/usa_v2.json
 
 cd client
-npm run typecheck && npm test && npm run check && npm run build
+bun run typecheck && bun run test && bun run check && bun run build
 node smoke-test.mjs http://localhost:8080       # serve un server già avviato; lascia un save di prova
 node tools/fullgame-test.mjs --spawn-server     # partita completa con un server suo, dopo la build release
 ```
@@ -127,7 +140,8 @@ node tools/fullgame-test.mjs --spawn-server     # partita completa con un server
 - **Determinismo:** una partita è seed più log delle azioni. Il replay deve dare lo stesso stato e gli stessi eventi: niente iterazione su `HashMap` nei percorsi che toccano stato o serializzazione.
 - **`RULES_VERSION`** (`ttr-core`) va incrementata quando una modifica cambia il replay di una partita esistente.
 - **Il client non conosce le regole:** le mosse legali arrivano dal server.
-- **Protocollo:** i tipi nascono in `ttr-proto`; `npm run copy-bindings` li copia nel client.
+- **Protocollo:** i tipi nascono in `ttr-proto`; `bun run copy-bindings` li copia nel client.
+- **Package manager del client:** bun (`client/bun.lock`). `bun pm untrusted` non segnala postinstall da approvare, quindi `trustedDependencies` resta vuoto.
 - **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
 - **Layout della mappa:** `cd client && node tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
@@ -135,10 +149,8 @@ node tools/fullgame-test.mjs --spawn-server     # partita completa con un server
 
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
-1. Rientro da un telefono diverso
-2. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi")
-3. TV: riquadro con le ultime mosse; WebSocket: ping per rilevare i telefoni in standby
-4. Save e lobby: fsync, metadati del save, rotazione dei backup
-5. Limiti contro gli abusi e prestazioni del longest path
+1. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi", `hostToken` della ripresa visibile alla TV)
+2. TV: riquadro con le ultime mosse; WebSocket: ping per rilevare i telefoni in standby
+3. Rotazione dei backup `.bak` e prestazioni del longest path
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.

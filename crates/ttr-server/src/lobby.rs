@@ -1,4 +1,4 @@
-//! Endpoint REST: lobby, LAN info, QR code, creazione/join/start partite.
+//! Endpoint REST: lobby, LAN info, QR code, creazione/join/reassign/start partite.
 //!
 //! Tutti gli endpoint REST usano `axum::extract::State<AppState>` e
 //! producono JSON. Errori nel formato `{"error":"REASON","detail":"…"}`.
@@ -13,61 +13,35 @@ use uuid::Uuid;
 
 use ttr_proto::PlayerColor;
 
-use crate::session::{GameCommand, GameHandle, GameInfo, GameSession};
+use crate::error::LobbyError;
+use crate::names::{NameError, normalize_name};
+use crate::session::{GameCommand, GameHandle, GameInfo, GameSession, JoinResponse, SessionConfig};
 use crate::state::AppState;
 
 // ── Tipi risposta REST ─────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
-    error: String,
+    error: &'static str,
     detail: Option<String>,
 }
 
-impl ErrorResponse {
-    fn new(error: &str, detail: Option<String>) -> Self {
+impl From<LobbyError> for ErrorResponse {
+    fn from(e: LobbyError) -> Self {
+        if let LobbyError::Internal(cause) = &e {
+            tracing::error!(error = %cause, "errore interno della lobby");
+        }
         Self {
-            error: error.to_string(),
-            detail,
+            error: e.code(),
+            detail: Some(e.to_string()),
         }
-    }
-
-    fn status(&self) -> StatusCode {
-        let e = self.error.as_str();
-        if e == "GAME_NOT_FOUND" {
-            StatusCode::NOT_FOUND
-        } else if e == "GAME_FULL"
-            || e == "GAME_STARTED"
-            || e == "ROSTER_INCOMPLETE"
-            || e == "COLOR_TAKEN"
-        {
-            StatusCode::CONFLICT
-        } else if e == "UNAUTHORIZED" {
-            StatusCode::UNAUTHORIZED
-        } else if e == "NAME_TAKEN" || e == "NAME_NOT_IN_SAVE" {
-            StatusCode::CONFLICT
-        } else if e == "BAD_REQUEST" || e == "INVALID_NAME" || e.starts_with("MIN_PLAYERS") {
-            StatusCode::BAD_REQUEST
-        } else {
-            StatusCode::INTERNAL_SERVER_ERROR
-        }
-    }
-
-    fn into_response(self) -> axum::response::Response {
-        let status = self.status();
-        (status, Json(self)).into_response()
     }
 }
 
-/// Testo per l'utente dei codici di errore della lobby che lo prevedono.
-fn reason_detail(reason: &str) -> Option<String> {
-    let detail = match reason {
-        "INVALID_NAME" => "Il nome deve avere da 1 a 24 caratteri.",
-        "COLOR_TAKEN" => "Questo colore è già stato scelto da un altro giocatore.",
-        "ROSTER_INCOMPLETE" => "Non tutti i giocatori della partita salvata sono rientrati.",
-        _ => return None,
-    };
-    Some(detail.to_string())
+/// Converte un errore di lobby nella risposta HTTP con status e corpo JSON.
+fn error_response(e: LobbyError) -> axum::response::Response {
+    let status = e.status();
+    (status, Json(ErrorResponse::from(e))).into_response()
 }
 
 // ── /api/lan ───────────────────────────────────────────────────────
@@ -183,39 +157,41 @@ struct CreateGameResponse {
 
 const MAX_GAME_NAME_CHARS: usize = 40;
 
+const DEFAULT_GAME_NAME: &str = "Partita";
+
+/// Valida il nome della partita: vuoto = nome di default; troppo lungo è
+/// `BAD_REQUEST`, caratteri non ammessi sono `INVALID_NAME`.
+fn game_name(raw: Option<&str>) -> Result<String, LobbyError> {
+    let Some(raw) = raw.map(str::trim).filter(|name| !name.is_empty()) else {
+        return Ok(DEFAULT_GAME_NAME.to_string());
+    };
+    normalize_name(raw, MAX_GAME_NAME_CHARS).map_err(|e| match e {
+        NameError::TooLong { .. } => LobbyError::BadRequest(format!(
+            "Il nome della partita può avere al massimo {MAX_GAME_NAME_CHARS} caratteri."
+        )),
+        other => LobbyError::InvalidName(other),
+    })
+}
+
 /// POST /api/games — crea una nuova partita in lobby.
 pub async fn create_game(
     State(state): State<AppState>,
     Json(body): Json<CreateGameRequest>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
     let ruleset = match state.ruleset(&body.ruleset_id) {
         Some(r) => r.clone(),
         None => {
-            return ErrorResponse::new(
-                "BAD_REQUEST",
-                Some(format!("ruleset '{}' sconosciuto", body.ruleset_id)),
-            )
-            .into_response();
+            return error_response(LobbyError::BadRequest(format!(
+                "ruleset '{}' sconosciuto",
+                body.ruleset_id
+            )));
         }
     };
 
-    let game_name = body
-        .name
-        .as_deref()
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .unwrap_or("Partita")
-        .to_string();
-    if game_name.chars().count() > MAX_GAME_NAME_CHARS {
-        return ErrorResponse::new(
-            "BAD_REQUEST",
-            Some(format!(
-                "Il nome della partita può avere al massimo {} caratteri.",
-                MAX_GAME_NAME_CHARS
-            )),
-        )
-        .into_response();
-    }
+    let game_name = match game_name(body.name.as_deref()) {
+        Ok(name) => name,
+        Err(e) => return error_response(e),
+    };
 
     let game_id = Uuid::new_v4().to_string();
     let host_token = Uuid::new_v4().to_string();
@@ -225,12 +201,17 @@ pub async fn create_game(
     let (tx, rx) = mpsc::channel(256);
 
     let session = GameSession::new_lobby(
-        game_id.clone(),
-        game_name.clone(),
-        body.ruleset_id.clone(),
-        max_players,
-        host_token.clone(),
-        Some(save_path),
+        SessionConfig {
+            game_id: game_id.clone(),
+            game_name: game_name.clone(),
+            ruleset_id: body.ruleset_id.clone(),
+            map_id: ruleset.map.clone(),
+            max_players,
+            host_token: host_token.clone(),
+            save_path: Some(save_path),
+            results_lock: state.results_lock.clone(),
+            limits: state.limits,
+        },
         rx,
         body.seed,
     );
@@ -245,9 +226,12 @@ pub async fn create_game(
         started: false,
     };
 
-    // Registra la partita nello stato globale
+    // Il controllo del limite e l'inserimento stanno nella stessa sezione critica.
     {
         let mut games = state.games.write().await;
+        if games.len() >= state.limits.max_active_games {
+            return error_response(LobbyError::TooManyGames);
+        }
         games.insert(game_id.clone(), handle.clone());
     }
 
@@ -304,7 +288,7 @@ pub async fn standings(State(state): State<AppState>) -> impl IntoResponse {
     })
 }
 
-/// GET /api/games — elenca le partite attive, interrogando l'attore (F4).
+/// GET /api/games — elenca le partite attive, interrogando l'attore.
 pub async fn list_games(State(state): State<AppState>) -> impl IntoResponse {
     let handles: Vec<GameHandle> = {
         let games = state.games.read().await;
@@ -318,7 +302,10 @@ pub async fn list_games(State(state): State<AppState>) -> impl IntoResponse {
             game_id: h.game_id.clone(),
             name: h.game_name.clone(),
             ruleset_id: h.ruleset_id.clone(),
-            players_joined: info.as_ref().map(|i| i.players_joined).unwrap_or(h.players_joined),
+            players_joined: info
+                .as_ref()
+                .map(|i| i.players_joined)
+                .unwrap_or(h.players_joined),
             max_players: h.max_players,
             started: info.as_ref().map(|i| i.started).unwrap_or(h.started),
         });
@@ -347,9 +334,12 @@ struct GetGameResponse {
     started: bool,
     #[serde(rename = "maxPlayers")]
     max_players: u32,
+    /// Nomi del save non ancora rientrati; vuoto fuori dal resume.
+    #[serde(rename = "missingPlayers")]
+    missing_players: Vec<String>,
 }
 
-/// GET /api/games/{id} — dettagli partita in lobby (F4: via attore).
+/// GET /api/games/{id} — dettagli partita in lobby, via attore.
 pub async fn get_game(
     State(state): State<AppState>,
     Path(game_id): Path<String>,
@@ -358,9 +348,7 @@ pub async fn get_game(
         let games = state.games.read().await;
         match games.get(&game_id) {
             Some(h) => h.clone(),
-            None => {
-                return ErrorResponse::new("GAME_NOT_FOUND", None).into_response();
-            }
+            None => return error_response(LobbyError::GameNotFound),
         }
     };
 
@@ -385,6 +373,7 @@ pub async fn get_game(
             .unwrap_or_default(),
         started: info.as_ref().map(|i| i.started).unwrap_or(handle.started),
         max_players: handle.max_players,
+        missing_players: info.map(|i| i.missing_players).unwrap_or_default(),
     };
 
     Json(response).into_response()
@@ -407,12 +396,39 @@ async fn query_game_info(handle: &GameHandle) -> Option<GameInfo> {
         .and_then(|r| r.ok())
 }
 
+/// Cerca la partita nel registro.
+async fn find_game(state: &AppState, game_id: &str) -> Result<GameHandle, LobbyError> {
+    state
+        .games
+        .read()
+        .await
+        .get(game_id)
+        .cloned()
+        .ok_or(LobbyError::GameNotFound)
+}
+
+/// Invia un comando all'attore e attende la risposta.
+async fn ask_actor<T>(
+    handle: &GameHandle,
+    command: impl FnOnce(tokio::sync::oneshot::Sender<Result<T, LobbyError>>) -> GameCommand,
+) -> Result<T, LobbyError> {
+    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+    handle
+        .tx
+        .send(command(reply_tx))
+        .await
+        .map_err(|_| LobbyError::GameActorGone)?;
+    reply_rx.await.map_err(|_| LobbyError::GameActorGone)?
+}
+
 // ── /api/games/{id}/join ───────────────────────────────────────────
 
 #[derive(Debug, Deserialize)]
 pub struct JoinRequest {
     pub name: String,
     pub color: Option<PlayerColor>,
+    /// Token originale del giocatore, obbligatorio al join di una partita ripresa.
+    pub token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -444,12 +460,20 @@ struct ProfilesResponse {
     profiles: Vec<String>,
 }
 
-/// GET /api/profiles — nomi dei profili salvati.
+/// GET /api/profiles — nomi dei profili salvati. Un file illeggibile dà
+/// un elenco vuoto e un avviso nel log.
 pub async fn list_profiles(State(state): State<AppState>) -> impl IntoResponse {
     let dir = state.saves_dir.clone();
     let profiles = tokio::task::spawn_blocking(move || crate::profiles::read_profiles(&dir))
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "lettura profili interrotta");
+            Ok(Vec::new())
+        })
+        .unwrap_or_else(|e| {
+            tracing::warn!(error = %e, "profili illeggibili: elenco vuoto");
+            Vec::new()
+        });
     Json(ProfilesResponse { profiles })
 }
 
@@ -459,47 +483,30 @@ pub async fn join_game(
     Path(game_id): Path<String>,
     Json(body): Json<JoinRequest>,
 ) -> axum::response::Response {
-    let handle = {
-        let games = state.games.read().await;
-        match games.get(&game_id) {
-            Some(h) => h.clone(),
-            None => {
-                return ErrorResponse::new("GAME_NOT_FOUND", None).into_response();
-            }
-        }
+    let handle = match find_game(&state, &game_id).await {
+        Ok(h) => h,
+        Err(e) => return error_response(e),
     };
 
     let player_id = Uuid::new_v4().to_string();
     let token = Uuid::new_v4().to_string();
 
     // Il colore (eventualmente automatico) viene risolto dall'attore, che
-    // possiede il roster e conosce i colori già usati (pacchetto §5).
-    let color = body.color;
+    // possiede il roster e conosce i colori già usati.
+    let result = ask_actor(&handle, |reply| GameCommand::Join {
+        player_id,
+        name: body.name,
+        color: body.color,
+        token,
+        resume_token: body.token,
+        reply,
+    })
+    .await;
 
-    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if handle
-        .tx
-        .send(GameCommand::Join {
-            player_id: player_id.clone(),
-            name: body.name.clone(),
-            color,
-            token: token.clone(),
-            reply: reply_tx,
-        })
-        .await
-        .is_err()
-    {
-        return ErrorResponse::new(
-            "GAME_NOT_FOUND",
-            Some("l'attore della partita è terminato".into()),
-        )
-        .into_response();
-    }
-
-    match reply_rx.await {
-        Ok(Ok(resp)) => {
-            // Profilo: il nome resta salvato per le partite future.
-            remember_profile(&state, body.name.trim().to_string()).await;
+    match result {
+        Ok(resp) => {
+            // Il nome resta salvato come profilo per le partite future.
+            remember_profile(&state, resp.name.clone()).await;
             Json(JoinResponseBody {
                 player_id: resp.player_id,
                 token: resp.token,
@@ -507,9 +514,54 @@ pub async fn join_game(
             })
             .into_response()
         }
-        Ok(Err(reason)) => ErrorResponse::new(&reason, reason_detail(&reason)).into_response(),
-        Err(_) => ErrorResponse::new("GAME_NOT_FOUND", Some("timeout risposta attore".into()))
-            .into_response(),
+        Err(e) => error_response(e),
+    }
+}
+
+// ── /api/games/{id}/reassign ───────────────────────────────────────
+
+#[derive(Debug, Deserialize)]
+pub struct ReassignRequest {
+    #[serde(rename = "hostToken")]
+    pub host_token: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ReassignResponseBody {
+    #[serde(rename = "playerId")]
+    player_id: String,
+    token: String,
+}
+
+/// POST /api/games/{id}/reassign — token nuovo per un giocatore di una
+/// partita ripresa, su richiesta dell'host.
+pub async fn reassign_player(
+    State(state): State<AppState>,
+    Path(game_id): Path<String>,
+    Json(body): Json<ReassignRequest>,
+) -> axum::response::Response {
+    let handle = match find_game(&state, &game_id).await {
+        Ok(h) => h,
+        Err(e) => return error_response(e),
+    };
+
+    let result: Result<JoinResponse, LobbyError> =
+        ask_actor(&handle, |reply| GameCommand::Reassign {
+            host_token: body.host_token,
+            name: body.name,
+            new_token: Uuid::new_v4().to_string(),
+            reply,
+        })
+        .await;
+
+    match result {
+        Ok(resp) => Json(ReassignResponseBody {
+            player_id: resp.player_id,
+            token: resp.token,
+        })
+        .into_response(),
+        Err(e) => error_response(e),
     }
 }
 
@@ -526,59 +578,32 @@ pub async fn start_game(
     State(state): State<AppState>,
     Path(game_id): Path<String>,
     Json(body): Json<StartRequest>,
-) -> impl IntoResponse {
-    let (handle, ruleset, map) = {
-        let games = state.games.read().await;
-        let handle = match games.get(&game_id) {
-            Some(h) => h.clone(),
-            None => {
-                return ErrorResponse::new("GAME_NOT_FOUND", None).into_response();
-            }
-        };
-        let ruleset = match state.ruleset(&handle.ruleset_id) {
-            Some(r) => r.clone(),
-            None => {
-                return ErrorResponse::new("BAD_REQUEST", Some("ruleset sconosciuto".into()))
-                    .into_response();
-            }
-        };
-        let map = match state.map(ruleset.map.as_str()) {
-            Some(m) => m.clone(),
-            None => {
-                return ErrorResponse::new(
-                    "BAD_REQUEST",
-                    Some(format!("mappa '{}' sconosciuta", ruleset.map)),
-                )
-                .into_response();
-            }
-        };
-        (handle, ruleset, map)
+) -> axum::response::Response {
+    let handle = match find_game(&state, &game_id).await {
+        Ok(h) => h,
+        Err(e) => return error_response(e),
+    };
+    let Some(ruleset) = state.ruleset(&handle.ruleset_id).cloned() else {
+        return error_response(LobbyError::BadRequest("ruleset sconosciuto".into()));
+    };
+    let Some(map) = state.map(ruleset.map.as_str()).cloned() else {
+        return error_response(LobbyError::BadRequest(format!(
+            "mappa '{}' sconosciuta",
+            ruleset.map
+        )));
     };
 
-    let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if handle
-        .tx
-        .send(GameCommand::Start {
-            host_token: body.host_token,
-            ruleset,
-            map,
-            reply: reply_tx,
-        })
-        .await
-        .is_err()
-    {
-        return ErrorResponse::new(
-            "GAME_NOT_FOUND",
-            Some("l'attore della partita è terminato".into()),
-        )
-        .into_response();
-    }
+    let result = ask_actor(&handle, |reply| GameCommand::Start {
+        host_token: body.host_token,
+        ruleset,
+        map,
+        reply,
+    })
+    .await;
 
-    match reply_rx.await {
-        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
-        Ok(Err(reason)) => ErrorResponse::new(&reason, reason_detail(&reason)).into_response(),
-        Err(_) => ErrorResponse::new("GAME_NOT_FOUND", Some("timeout risposta attore".into()))
-            .into_response(),
+    match result {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => error_response(e),
     }
 }
 

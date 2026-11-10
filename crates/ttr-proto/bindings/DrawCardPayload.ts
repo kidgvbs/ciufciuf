@@ -3,6 +3,7 @@ import type { DrawSource } from "./DrawSource";
 
 export type DrawCardPayload = { player_id: string, source: DrawSource, 
 /**
- * Numero di sequenza client per idempotenza (E6). `None` = client semplice.
+ * Numero di sequenza client per idempotenza: un valore minore o uguale
+ * all'ultimo ricevuto è un duplicato scartato. Assente = nessuna deduplica.
  */
-client_seq: bigint | null, };
+client_seq?: bigint, };

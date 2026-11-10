@@ -8,11 +8,6 @@
 
   let currentPath = $state<string>(window.location.pathname);
 
-  function navigate(path: string) {
-    window.history.pushState({}, '', path);
-    currentPath = path;
-  }
-
   // Intercetta navigazione browser (back/forward)
   if (typeof window !== 'undefined') {
     window.addEventListener('popstate', () => {

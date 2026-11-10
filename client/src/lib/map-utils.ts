@@ -3,7 +3,6 @@
 // Le città hanno coordinate lat/lon reali; la proiezione è una semplice
 // mappatura lineare con crop ai bordi (equirettangolare semplificata).
 
-import type { CardColor } from './proto';
 import { CARD_COLOR_CSS } from './colors';
 
 // ── Tipi ───────────────────────────────────────────────────────────

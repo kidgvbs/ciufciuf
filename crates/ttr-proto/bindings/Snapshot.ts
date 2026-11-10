@@ -3,7 +3,7 @@ import type { PrivateState } from "./PrivateState";
 import type { PublicState } from "./PublicState";
 
 /**
- * Snapshot completo dopo (re)connect (E7).
+ * Snapshot completo dopo (re)connect.
  */
 export type Snapshot = { protocol_version: number, public: PublicState, 
 /**

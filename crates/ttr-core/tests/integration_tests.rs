@@ -9,7 +9,7 @@ use ttr_core::types::{
     Bonus, City, ClaimedRouteInfo, DeckConfig, InitialTickets, MapData, PlayersConfig, Route,
     Ruleset, SetupDiscards, TicketDealtEntry, TicketDef, TicketDraw,
 };
-use ttr_core::{Action, DrawSource, Engine, EngineError, GameEvent};
+use ttr_core::{Action, DrawSource, Engine, EngineError, EngineInitError, GameEvent};
 use ttr_proto::CardColor;
 
 // ============================================================
@@ -123,7 +123,7 @@ fn mini_ruleset() -> Ruleset {
         setup_discards: SetupDiscards::ReshuffleBottom,
         route_points: rp,
         bonuses: vec![Bonus {
-            bonus_type: "longestPath".into(),
+            bonus_type: "longest_path".into(),
             label: "Longest Path".into(),
             points: 10,
         }],
@@ -211,7 +211,7 @@ fn usa_ruleset() -> Ruleset {
 #[test]
 fn golden_loco_face_up_is_single_draw() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     eng.set_face_up_card(0, Some(CardColor::Locomotive));
 
@@ -239,7 +239,7 @@ fn golden_loco_face_up_is_single_draw() {
 #[test]
 fn golden_loco_not_second_card() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(43, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(43, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     eng.set_face_up_card(0, Some(CardColor::Locomotive));
 
@@ -260,7 +260,7 @@ fn golden_loco_not_second_card() {
 #[test]
 fn golden_loco_threshold_resets_pool() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(44, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(44, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.set_face_up_card(0, Some(CardColor::Locomotive));
@@ -289,7 +289,7 @@ fn golden_loco_threshold_resets_pool() {
 #[test]
 fn golden_ticket_discards_bottom_in_order() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(47, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(47, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
@@ -327,7 +327,8 @@ fn golden_double_route_blocked_2p() {
         names,
         colors,
         0,
-    );
+    )
+    .unwrap();
     complete_initial_draft(&mut eng);
 
     eng.set_player_hand(0, vec![CardColor::Red, CardColor::Red]);
@@ -358,7 +359,8 @@ fn golden_double_route_free_4p() {
         names,
         colors,
         0,
-    );
+    )
+    .unwrap();
     complete_initial_draft(&mut eng);
 
     eng.set_player_hand(0, vec![CardColor::Red, CardColor::Red]);
@@ -389,7 +391,8 @@ fn golden_same_player_cannot_claim_both_doubles() {
         names,
         colors,
         0,
-    );
+    )
+    .unwrap();
     complete_initial_draft(&mut eng);
 
     eng.set_player_hand(0, vec![CardColor::Red, CardColor::Red]);
@@ -420,7 +423,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
 #[test]
 fn golden_last_round_includes_trigger() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(51, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(51, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.set_player_trains(0, 3);
@@ -481,7 +484,7 @@ fn golden_last_round_includes_trigger() {
 
 /// Edge case: il trigger dell'ultimo giro è l'ultimo giocatore nell'ordine.
 ///
-/// Sequenza attesa (piano §6/D11, §1 blockquote):
+/// Sequenza attesa (piano §6):
 /// 1. P1 (ultimo) claim con ≤2 treni → LastRoundAnnounced(trigger=1)
 /// 2. Turno finale di P0 → TurnAdvanced
 /// 3. Turno finale di P1 → GameOver
@@ -491,7 +494,7 @@ fn golden_last_round_includes_trigger() {
 fn golden_last_round_trigger_is_last_player() {
     let (ids, names, colors) = two_players();
     // first_player = 0, quindi l'ordine è P0 → P1
-    let mut eng = Engine::new(171, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(171, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     assert_eq!(eng.current_player(), 0, "P0 inizia");
 
@@ -597,7 +600,7 @@ fn golden_last_round_trigger_is_last_player() {
 #[test]
 fn golden_route_point_table() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(52, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(52, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.set_player_hand(0, vec![CardColor::Red]);
@@ -656,7 +659,7 @@ fn golden_route_point_table() {
 #[test]
 fn golden_cannot_draw_tickets_in_second_card_draw() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(53, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(53, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.apply(Action::DrawTrainCard {
@@ -673,7 +676,7 @@ fn golden_cannot_draw_tickets_in_second_card_draw() {
 #[test]
 fn golden_not_your_turn_error() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(54, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(54, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     let r = eng.apply(Action::DrawTrainCard {
@@ -686,7 +689,7 @@ fn golden_not_your_turn_error() {
 #[test]
 fn golden_route_not_found_error() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(55, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(55, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     let r = eng.apply(Action::ClaimRoute {
@@ -700,7 +703,7 @@ fn golden_route_not_found_error() {
 #[test]
 fn golden_insufficient_cards_for_route() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(56, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(56, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     let r = eng.apply(Action::ClaimRoute {
@@ -714,7 +717,7 @@ fn golden_insufficient_cards_for_route() {
 #[test]
 fn golden_wrong_color_for_route() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(57, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(57, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     eng.set_player_hand(0, vec![CardColor::Green]);
 
@@ -732,7 +735,7 @@ fn golden_wrong_color_for_route() {
 #[test]
 fn golden_game_over_marks_winner_by_total() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(57, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(57, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     // Ultimo giro innescato dal giocatore 0, poi tutti pescano fino alla fine.
     eng.set_player_trains(0, 3);
@@ -774,7 +777,7 @@ fn golden_game_over_marks_winner_by_total() {
 #[test]
 fn golden_initial_draft_must_keep_minimum() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(58, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(58, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
 
     let r = eng.apply(Action::ChooseTickets {
         player_index: 0,
@@ -786,7 +789,7 @@ fn golden_initial_draft_must_keep_minimum() {
 #[test]
 fn golden_first_player_is_respected() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(59, mini_ruleset(), mini_map(), ids, names, colors, 1);
+    let mut eng = Engine::new(59, mini_ruleset(), mini_map(), ids, names, colors, 1).unwrap();
     complete_initial_draft(&mut eng);
     assert_eq!(eng.current_player(), 1);
 }
@@ -794,7 +797,7 @@ fn golden_first_player_is_respected() {
 #[test]
 fn golden_initial_draft_parallel() {
     let (ids, names, colors) = three_players();
-    let mut eng = Engine::new(60, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(60, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
 
     for pi in 0..3 {
         let tickets = eng.initial_tickets_for(pi).unwrap().to_vec();
@@ -808,13 +811,13 @@ fn golden_initial_draft_parallel() {
     assert_eq!(eng.phase(), GamePhase::PlayerTurn);
 }
 
-/// F8 / E10: dopo un claim che connette alcune città, un
-/// `DrawTickets` + `ChooseTickets` mid-game deve marcare ogni biglietto
-/// tenuto con `completed: Some(_)` — mai `None` (E10 fix).
+/// Dopo un claim che connette alcune città, un `DrawTickets` + `ChooseTickets`
+/// mid-game deve marcare ogni biglietto tenuto con `completed: Some(_)`, mai
+/// `None`.
 #[test]
 fn golden_mid_game_ticket_completed_not_none() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(64, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(64, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     // Dai a P0 carte sufficienti per un claim: A_B_1 (len=1, Gray).
@@ -857,7 +860,7 @@ fn golden_mid_game_ticket_completed_not_none() {
     })
     .unwrap();
 
-    // Invariante E10: ogni biglietto tenuto ha completed.is_some()
+    // Ogni biglietto tenuto ha completed.is_some()
     // (Some(true) se completato, Some(false) altrimenti — mai None).
     let player = eng.player(0).unwrap();
     for tid in &keep {
@@ -867,7 +870,7 @@ fn golden_mid_game_ticket_completed_not_none() {
             .unwrap_or_else(|| panic!("biglietto {} non trovato nel giocatore", tid));
         assert!(
             ts.completed.is_some(),
-            "E10: biglietto '{}' ha completed = {:?}, atteso Some(_)",
+            "biglietto '{}' ha completed = {:?}, atteso Some(_)",
             tid,
             ts.completed
         );
@@ -880,7 +883,7 @@ fn golden_mid_game_ticket_completed_not_none() {
         .any(|tid| player.tickets[tid].completed == Some(true));
     assert!(
         dummy_completed,
-        "E10: almeno un dummy A→B deve risultare completed dopo ChooseTickets (A_B_1 claimato)"
+        "almeno un dummy A→B deve risultare completed dopo ChooseTickets (A_B_1 claimato)"
     );
 }
 
@@ -892,7 +895,7 @@ fn golden_mid_game_ticket_completed_not_none() {
 #[test]
 fn golden_legal_moves_second_card_draw() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(61, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(61, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.apply(Action::DrawTrainCard {
@@ -919,7 +922,7 @@ fn golden_legal_moves_second_card_draw() {
 #[test]
 fn golden_legal_moves_ticket_choice_empty() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(62, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(62, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
@@ -933,10 +936,7 @@ fn golden_legal_moves_ticket_choice_empty() {
 }
 
 fn has_no_moves(lm: &ttr_core::LegalMoves) -> bool {
-    lm.routes.is_empty()
-        && lm.draw_face_up.is_empty()
-        && !lm.can_draw_deck
-        && !lm.can_draw_tickets
+    lm.routes.is_empty() && lm.draw_face_up.is_empty() && !lm.can_draw_deck && !lm.can_draw_tickets
 }
 
 /// legalMoves solo a chi è di turno: chi aspetta non vede mosse e il motore
@@ -944,13 +944,16 @@ fn has_no_moves(lm: &ttr_core::LegalMoves) -> bool {
 #[test]
 fn golden_legal_moves_only_for_current_player() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(63, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(63, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     assert_eq!(eng.current_player(), 0);
 
     let current = eng.legal_moves(0);
     assert!(current.can_draw_deck, "chi è di turno può pescare");
-    assert!(!current.draw_face_up.is_empty(), "chi è di turno vede le scoperte");
+    assert!(
+        !current.draw_face_up.is_empty(),
+        "chi è di turno vede le scoperte"
+    );
     assert!(has_no_moves(&eng.legal_moves(1)), "PlayerTurn: chi aspetta");
 
     let claim = eng.apply(Action::ClaimRoute {
@@ -972,8 +975,14 @@ fn golden_legal_moves_only_for_current_player() {
     .unwrap();
     assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
 
-    assert!(eng.legal_moves(0).can_draw_deck, "seconda pescata di chi è di turno");
-    assert!(has_no_moves(&eng.legal_moves(1)), "SecondCardDraw: chi aspetta");
+    assert!(
+        eng.legal_moves(0).can_draw_deck,
+        "seconda pescata di chi è di turno"
+    );
+    assert!(
+        has_no_moves(&eng.legal_moves(1)),
+        "SecondCardDraw: chi aspetta"
+    );
     let draw = eng.apply(Action::DrawTrainCard {
         player_index: 1,
         source: DrawSource::Deck,
@@ -987,16 +996,22 @@ fn golden_legal_moves_only_for_current_player() {
     })
     .unwrap();
     assert_eq!(eng.current_player(), 1);
-    assert!(has_no_moves(&eng.legal_moves(0)), "turno passato: chi ha giocato");
-    assert!(eng.legal_moves(1).can_draw_deck, "turno passato: nuovo di turno");
+    assert!(
+        has_no_moves(&eng.legal_moves(0)),
+        "turno passato: chi ha giocato"
+    );
+    assert!(
+        eng.legal_moves(1).can_draw_deck,
+        "turno passato: nuovo di turno"
+    );
 }
 
-/// R4.1 / D27: con mazzo e scarti esauriti si può ancora reclamare e pescare
+/// D27: con mazzo e scarti esauriti si può ancora reclamare e pescare
 /// biglietti, e la pescata dal mazzo riesce con un mazzo nuovo.
 #[test]
 fn golden_total_deck_exhaustion_no_turn_loss() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(63, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(63, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     // Svuota mazzo E scarti
@@ -1054,7 +1069,8 @@ fn golden_double_route_blocked_3p() {
         names,
         colors,
         0,
-    );
+    )
+    .unwrap();
     complete_initial_draft(&mut eng);
 
     // P0 claim A_B_1
@@ -1095,7 +1111,7 @@ fn golden_double_route_blocked_3p() {
 fn golden_setup_ticket_discards_bottom() {
     let (ids, names, colors) = two_players();
     // Seed fisso per riproducibilità
-    let mut eng = Engine::new(65, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(65, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
 
     // (snapshot pre-draft non serve per il test — lo teniamo commentato
     // per eventuali regression future)
@@ -1183,7 +1199,8 @@ fn replay_determinism_same_seed_same_state() {
         names.clone(),
         colors.clone(),
         0,
-    );
+    )
+    .unwrap();
     complete_initial_draft(&mut eng_a);
 
     let mut eng_b = Engine::new(
@@ -1194,7 +1211,8 @@ fn replay_determinism_same_seed_same_state() {
         names.clone(),
         colors.clone(),
         0,
-    );
+    )
+    .unwrap();
     complete_initial_draft(&mut eng_b);
 
     let actions: Vec<Action> = vec![
@@ -1229,9 +1247,11 @@ fn replay_determinism_different_seed() {
     let (ids_a, names_a, colors_a) = two_players();
     let (ids_b, names_b, colors_b) = two_players();
 
-    let mut eng_a = Engine::new(111, mini_ruleset(), mini_map(), ids_a, names_a, colors_a, 0);
+    let mut eng_a =
+        Engine::new(111, mini_ruleset(), mini_map(), ids_a, names_a, colors_a, 0).unwrap();
     complete_initial_draft(&mut eng_a);
-    let mut eng_b = Engine::new(222, mini_ruleset(), mini_map(), ids_b, names_b, colors_b, 0);
+    let mut eng_b =
+        Engine::new(222, mini_ruleset(), mini_map(), ids_b, names_b, colors_b, 0).unwrap();
     complete_initial_draft(&mut eng_b);
 
     let action = Action::DrawTrainCard {
@@ -1436,7 +1456,12 @@ fn pick_fuzz_move(
 ) -> Option<FuzzMove> {
     use rand::Rng;
 
-    let mut draws: Vec<FuzzMove> = lm.draw_face_up.iter().copied().map(FuzzMove::FaceUp).collect();
+    let mut draws: Vec<FuzzMove> = lm
+        .draw_face_up
+        .iter()
+        .copied()
+        .map(FuzzMove::FaceUp)
+        .collect();
     if lm.can_draw_deck {
         draws.push(FuzzMove::Deck);
     }
@@ -1491,7 +1516,7 @@ fn play_fuzz_game(
     let deck_size = (ruleset.deck.per_color * 8 + ruleset.deck.locomotives) as usize;
 
     let (ids, names, colors) = fuzz_players(num_players);
-    let mut eng = Engine::new(seed, ruleset.clone(), map.clone(), ids, names, colors, 0);
+    let mut eng = Engine::new(seed, ruleset.clone(), map.clone(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
     let mut rng = StdRng::seed_from_u64(seed ^ 0xDEADBEEF);
@@ -1507,7 +1532,9 @@ fn play_fuzz_game(
         let phase = eng.phase();
         let step = actions;
         let ctx = || {
-            format!("seed={seed} politica={policy:?} giocatori={num_players} azione={step} fase={phase:?} giocatore={pi}")
+            format!(
+                "seed={seed} politica={policy:?} giocatori={num_players} azione={step} fase={phase:?} giocatore={pi}"
+            )
         };
 
         let action = match phase {
@@ -1546,10 +1573,15 @@ fn play_fuzz_game(
                 let keep_min = eng.ticket_draw_keep_min() as usize;
                 Action::ChooseTickets {
                     player_index: pi,
-                    keep: eng.pending_tickets().iter().take(keep_min).cloned().collect(),
+                    keep: eng
+                        .pending_tickets()
+                        .iter()
+                        .take(keep_min)
+                        .cloned()
+                        .collect(),
                 }
             }
-            GamePhase::InitialDraft | GamePhase::GameOver => {
+            _ => {
                 panic!("{}: fase inattesa", ctx())
             }
         };
@@ -1576,15 +1608,11 @@ fn play_fuzz_game(
 }
 
 /// Ricostruisce la partita da seed e `action_log` e confronta lo stato.
-fn assert_replay_matches(
-    original: &Engine,
-    policy: BotPolicy,
-    ruleset: &Ruleset,
-    map: &MapData,
-) {
+fn assert_replay_matches(original: &Engine, policy: BotPolicy, ruleset: &Ruleset, map: &MapData) {
     let seed = original.seed();
     let (ids, names, colors) = fuzz_players(original.num_players());
-    let mut replayed = Engine::new(seed, ruleset.clone(), map.clone(), ids, names, colors, 0);
+    let mut replayed =
+        Engine::new(seed, ruleset.clone(), map.clone(), ids, names, colors, 0).unwrap();
     for (i, record) in original.action_log().iter().enumerate() {
         if let Err(e) = replayed.apply(record.action.clone()) {
             panic!("seed={seed} politica={policy:?}: replay azione {i}: {e:?}");
@@ -1723,19 +1751,15 @@ fn golden_union_find_connectivity() {
 }
 
 // ============================================================
-// Regressioni review di robustezza (9/11/2026)
+// Regressioni di robustezza
 // ============================================================
 
 const L: CardColor = CardColor::Locomotive;
 
 /// Motore post-draft con mazzo vuoto e scarti/scoperte imposti dal test.
-fn deck_fixture(
-    seed: u64,
-    discards: Vec<CardColor>,
-    face_up: [Option<CardColor>; 5],
-) -> Engine {
+fn deck_fixture(seed: u64, discards: Vec<CardColor>, face_up: [Option<CardColor>; 5]) -> Engine {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(seed, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(seed, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     eng.drain_draw_pile();
     eng.set_discards(discards);
@@ -1758,7 +1782,11 @@ fn face_up_count(eng: &Engine) -> usize {
 }
 
 fn loco_count(eng: &Engine) -> usize {
-    eng.face_up_cards().iter().flatten().filter(|c| **c == L).count()
+    eng.face_up_cards()
+        .iter()
+        .flatten()
+        .filter(|c| **c == L)
+        .count()
 }
 
 /// Scoperte, mazzo e scarti in forma compatta, per i valori di riferimento.
@@ -1786,8 +1814,8 @@ const RED: Option<CardColor> = Some(CardColor::Red);
 const GREEN: Option<CardColor> = Some(CardColor::Green);
 const LOCO: Option<CardColor> = Some(L);
 
-/// Caso normale: la sequenza RNG deve restare quella della vecchia ricorsione.
-/// I valori attesi sono stati catturati eseguendo il codice ricorsivo.
+/// Caso normale: la sequenza RNG del reset è quella dei valori di riferimento,
+/// catturati dall'implementazione ricorsiva originale.
 #[test]
 fn loco_reset_normal_case_matches_recursive_rng_sequence() {
     let mut pool = vec![L; 12];
@@ -1807,9 +1835,22 @@ fn loco_reset_normal_case_matches_recursive_rng_sequence() {
         })
         .collect();
     let expected: [&str; 16] = [
-        "LKLPW/12/5", "BLPYL/12/5", "LLKBP/2/15", "PLKWY/12/5", "WLLPR/12/5", "RBLYL/2/15",
-        "RKLPY/2/15", "LLYKR/12/5", "KWRGP/7/10", "LPWGY/2/15", "LRGYL/17/0", "LYBLW/12/5",
-        "PKLWL/7/10", "PLLWK/7/10", "RLWKL/7/10", "YLWGL/2/15",
+        "LKLPW/12/5",
+        "BLPYL/12/5",
+        "LLKBP/2/15",
+        "PLKWY/12/5",
+        "WLLPR/12/5",
+        "RBLYL/2/15",
+        "RKLPY/2/15",
+        "LLYKR/12/5",
+        "KWRGP/7/10",
+        "LPWGY/2/15",
+        "LRGYL/17/0",
+        "LYBLW/12/5",
+        "PKLWL/7/10",
+        "PLLWK/7/10",
+        "RLWKL/7/10",
+        "YLWGL/2/15",
     ];
     assert_eq!(got, expected);
 }
@@ -1838,7 +1879,12 @@ fn loco_reset_three_non_locos_ends_below_threshold() {
     for seed in 0..20u64 {
         let mut eng = deck_fixture(seed, pool.clone(), [RED, LOCO, LOCO, LOCO, GREEN]);
         draw_face_up_0(&mut eng);
-        assert!(loco_count(&eng) < 3, "seed {}: {}", seed, deck_fingerprint(&eng));
+        assert!(
+            loco_count(&eng) < 3,
+            "seed {}: {}",
+            seed,
+            deck_fingerprint(&eng)
+        );
     }
 }
 
@@ -1872,7 +1918,12 @@ fn loco_reset_deadend_small_pool_uses_fresh_deck_and_terminates() {
         draw_face_up_0(&mut eng);
         assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
         assert_eq!(face_up_count(&eng), 5, "seed {}", seed);
-        assert!(loco_count(&eng) >= 4, "seed {}: {}", seed, deck_fingerprint(&eng));
+        assert!(
+            loco_count(&eng) >= 4,
+            "seed {}: {}",
+            seed,
+            deck_fingerprint(&eng)
+        );
         assert_eq!(eng.draw_pile_len(), 109, "seed {}", seed);
         assert_eq!(eng.discards_len(), 0, "seed {}", seed);
     }
@@ -1929,26 +1980,6 @@ fn second_draw_with_only_locos_and_empty_pool_can_draw_deck() {
     assert_eq!(eng.draw_pile_len(), 109);
 }
 
-/// `DeckEmpty` resta raggiungibile solo con un ruleset senza carte.
-#[test]
-fn deck_draw_with_empty_ruleset_is_deck_empty() {
-    let mut ruleset = mini_ruleset();
-    ruleset.deck = DeckConfig {
-        per_color: 0,
-        locomotives: 0,
-    };
-    let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(42, ruleset, mini_map(), ids, names, colors, 0);
-    complete_initial_draft(&mut eng);
-
-    assert!(!eng.legal_moves(0).can_draw_deck);
-    let r = eng.apply(Action::DrawTrainCard {
-        player_index: 0,
-        source: DrawSource::Deck,
-    });
-    assert!(matches!(r, Err(EngineError::DeckEmpty)), "{:?}", r);
-}
-
 /// Mappa con una doppia, una rotta corta e una da 6, con 5 treni a testa e
 /// 3 giocatori. P0 e P1 reclamano la doppia e la rotta corta: restano la
 /// sorella bloccata e la rotta troppo lunga, tranne per chi conserva 6 treni.
@@ -1957,7 +1988,7 @@ fn no_routes_left_fixture(extra_train_player: Option<usize>) -> (Engine, Vec<Gam
     map.routes.push(route("C_D_1", "C", "D", 6, "Gray", false));
     map.cities.push(city("D"));
     let (ids, names, colors) = three_players();
-    let mut eng = Engine::new(71, strict_double_ruleset(), map, ids, names, colors, 0);
+    let mut eng = Engine::new(71, strict_double_ruleset(), map, ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     for pi in 0..3 {
         eng.set_player_trains(pi, 5);
@@ -2027,7 +2058,11 @@ fn golden_last_round_when_no_route_is_claimable() {
         assert_eq!(eng.phase(), GamePhase::LastRound);
     }
     let events = draw_two_from_deck(&mut eng, 1);
-    assert!(events.iter().any(|e| matches!(e, GameEvent::GameOver { .. })));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, GameEvent::GameOver { .. }))
+    );
     assert_eq!(eng.phase(), GamePhase::GameOver);
 }
 
@@ -2052,7 +2087,7 @@ fn no_last_round_while_one_player_can_still_claim() {
 #[test]
 fn choose_tickets_rejects_duplicates_in_initial_draft() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     let offered = eng.initial_tickets_for(0).unwrap().to_vec();
 
     let res = eng.apply(Action::ChooseTickets {
@@ -2076,7 +2111,7 @@ fn choose_tickets_rejects_duplicates_in_initial_draft() {
 #[test]
 fn choose_tickets_rejects_duplicates_mid_game() {
     let (ids, names, colors) = two_players();
-    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0);
+    let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
     eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
     let offered = eng.pending_tickets().to_vec();
@@ -2154,8 +2189,14 @@ fn ticket_decks_are_dealt_per_ruleset_and_draw_pile_is_draw_deck_only() {
     let mut rs = mini_ruleset();
     rs.ticket_decks = vec!["long".into(), "regular".into()];
     rs.initial_tickets.dealt = vec![
-        TicketDealtEntry { deck: "long".into(), count: 1 },
-        TicketDealtEntry { deck: "regular".into(), count: 3 },
+        TicketDealtEntry {
+            deck: "long".into(),
+            count: 1,
+        },
+        TicketDealtEntry {
+            deck: "regular".into(),
+            count: 3,
+        },
     ];
     rs.ticket_draw.deck = "regular".into();
     let mut map = mini_map();
@@ -2165,12 +2206,547 @@ fn ticket_decks_are_dealt_per_ruleset_and_draw_pile_is_draw_deck_only() {
         map.tickets.push(t);
     }
     let (ids, names, colors) = two_players();
-    let eng = Engine::new(7, rs, map.clone(), ids, names, colors, 0);
-    let deck_of = |id: &String| map.tickets.iter().find(|t| &t.id == id).unwrap().deck.clone();
+    let eng = Engine::new(7, rs, map.clone(), ids, names, colors, 0).unwrap();
+    let deck_of = |id: &String| {
+        map.tickets
+            .iter()
+            .find(|t| &t.id == id)
+            .unwrap()
+            .deck
+            .clone()
+    };
     for pi in 0..2 {
         let offered = eng.initial_tickets_for(pi).unwrap().to_vec();
         assert_eq!(offered.iter().filter(|t| deck_of(t) == "long").count(), 1);
-        assert_eq!(offered.iter().filter(|t| deck_of(t) == "regular").count(), 3);
+        assert_eq!(
+            offered.iter().filter(|t| deck_of(t) == "regular").count(),
+            3
+        );
     }
     assert!(eng.ticket_pile().iter().all(|t| deck_of(t) == "regular"));
 }
+
+// ============================================================
+// Configurazione: Engine::new e Ruleset::validate
+// ============================================================
+
+fn init_error(rs: Ruleset, map: MapData, players: usize, first_player: usize) -> EngineInitError {
+    let (ids, names, colors) = fuzz_players(players);
+    Engine::new(1, rs, map, ids, names, colors, first_player)
+        .err()
+        .expect("Engine::new doveva fallire")
+}
+
+#[test]
+fn init_rejects_mismatched_player_lists() {
+    let (ids, mut names, colors) = two_players();
+    names.pop();
+    let err = Engine::new(1, mini_ruleset(), mini_map(), ids, names, colors, 0)
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        EngineInitError::PlayerListsMismatch {
+            ids: 2,
+            names: 1,
+            colors: 2
+        }
+    );
+}
+
+#[test]
+fn init_rejects_player_count_out_of_range() {
+    let err = Engine::new(1, mini_ruleset(), mini_map(), vec![], vec![], vec![], 0)
+        .err()
+        .unwrap();
+    assert_eq!(
+        err,
+        EngineInitError::PlayerCountOutOfRange {
+            count: 0,
+            min: 2,
+            max: 5
+        }
+    );
+    assert!(matches!(
+        init_error(mini_ruleset(), mini_map(), 1, 0),
+        EngineInitError::PlayerCountOutOfRange { count: 1, .. }
+    ));
+    let six = vec![ttr_proto::PlayerColor::Red; 6];
+    let err = Engine::new(
+        1,
+        mini_ruleset(),
+        mini_map(),
+        (0..6).map(|i| format!("p{i}")).collect(),
+        (0..6).map(|i| format!("P{i}")).collect(),
+        six,
+        0,
+    )
+    .err()
+    .unwrap();
+    assert!(matches!(
+        err,
+        EngineInitError::PlayerCountOutOfRange { count: 6, .. }
+    ));
+}
+
+#[test]
+fn init_rejects_first_player_out_of_range() {
+    assert_eq!(
+        init_error(mini_ruleset(), mini_map(), 2, 7),
+        EngineInitError::FirstPlayerOutOfRange {
+            first_player: 7,
+            players: 2
+        }
+    );
+}
+
+#[test]
+fn validate_rejects_invalid_player_range() {
+    let mut rs = mini_ruleset();
+    rs.players = PlayersConfig { min: 3, max: 2 };
+    assert_eq!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::InvalidPlayerRange { min: 3, max: 2 })
+    );
+    rs.players = PlayersConfig { min: 0, max: 2 };
+    assert!(matches!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::InvalidPlayerRange { .. })
+    ));
+}
+
+#[test]
+fn init_rejects_final_round_without_trigger() {
+    let mut rs = mini_ruleset();
+    rs.final_round_includes_trigger = false;
+    assert_eq!(
+        init_error(rs.clone(), mini_map(), 2, 0),
+        EngineInitError::UnsupportedFinalRound
+    );
+    assert_eq!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::UnsupportedFinalRound)
+    );
+}
+
+#[test]
+fn init_rejects_train_deck_too_small() {
+    let mut rs = mini_ruleset();
+    rs.deck = DeckConfig {
+        per_color: 0,
+        locomotives: 0,
+    };
+    assert_eq!(
+        init_error(rs.clone(), mini_map(), 2, 0),
+        EngineInitError::TrainDeckTooSmall {
+            have: 0,
+            needed: 13
+        }
+    );
+    assert_eq!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::TrainDeckTooSmall {
+            have: 0,
+            needed: 25
+        })
+    );
+}
+
+#[test]
+fn init_rejects_non_canonical_route_color() {
+    let mut map = mini_map();
+    map.routes[0].color = "gray".into();
+    let expected = EngineInitError::InvalidRouteColor {
+        route_id: "A_B_1".into(),
+        color: "gray".into(),
+    };
+    assert_eq!(init_error(mini_ruleset(), map.clone(), 2, 0), expected);
+    assert_eq!(mini_ruleset().validate(&map), Err(expected));
+}
+
+#[test]
+fn init_rejects_missing_longest_path_bonus() {
+    let mut rs = mini_ruleset();
+    rs.bonuses[0].bonus_type = "longestPath".into();
+    let expected = EngineInitError::MissingLongestPathBonus {
+        bonus_type: "longest_path",
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    assert_eq!(rs.validate(&mini_map()), Err(expected));
+}
+
+#[test]
+fn init_rejects_duplicate_ticket_deck() {
+    let mut rs = mini_ruleset();
+    rs.ticket_decks = vec!["regular".into(), "regular".into()];
+    let expected = EngineInitError::DuplicateTicketDeck {
+        deck: "regular".into(),
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    assert_eq!(rs.validate(&mini_map()), Err(expected));
+}
+
+#[test]
+fn init_rejects_dealt_deck_not_in_ticket_decks() {
+    let mut rs = mini_ruleset();
+    rs.initial_tickets.dealt = vec![TicketDealtEntry {
+        deck: "long".into(),
+        count: 4,
+    }];
+    let expected = EngineInitError::DealtTicketDeckUnknown {
+        deck: "long".into(),
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    assert_eq!(rs.validate(&mini_map()), Err(expected));
+}
+
+#[test]
+fn init_rejects_draw_deck_not_in_ticket_decks() {
+    let mut rs = mini_ruleset();
+    rs.ticket_draw.deck = "long".into();
+    let expected = EngineInitError::DrawTicketDeckUnknown {
+        deck: "long".into(),
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    assert_eq!(rs.validate(&mini_map()), Err(expected));
+}
+
+#[test]
+fn init_rejects_ticket_with_unlisted_deck() {
+    let mut map = mini_map();
+    map.tickets[1].deck = "long".into();
+    let expected = EngineInitError::TicketDeckNotListed {
+        ticket_id: "A_F".into(),
+        deck: "long".into(),
+    };
+    assert_eq!(init_error(mini_ruleset(), map.clone(), 2, 0), expected);
+    assert_eq!(mini_ruleset().validate(&map), Err(expected));
+}
+
+#[test]
+fn init_rejects_ticket_deck_too_small() {
+    let mut rs = mini_ruleset();
+    rs.initial_tickets.dealt[0].count = 11;
+    assert_eq!(
+        init_error(rs.clone(), mini_map(), 2, 0),
+        EngineInitError::TicketDeckTooSmall {
+            deck: "regular".into(),
+            have: 20,
+            needed: 22
+        }
+    );
+    assert_eq!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::TicketDeckTooSmall {
+            deck: "regular".into(),
+            have: 20,
+            needed: 55
+        })
+    );
+}
+
+#[test]
+fn init_rejects_initial_keep_min_above_dealt() {
+    let mut rs = mini_ruleset();
+    rs.initial_tickets.keep_min = 5;
+    let expected = EngineInitError::InitialKeepMinExceedsDealt {
+        keep_min: 5,
+        dealt: 4,
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    assert_eq!(rs.validate(&mini_map()), Err(expected));
+}
+
+#[test]
+fn init_rejects_draw_keep_min_above_count() {
+    let mut rs = mini_ruleset();
+    rs.ticket_draw.keep_min = 4;
+    let expected = EngineInitError::DrawKeepMinExceedsCount {
+        keep_min: 4,
+        count: 3,
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    assert_eq!(rs.validate(&mini_map()), Err(expected));
+}
+
+#[test]
+fn validate_accepts_shipped_usa_data() {
+    usa_ruleset().validate(&usa_map()).unwrap();
+}
+
+#[test]
+fn init_error_messages_are_italian() {
+    let msg = init_error(mini_ruleset(), mini_map(), 2, 7).to_string();
+    assert!(msg.contains("primo giocatore"), "{msg}");
+}
+
+// ============================================================
+// Eventi di reset e rimescolamento
+// ============================================================
+
+fn apply_events(eng: &mut Engine, source: DrawSource) -> Vec<GameEvent> {
+    eng.apply(Action::DrawTrainCard {
+        player_index: eng.current_player(),
+        source,
+    })
+    .unwrap()
+}
+
+#[test]
+fn loco_reset_emits_event() {
+    let mut pool = vec![L; 12];
+    pool.extend([
+        CardColor::Red,
+        CardColor::Blue,
+        CardColor::Yellow,
+        CardColor::Purple,
+        CardColor::White,
+        CardColor::Black,
+    ]);
+    for seed in 0..8u64 {
+        let mut eng = deck_fixture(seed, pool.clone(), [RED, LOCO, LOCO, LOCO, GREEN]);
+        let events = apply_events(&mut eng, DrawSource::FaceUp { index: 0 });
+        let reset = events.iter().rev().find_map(|e| match e {
+            GameEvent::FaceUpReset {
+                discarded,
+                new_face_up,
+            } => Some((discarded.clone(), new_face_up.clone())),
+            _ => None,
+        });
+        let (discarded, new_face_up) = reset.expect("FaceUpReset atteso");
+        assert_eq!(discarded.len(), 5, "seed {seed}");
+        assert_eq!(new_face_up.len(), 5, "seed {seed}");
+        assert_eq!(new_face_up, eng.face_up_cards(), "seed {seed}");
+    }
+}
+
+#[test]
+fn no_loco_reset_event_below_threshold() {
+    let mut eng = deck_fixture(3, vec![CardColor::Blue; 10], [RED, GREEN, GREEN, RED, RED]);
+    let events = apply_events(&mut eng, DrawSource::FaceUp { index: 0 });
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, GameEvent::FaceUpReset { .. }))
+    );
+}
+
+#[test]
+fn reshuffle_emits_event() {
+    // Scarti rimescolati dentro la pesca dal mazzo coperto.
+    let mut eng = deck_fixture(5, vec![CardColor::Blue; 10], [RED; 5]);
+    let events = apply_events(&mut eng, DrawSource::Deck);
+    let reshuffled = events
+        .iter()
+        .position(|e| matches!(e, GameEvent::DeckReshuffled))
+        .expect("DeckReshuffled atteso");
+    let drawn = events
+        .iter()
+        .position(|e| matches!(e, GameEvent::CardDrawnFromDeck { .. }))
+        .unwrap();
+    assert!(reshuffled < drawn);
+
+    // Mazzo e scarti vuoti: mazzo nuovo (D27).
+    let mut eng = deck_fixture(5, vec![], [RED; 5]);
+    let events = apply_events(&mut eng, DrawSource::Deck);
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, GameEvent::DeckReshuffled))
+    );
+
+    // Mazzo pieno: nessun rimescolamento.
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(5, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
+    complete_initial_draft(&mut eng);
+    let events = apply_events(&mut eng, DrawSource::Deck);
+    assert!(
+        !events
+            .iter()
+            .any(|e| matches!(e, GameEvent::DeckReshuffled))
+    );
+}
+
+#[test]
+fn reshuffle_during_face_up_replacement_precedes_reveal() {
+    let mut eng = deck_fixture(9, vec![CardColor::Blue; 4], [RED, GREEN, GREEN, RED, RED]);
+    let events = apply_events(&mut eng, DrawSource::FaceUp { index: 0 });
+    let reshuffled = events
+        .iter()
+        .position(|e| matches!(e, GameEvent::DeckReshuffled))
+        .expect("DeckReshuffled atteso");
+    let revealed = events
+        .iter()
+        .position(|e| matches!(e, GameEvent::FaceUpRevealed { index: 0, .. }))
+        .expect("FaceUpRevealed atteso");
+    assert!(reshuffled < revealed);
+}
+
+// ============================================================
+// Stato pendente, colori, bonus
+// ============================================================
+
+#[test]
+fn pending_tickets_empty_after_choice() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(21, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
+    for pi in 0..2 {
+        assert!(!eng.initial_tickets_for(pi).unwrap().is_empty());
+    }
+    complete_initial_draft(&mut eng);
+    for pi in 0..2 {
+        assert!(eng.initial_tickets_for(pi).unwrap().is_empty());
+    }
+
+    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    let keep = vec![eng.pending_tickets()[0].clone()];
+    assert!(!eng.pending_tickets().is_empty());
+    eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep,
+    })
+    .unwrap();
+    assert!(eng.pending_tickets().is_empty());
+}
+
+#[test]
+fn legal_and_apply_agree_on_gray() {
+    let claim = |eng: &mut Engine, cards: Vec<CardColor>| {
+        eng.apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: "C_D_1".into(),
+            cards_discarded: cards,
+        })
+    };
+    let route_is_legal = |eng: &Engine| eng.legal_moves(0).routes.iter().any(|r| r == "C_D_1");
+
+    // Tre carte dello stesso colore pagano una rotta grigia da 3.
+    let mut eng = deck_fixture(42, vec![], [RED; 5]);
+    eng.set_player_hand(0, vec![CardColor::Blue; 3]);
+    assert!(route_is_legal(&eng));
+    claim(&mut eng, vec![CardColor::Blue; 3]).unwrap();
+
+    // Colori misti senza locomotive: né legale né accettata.
+    let mut eng = deck_fixture(42, vec![], [RED; 5]);
+    eng.set_player_hand(0, vec![CardColor::Blue, CardColor::Blue, CardColor::Green]);
+    assert!(!route_is_legal(&eng));
+    assert!(
+        claim(
+            &mut eng,
+            vec![CardColor::Blue, CardColor::Blue, CardColor::Green]
+        )
+        .is_err()
+    );
+
+    // Con una locomotiva il pagamento torna possibile.
+    let mut eng = deck_fixture(42, vec![], [RED; 5]);
+    eng.set_player_hand(0, vec![CardColor::Blue, CardColor::Blue, L]);
+    assert!(route_is_legal(&eng));
+    claim(&mut eng, vec![CardColor::Blue, CardColor::Blue, L]).unwrap();
+}
+
+#[test]
+fn longest_path_bonus_is_found_by_type() {
+    let mut rs = mini_ruleset();
+    rs.bonuses = vec![
+        Bonus {
+            bonus_type: "other".into(),
+            label: "Altro".into(),
+            points: 99,
+        },
+        Bonus {
+            bonus_type: "longest_path".into(),
+            label: "Longest Path".into(),
+            points: 7,
+        },
+    ];
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(57, rs, mini_map(), ids, names, colors, 0).unwrap();
+    complete_initial_draft(&mut eng);
+    eng.set_player_trains(0, 3);
+    eng.set_player_hand(0, vec![CardColor::Red]);
+    let mut events = eng
+        .apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: "A_B_1".into(),
+            cards_discarded: vec![CardColor::Red],
+        })
+        .unwrap();
+    while eng.phase() != GamePhase::GameOver {
+        events.extend(apply_events(&mut eng, DrawSource::Deck));
+    }
+    let bonus = events.iter().find_map(|e| match e {
+        GameEvent::GameOver {
+            longest_path_bonus, ..
+        } => Some(*longest_path_bonus),
+        _ => None,
+    });
+    assert_eq!(bonus, Some(7));
+}
+
+// ============================================================
+// Ordine di ticket_decks e RNG
+// ============================================================
+
+fn two_deck_map() -> MapData {
+    let mut map = mini_map();
+    for i in 0..3 {
+        let mut t = ticket(&format!("long_{i}"), "A", "F", 20);
+        t.deck = "long".into();
+        map.tickets.push(t);
+    }
+    map
+}
+
+fn two_deck_ruleset(order: [&str; 2]) -> Ruleset {
+    let mut rs = mini_ruleset();
+    rs.ticket_decks = order.iter().map(|d| (*d).to_string()).collect();
+    rs.initial_tickets.dealt = vec![
+        TicketDealtEntry {
+            deck: "long".into(),
+            count: 1,
+        },
+        TicketDealtEntry {
+            deck: "regular".into(),
+            count: 3,
+        },
+    ];
+    rs
+}
+
+fn initial_offers(rs: Ruleset) -> Vec<Vec<String>> {
+    let (ids, names, colors) = two_players();
+    let eng = Engine::new(7, rs, two_deck_map(), ids, names, colors, 0).unwrap();
+    (0..2)
+        .map(|pi| eng.initial_tickets_for(pi).unwrap().to_vec())
+        .collect()
+}
+
+/// L'ordine di `ticket_decks` fissa l'ordine degli shuffle dell'RNG: cambiarlo
+/// cambia i biglietti distribuiti e quindi il replay dei save esistenti.
+#[test]
+fn ticket_decks_order_determines_initial_tickets() {
+    let regular_first = initial_offers(two_deck_ruleset(["regular", "long"]));
+    let expected: Vec<Vec<String>> = GOLDEN_REGULAR_FIRST
+        .iter()
+        .map(|offer| offer.iter().map(|t| (*t).to_string()).collect())
+        .collect();
+    assert_eq!(regular_first, expected);
+
+    let long_first = initial_offers(two_deck_ruleset(["long", "regular"]));
+    let expected: Vec<Vec<String>> = GOLDEN_LONG_FIRST
+        .iter()
+        .map(|offer| offer.iter().map(|t| (*t).to_string()).collect())
+        .collect();
+    assert_eq!(long_first, expected);
+    assert_ne!(regular_first, long_first);
+}
+
+const GOLDEN_REGULAR_FIRST: [[&str; 4]; 2] = [
+    ["long_2", "E_F", "dummy_9", "dummy_2"],
+    ["long_0", "dummy_3", "dummy_4", "dummy_8"],
+];
+const GOLDEN_LONG_FIRST: [[&str; 4]; 2] = [
+    ["long_0", "dummy_6", "dummy_13", "dummy_14"],
+    ["long_1", "dummy_3", "dummy_4", "dummy_8"],
+];

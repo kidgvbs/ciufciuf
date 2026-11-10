@@ -1,6 +1,6 @@
 //! Test di integrazione REST: lobby, QR, LAN, seq monotono.
 //!
-//! Coprono il pacchetto Fase 2 §5 e §7.2 (marginali).
+//! Coprono creazione, join, nomi, QR e LAN della lobby.
 
 mod common;
 
@@ -131,7 +131,10 @@ async fn join_saves_profile_once() {
             .expect("parse profiles");
         body["profiles"].clone()
     };
-    assert_eq!(profiles(server.base_url.clone()).await, serde_json::json!([]));
+    assert_eq!(
+        profiles(server.base_url.clone()).await,
+        serde_json::json!([])
+    );
 
     let g1 = create_game(&server.base_url, "P1").await;
     join_game(&server.base_url, &g1.game_id, "Zoe", None).await;
@@ -267,7 +270,7 @@ async fn seq_monotono() {
     );
 }
 
-/// Test F4: dopo 2 join, `GET /api/games` mostra `players_joined == 2`
+/// Dopo 2 join, `GET /api/games` mostra `players_joined == 2`
 /// e `GET /api/games/{id}` elenca entrambi i giocatori con i colori corretti.
 #[tokio::test]
 async fn lobby_players_after_join() {
@@ -290,8 +293,15 @@ async fn lobby_players_after_join() {
     assert_eq!(list_resp.status(), 200);
     let list_json: serde_json::Value = list_resp.json().await.expect("parse list");
     let games = list_json["games"].as_array().expect("games array");
-    let g = games.iter().find(|g| g["gameId"].as_str() == Some(&game.game_id)).expect("game presente");
-    assert_eq!(g["playersJoined"].as_u64().unwrap_or(0), 2, "players_joined == 2");
+    let g = games
+        .iter()
+        .find(|g| g["gameId"].as_str() == Some(&game.game_id))
+        .expect("game presente");
+    assert_eq!(
+        g["playersJoined"].as_u64().unwrap_or(0),
+        2,
+        "players_joined == 2"
+    );
     assert!(!g["started"].as_bool().unwrap_or(true), "started == false");
 
     // Verifica GET /api/games/{id} → entrambi i giocatori.
@@ -304,12 +314,15 @@ async fn lobby_players_after_join() {
     let detail_json: serde_json::Value = detail_resp.json().await.expect("parse detail");
     let players = detail_json["players"].as_array().expect("players array");
     assert_eq!(players.len(), 2, "2 giocatori nel dettaglio");
-    let names: Vec<&str> = players.iter().map(|p| p["name"].as_str().unwrap()).collect();
+    let names: Vec<&str> = players
+        .iter()
+        .map(|p| p["name"].as_str().unwrap())
+        .collect();
     assert!(names.contains(&"Alice"), "Alice presente");
     assert!(names.contains(&"Bob"), "Bob presente");
 }
 
-// ── Regressioni review di robustezza (9/11/2026) ─────────────────────
+// ── Validazione degli input della lobby ──────────────────────────────
 
 async fn post_join(base: &str, game_id: &str, body: serde_json::Value) -> (u16, serde_json::Value) {
     let resp = reqwest::Client::new()
@@ -346,14 +359,23 @@ async fn r4_lobby_input_validation() {
     let dup_color = post_join(base, id, serde_json::json!({"name":"Bob","color":"RED"})).await;
     assert_rejected(&dup_color, 409, "COLOR_TAKEN");
 
-    for name in [String::new(), "   ".to_string(), "x".repeat(25), "x".repeat(1_000_000)] {
+    for name in [
+        String::new(),
+        "   ".to_string(),
+        "x".repeat(25),
+        "x".repeat(1_000_000),
+    ] {
         let res = post_join(base, id, serde_json::json!({ "name": name })).await;
         assert_rejected(&res, 400, "INVALID_NAME");
     }
 
     // Il limite conta i caratteri, non i byte.
     let accents = post_join(base, id, serde_json::json!({"name":"è".repeat(24)})).await;
-    assert_eq!(accents.0, 200, "24 caratteri accentati sono validi: {}", accents.1);
+    assert_eq!(
+        accents.0, 200,
+        "24 caratteri accentati sono validi: {}",
+        accents.1
+    );
 
     // Il nome viene salvato senza spazi esterni e il duplicato lo vede.
     let padded = post_join(base, id, serde_json::json!({"name":"  Carol  "})).await;
@@ -396,4 +418,85 @@ async fn r4_create_game_name_validation() {
     )
     .await;
     assert_eq!(detail["name"], "Partita");
+}
+
+// ── Nomi: NFC e caratteri invisibili ─────────────────────────────────
+
+#[tokio::test]
+async fn join_rejects_zero_width_name() {
+    let server = TestServer::start().await;
+    let g = create_game(&server.base_url, "Invisibili").await;
+    let base = server.base_url.as_str();
+    let id = g.game_id.as_str();
+
+    for name in [
+        "Anna\u{200b}",
+        "\u{202e}Anna",
+        "An\u{feff}na",
+        "An\nna",
+        "An\u{0}na",
+    ] {
+        let res = post_join(base, id, serde_json::json!({ "name": name })).await;
+        assert_rejected(&res, 400, "INVALID_NAME");
+    }
+    let detail = get_game_detail(base, id).await;
+    assert_eq!(
+        detail["players"].as_array().unwrap().len(),
+        0,
+        "nessun join valido: {detail}"
+    );
+
+    // Anche il nome della partita non ammette caratteri invisibili.
+    let (status, body) = post_json(
+        base,
+        "/api/games",
+        serde_json::json!({ "rulesetId": "usa_v2", "name": "Sera\u{200b}ta" }),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "INVALID_NAME");
+}
+
+#[tokio::test]
+async fn names_equal_after_nfc_are_taken() {
+    let server = TestServer::start().await;
+    let g = create_game(&server.base_url, "Nfc").await;
+    let base = server.base_url.as_str();
+    let id = g.game_id.as_str();
+
+    // "é" precomposta, poi "e" + accento combinante: stesso nome.
+    let first = post_join(base, id, serde_json::json!({ "name": "\u{e9}mile" })).await;
+    assert_eq!(first.0, 200, "{}", first.1);
+    let second = post_join(base, id, serde_json::json!({ "name": "E\u{301}mile" })).await;
+    assert_rejected(&second, 409, "NAME_TAKEN");
+
+    // Il nome salvato è in forma NFC.
+    let detail = get_game_detail(base, id).await;
+    assert_eq!(detail["players"][0]["name"], "\u{e9}mile");
+}
+
+/// Codici e status degli errori più comuni della lobby.
+#[tokio::test]
+async fn lobby_errors_use_the_documented_codes() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+
+    let missing = post_join(base, "non-esiste", serde_json::json!({ "name": "Anna" })).await;
+    assert_rejected(&missing, 404, "GAME_NOT_FOUND");
+
+    let g = create_game(&server.base_url, "Codici").await;
+    for name in ["A", "B", "C", "D", "E"] {
+        join_game(base, &g.game_id, name, None).await;
+    }
+    let full = post_join(base, &g.game_id, serde_json::json!({ "name": "F" })).await;
+    assert_rejected(&full, 409, "GAME_FULL");
+
+    let (status, body) = post_json(
+        base,
+        &format!("/api/games/{}/start", g.game_id),
+        serde_json::json!({ "hostToken": "sbagliato" }),
+    )
+    .await;
+    assert_eq!(status, 401, "{body}");
+    assert_eq!(body["error"], "UNAUTHORIZED");
 }

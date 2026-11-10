@@ -179,3 +179,123 @@ pub const LAST_ROUND_TRAIN_THRESHOLD: u32 = 2;
 
 /// Numero totale di colori carta (esclusa Locomotive).
 pub const COLOR_COUNT: usize = 8;
+
+/// Carte treno distribuite a ogni giocatore all'inizio della partita.
+pub const INITIAL_HAND_SIZE: usize = 4;
+
+/// Colori carta (esclusa Locomotive) nell'ordine di costruzione del mazzo.
+pub const TRAIN_COLORS: [CardColor; COLOR_COUNT] = [
+    CardColor::Red,
+    CardColor::Orange,
+    CardColor::Yellow,
+    CardColor::Green,
+    CardColor::Blue,
+    CardColor::Purple,
+    CardColor::Black,
+    CardColor::White,
+];
+
+/// Valore di `Bonus::bonus_type` per il bonus del percorso più lungo.
+pub const LONGEST_PATH_BONUS_TYPE: &str = "longest_path";
+
+/// Valore canonico di `Route::color` per le rotte grigie.
+pub const GRAY_ROUTE_COLOR: &str = "Gray";
+
+/// Suffissi degli id delle due rotte di una coppia doppia.
+const DOUBLE_ROUTE_FIRST_SUFFIX: &str = "_1";
+const DOUBLE_ROUTE_SECOND_SUFFIX: &str = "_2";
+
+/// Colore di una rotta.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RouteColor {
+    /// Qualunque colore, purché uniforme.
+    Gray,
+    /// Colore specifico (le locomotive fanno da jolly).
+    Colored(CardColor),
+}
+
+impl RouteColor {
+    /// Interpreta il colore di una rotta; accetta solo i valori canonici
+    /// (`"Gray"` e i nomi in PascalCase dei colori carta).
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        let card = match value {
+            GRAY_ROUTE_COLOR => return Some(RouteColor::Gray),
+            "Red" => CardColor::Red,
+            "Orange" => CardColor::Orange,
+            "Yellow" => CardColor::Yellow,
+            "Green" => CardColor::Green,
+            "Blue" => CardColor::Blue,
+            "Purple" => CardColor::Purple,
+            "Black" => CardColor::Black,
+            "White" => CardColor::White,
+            _ => return None,
+        };
+        Some(RouteColor::Colored(card))
+    }
+}
+
+/// Id della rotta gemella in una coppia doppia (`_1` ↔ `_2`), se esiste.
+pub(crate) fn find_sister_route(
+    route_id: &str,
+    routes: &BTreeMap<RouteId, Route>,
+) -> Option<RouteId> {
+    let sister_id = if let Some(base) = route_id.strip_suffix(DOUBLE_ROUTE_FIRST_SUFFIX) {
+        format!("{base}{DOUBLE_ROUTE_SECOND_SUFFIX}")
+    } else {
+        let base = route_id.strip_suffix(DOUBLE_ROUTE_SECOND_SUFFIX)?;
+        format!("{base}{DOUBLE_ROUTE_FIRST_SUFFIX}")
+    };
+    routes.contains_key(&sister_id).then_some(sister_id)
+}
+
+/// Converte punti (`u32`) nel tipo con segno dei punteggi, saturando.
+pub(crate) fn points_to_score(points: u32) -> i32 {
+    i32::try_from(points).unwrap_or(i32::MAX)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn route(id: &str) -> Route {
+        Route {
+            id: id.into(),
+            from: "a".into(),
+            to: "b".into(),
+            len: 1,
+            color: GRAY_ROUTE_COLOR.into(),
+            double: true,
+        }
+    }
+
+    #[test]
+    fn route_color_parses_only_canonical_values() {
+        assert_eq!(RouteColor::parse("Gray"), Some(RouteColor::Gray));
+        assert_eq!(
+            RouteColor::parse("Red"),
+            Some(RouteColor::Colored(CardColor::Red))
+        );
+        for color in ["gray", "grey", "GRAY", "red", "Locomotive", ""] {
+            assert_eq!(RouteColor::parse(color), None, "{color:?}");
+        }
+    }
+
+    #[test]
+    fn sister_route_pairs_first_and_second() {
+        let routes: BTreeMap<RouteId, Route> = ["x_y_1", "x_y_2", "p_q_1"]
+            .iter()
+            .map(|id| ((*id).to_string(), route(id)))
+            .collect();
+        assert_eq!(
+            find_sister_route("x_y_1", &routes).as_deref(),
+            Some("x_y_2")
+        );
+        assert_eq!(
+            find_sister_route("x_y_2", &routes).as_deref(),
+            Some("x_y_1")
+        );
+        assert_eq!(find_sister_route("p_q_1", &routes), None);
+        assert_eq!(find_sister_route("other", &routes), None);
+    }
+}

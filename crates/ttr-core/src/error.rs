@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+/// Errore restituito da `Engine::apply`.
 #[derive(Debug, Clone, Error)]
+#[non_exhaustive]
 pub enum EngineError {
     #[error("azione non valida nello stato {state:?}")]
     WrongState { state: GamePhase },
@@ -63,9 +65,68 @@ pub enum EngineError {
     InvalidPayload { reason: String },
 }
 
+/// Errore di configurazione: ruleset, mappa o giocatori incoerenti.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[non_exhaustive]
+pub enum EngineInitError {
+    #[error("liste giocatori di lunghezze diverse (id {ids}, nomi {names}, colori {colors})")]
+    PlayerListsMismatch {
+        ids: usize,
+        names: usize,
+        colors: usize,
+    },
+
+    #[error("numero di giocatori {count} fuori dall'intervallo {min}..={max}")]
+    PlayerCountOutOfRange { count: usize, min: u32, max: u32 },
+
+    #[error("intervallo giocatori del ruleset non valido: min {min}, max {max}")]
+    InvalidPlayerRange { min: u32, max: u32 },
+
+    #[error("primo giocatore {first_player} fuori dai {players} giocatori")]
+    FirstPlayerOutOfRange { first_player: usize, players: usize },
+
+    #[error("finalRoundIncludesTrigger=false non è supportato")]
+    UnsupportedFinalRound,
+
+    #[error("mazzo treni troppo piccolo: {have} carte, ne servono almeno {needed}")]
+    TrainDeckTooSmall { have: usize, needed: usize },
+
+    #[error("colore non valido '{color}' nella rotta '{route_id}'")]
+    InvalidRouteColor { route_id: String, color: String },
+
+    #[error("bonus '{bonus_type}' mancante nel ruleset")]
+    MissingLongestPathBonus { bonus_type: &'static str },
+
+    #[error("deck biglietti '{deck}' ripetuto in ticketDecks")]
+    DuplicateTicketDeck { deck: String },
+
+    #[error("initialTickets.dealt usa il deck '{deck}' che non è in ticketDecks")]
+    DealtTicketDeckUnknown { deck: String },
+
+    #[error("ticketDraw.deck '{deck}' non è in ticketDecks")]
+    DrawTicketDeckUnknown { deck: String },
+
+    #[error("biglietto '{ticket_id}': deck '{deck}' non è in ticketDecks")]
+    TicketDeckNotListed { ticket_id: String, deck: String },
+
+    #[error("deck biglietti '{deck}' troppo piccolo: {have} biglietti, ne servono {needed}")]
+    TicketDeckTooSmall {
+        deck: String,
+        have: usize,
+        needed: usize,
+    },
+
+    #[error("initialTickets.keepMin {keep_min} maggiore dei biglietti distribuiti {dealt}")]
+    InitialKeepMinExceedsDealt { keep_min: u32, dealt: u32 },
+
+    #[error("ticketDraw.keepMin {keep_min} maggiore di ticketDraw.count {count}")]
+    DrawKeepMinExceedsCount { keep_min: u32, count: u32 },
+}
+
 /// Fase di gioco (macchina a stati interna).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[non_exhaustive]
 pub enum GamePhase {
     InitialDraft,
     PlayerTurn,

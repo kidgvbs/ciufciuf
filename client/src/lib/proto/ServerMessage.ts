@@ -8,6 +8,6 @@ import type { Snapshot } from "./Snapshot";
  * Messaggio outbound inviato sul WebSocket.
  *
  * L'envelope usa adjacent tagging: `{"type":"PUBLIC_STATE","payload":{…}}`.
- * I "canali" §7 diventano varianti di questo enum.
+ * Ogni canale di notifica è una variante di questo enum.
  */
 export type ServerMessage = { "type": "PUBLIC_STATE", "payload": PublicState } | { "type": "PRIVATE_STATE", "payload": PrivateState } | { "type": "ERROR", "payload": ErrorPayload } | { "type": "SNAPSHOT", "payload": Snapshot };

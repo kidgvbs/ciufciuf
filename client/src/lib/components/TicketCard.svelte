@@ -1,6 +1,6 @@
 <script lang="ts">
   // Biglietto destinazione in stile "tagliando ferroviario vintage" nostro
-  // (Fase 3d): città di partenza in alto, punti in grande al centro,
+  // con città di partenza in alto, punti in grande al centro,
   // città di arrivo in basso. Spunta verde se completato.
   //
   // Usato nella mano del controller e nel dialog di scelta biglietti.
@@ -18,7 +18,7 @@
     points: number;
     completed?: boolean;
     selected?: boolean;
-    /** Evidenziato sulla mappa (Fase 3f: pin + dashed line sulle due città). */
+    /** Evidenziato sulla mappa: pin + dashed line sulle due città. */
     active?: boolean;
     /** Se presente, il card è un <button> (toggle evidenza sulla mappa). */
     onclick?: () => void;
@@ -65,7 +65,7 @@
     color: var(--board-ink);
     text-align: center;
     min-height: 74px;
-    /* Quando è un <button> (Fase 3f): eredità tipografica dal contesto */
+    /* Quando è un <button>: eredità tipografica dal contesto */
     font-family: inherit;
   }
   /* Tratteggio interno stile tagliando */
@@ -124,7 +124,7 @@
       0 0 0 2px var(--gold),
       var(--card-shadow);
   }
-  /* Attivo = pinnato sulla mappa (Fase 3f): bordo teal come i pin/linea */
+  /* Attivo = pinnato sulla mappa: bordo teal come i pin/linea */
   .ticket.active {
     border-color: #0f766e;
     box-shadow:

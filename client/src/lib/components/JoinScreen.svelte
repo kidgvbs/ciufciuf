@@ -7,10 +7,17 @@
 
   const ALL_COLORS: PlayerColor[] = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'BLACK'];
 
-  let { host, onJoin, onCancel }: {
+  let { host, onJoin, onCancel, notice = '' }: {
     host: string;
-    onJoin: (name: string, gameId: string, color?: PlayerColor) => Promise<void>;
+    onJoin: (
+      name: string,
+      gameId: string,
+      color?: PlayerColor,
+      signal?: AbortSignal,
+    ) => Promise<void>;
     onCancel?: () => void;
+    /** Messaggio da mostrare (es. connessione abbandonata); riabilita i controlli. */
+    notice?: string;
   } = $props();
 
   // Nome precompilato dall'ultimo join su questo telefono (localStorage)
@@ -53,7 +60,10 @@
         const known = p.some((x) => x.toLowerCase() === name.trim().toLowerCase());
         if (p.length === 0 || (name.trim() !== '' && !known)) creating = true;
       })
-      .catch(() => { creating = true; });
+      .catch((e: unknown) => {
+        console.warn('[join] profili non disponibili:', e);
+        creating = true;
+      });
   });
 
   // Quando cambia la partita selezionata, recupera i colori già presi.
@@ -69,20 +79,50 @@
       .then((d) => {
         if (!cancelled) takenColors = new Set(d.players.map((p) => p.color as string));
       })
-      .catch(() => {
+      .catch((e: unknown) => {
+        console.warn('[join] dettaglio partita non disponibile:', e);
         if (!cancelled) takenColors = new Set();
       });
     return () => { cancelled = true; };
+  });
+
+  // Il join (richiesta REST + primo stato dal server) deve completarsi entro questo tempo.
+  const JOIN_TIMEOUT_MS = 10_000;
+  let joinTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function stopJoinTimer() {
+    if (joinTimer) clearTimeout(joinTimer);
+    joinTimer = null;
+  }
+
+  $effect(() => stopJoinTimer);
+
+  // Connessione abbandonata dal padre: i controlli tornano disponibili.
+  $effect(() => {
+    if (notice) {
+      stopJoinTimer();
+      joining = false;
+    }
   });
 
   async function join() {
     if (!name.trim() || !gameId.trim()) return;
     joining = true;
     error = '';
+    const abort = new AbortController();
+    stopJoinTimer();
+    joinTimer = setTimeout(() => {
+      abort.abort();
+      error = 'Il server non risponde: riprova tra un attimo';
+      joining = false;
+    }, JOIN_TIMEOUT_MS);
     try {
-      await onJoin(name.trim(), gameId.trim(), color === '' ? undefined : color);
+      await onJoin(name.trim(), gameId.trim(), color === '' ? undefined : color, abort.signal);
     } catch (e: unknown) {
-      error = e instanceof Error ? e.message : 'Errore';
+      stopJoinTimer();
+      error = abort.signal.aborted
+        ? 'Il server non risponde: riprova tra un attimo'
+        : e instanceof Error ? e.message : 'Errore';
       joining = false;
     }
   }
@@ -163,8 +203,8 @@
       {/each}
     </div>
 
-    {#if error}
-      <p class="error">{error}</p>
+    {#if error || notice}
+      <p class="error" role="alert">{error || notice}</p>
     {/if}
 
     <button

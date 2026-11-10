@@ -34,3 +34,14 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 - `"regular"` — mazzo standard
 - `"long"` — mazzo biglietti lunghi (Europe)
 - Il ruleset dichiara in `ticketDecks` quali mazzi esistono; ogni biglietto ha un campo `deck`
+- L'ordine di `ticketDecks` è parte del replay: i mazzi vengono mescolati in quell'ordine, quindi riordinarlo o aggiungere un mazzo a un ruleset esistente invalida i suoi save (vedi `RULES_VERSION` in `ttr-core`).
+- Ogni mazzo compare una sola volta in `ticketDecks`; `initialTickets.dealt[].deck` e `ticketDraw.deck` devono essere elencati in `ticketDecks`, e un mazzo elencato in `dealt` deve contenere almeno `giocatori × count` biglietti.
+- `initialTickets.keepMin` non supera il totale dei biglietti distribuiti e `ticketDraw.keepMin` non supera `ticketDraw.count`.
+
+## Bonus
+
+- Il bonus del percorso più lungo è la voce di `bonuses` con `"type": "longest_path"`; se manca, il ruleset non è valido.
+
+## Validazione
+
+`Ruleset::validate(&map)` in `ttr-core` controlla i vincoli di questo documento ed è eseguita da `Engine::new`, da `ttr-validate` e all'avvio del server. I colori delle rotte accettati sono solo quelli canonici elencati sopra (`Gray` e i nomi dei colori carta in PascalCase).

@@ -17,11 +17,12 @@
     loadIdentity,
     clearIdentity,
     savePlayerName,
-    type StoredIdentity,
   } from '../lib/lobby';
-  import { createGameConnection, type GameConnection } from '../lib/ws';
+  import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
+  import { resolveServerHost } from '../lib/server-host';
+  import { parseRejoinHash } from '../lib/rejoin';
   import { createActionGate } from '../lib/action-gate';
-  import { notConnectedError } from '../lib/errors';
+  import { notConnectedError, fatalMessage } from '../lib/errors';
   import { rankedScores, winnerNames } from '../lib/scores';
   import type { Snapshot, PublicState, PrivateState, ErrorPayload, InboundAction, PlayerColor } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
@@ -30,15 +31,14 @@
 
   // ── Stato connessione ───────────────────────────────────────────
   // Default: stesso server che serve la pagina. Override: `/controller?server=http://<ip>:8080`.
-  let host = $state(
-    new URLSearchParams(window.location.search).get('server') ?? window.location.origin,
-  );
+  let host = $state(resolveServerHost(window.location.search));
   let gameId = $state('');
   let playerId = $state('');
   let token = $state('');
   let connection: GameConnection | null = $state(null);
-  let view: 'join' | 'waiting' | 'game' | 'gameover' = $state('join');
-  let joinError = $state('');
+  // Messaggio mostrato nella JoinScreen dopo una connessione abbandonata.
+  let notice = $state('');
+  let lobbyError = $state('');
 
   // Anti doppio tap su tutte le azioni di gioco (ogni tap doppio consumerebbe
   // una pescata, o invierebbe due volte la stessa rotta/scelta).
@@ -59,14 +59,20 @@
   let lobbyPlayers = $state<Array<{ playerId: string; name: string; color: PlayerColor }>>([]);
 
   // ── Avvio: controlla localStorage (una sola volta) ─────────────
-  // P0: questo restore NON deve essere un $effect tracciato: connectPlayer
+  // Questo restore NON deve essere un $effect tracciato: connectPlayer
   // legge `connection` e la riscrive nella stessa run → con $effect il loop
   // reattivo chiude/riapre il WS all'infinito. onMount gira una volta sola,
   // fuori da qualunque contesto reattivo.
   onMount(() => {
-    const saved = loadIdentity();
-    if (saved && saved.playerId && saved.token && saved.gameId) {
-      host = saved.host || host;
+    // Identità consegnata dalla TV via QR: la salviamo e togliamo il token dall'URL.
+    const rejoin = parseRejoinHash(window.location.hash);
+    if (rejoin) {
+      saveIdentity({ ...rejoin, host });
+      window.history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+    const saved = loadIdentity(rejoin?.gameId);
+    if (saved) {
+      host = saved.host;
       gameId = saved.gameId;
       playerId = saved.playerId;
       token = saved.token;
@@ -76,18 +82,12 @@
     }
   });
 
-  // ── Transizioni di stato ───────────────────────────────────────
-  $effect(() => {
-    const gs = publicStore.state;
-    if (!gs || publicStore.gameId === '') return;
-
-    if (gs === 'WAITING_FOR_PLAYERS') {
-      view = 'waiting';
-    } else if (gs === 'GAME_OVER') {
-      view = 'gameover';
-    } else {
-      view = 'game';
-    }
+  // ── Vista corrente ─────────────────────────────────────────────
+  const view = $derived.by((): 'join' | 'waiting' | 'game' | 'gameover' => {
+    if (publicStore.gameId === '') return 'join';
+    if (gameState === 'WAITING_FOR_PLAYERS') return 'waiting';
+    if (gameState === 'GAME_OVER') return 'gameover';
+    return 'game';
   });
 
   // Polling giocatori in lobby
@@ -99,7 +99,7 @@
   });
 
   // ── Connessione / riconnessione WS ─────────────────────────────
-  // Identità della connessione corrente, per la guardia di idempotenza (P0).
+  // Identità della connessione corrente, per la guardia di idempotenza.
   let connectionKey: string | null = null;
 
   function connectPlayer(reconnecting: boolean) {
@@ -120,7 +120,7 @@
       playerId,
       token,
       callbacks: {
-        onSnapshot(snap: Snapshot, isReconnect: boolean) {
+        onSnapshot(snap: Snapshot) {
           applySnapshot(snap);
           if (snap.private) {
             privateStore.apply(snap.private);
@@ -146,30 +146,33 @@
             drawGate.settle();
           }
         },
+        onFatal(reason: FatalReason) {
+          // Una versione incompatibile non invalida l'identità: basta ricaricare la pagina.
+          leaveGame(reason !== 'PROTOCOL_VERSION');
+          notice = fatalMessage(reason);
+        },
       },
     });
     connectionKey = key;
   }
 
-  // F1: chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
+  // Chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
   // dispose dopo close: close() notifica onConnectionChange(false) → settle().
   $effect(() => () => { connection?.close(); connection = null; connectionKey = null; drawGate.dispose(); });
 
   // ── Join ───────────────────────────────────────────────────────
-  async function onJoin(name: string, gid: string, color?: PlayerColor) {
-    joinError = '';
-    try {
-      const result = await lobby.joinGame(gid, name, color);
-      gameId = gid;
-      playerId = result.playerId;
-      token = result.token;
-      saveIdentity({ playerId, token, gameId: gid, host });
-      savePlayerName(name);
-      connectPlayer(false);
-    } catch (e: unknown) {
-      joinError = e instanceof Error ? e.message : 'Errore join';
-      throw e;
-    }
+  // Al resume il server richiede il token originale: lo inviamo se abbiamo un'identità
+  // salvata per la stessa partita.
+  async function onJoin(name: string, gid: string, color?: PlayerColor, signal?: AbortSignal) {
+    notice = '';
+    const saved = loadIdentity(gid);
+    const result = await lobby.joinGame(gid, name, color, saved?.token, signal);
+    gameId = gid;
+    playerId = result.playerId;
+    token = result.token;
+    saveIdentity({ playerId, token, gameId: gid, host });
+    savePlayerName(name);
+    connectPlayer(false);
   }
 
   // ── Azioni ─────────────────────────────────────────────────────
@@ -196,18 +199,24 @@
   }
 
   function onLeave() {
+    leaveGame(true);
+    notice = '';
+  }
+
+  /** Chiude la connessione e torna alla JoinScreen; `forget` cancella l'identità salvata. */
+  function leaveGame(forget: boolean) {
     if (connection) {
       connection.close();
       connection = null;
       connectionKey = null;
     }
-    clearIdentity();
+    if (forget && gameId) clearIdentity(gameId);
     resetStores();
     gameId = '';
     playerId = '';
     token = '';
-    view = 'join';
-    joinError = '';
+    lobbyPlayers = [];
+    lobbyError = '';
   }
 
   // ── Lobby ──────────────────────────────────────────────────────
@@ -220,15 +229,17 @@
         name: p.name,
         color: p.color as PlayerColor,
       }));
-    } catch {
-      // ignorato
+      lobbyError = '';
+    } catch (e: unknown) {
+      console.warn('[controller] aggiornamento lobby fallito:', e);
+      lobbyError = 'Impossibile aggiornare i giocatori in lobby';
     }
   }
 </script>
 
 <div class="cv-root">
   {#if view === 'join'}
-    <JoinScreen {host} {onJoin} />
+    <JoinScreen {host} {onJoin} notice={notice} />
 
   {:else if view === 'waiting'}
     <div class="waiting-screen">
@@ -263,6 +274,9 @@
             <p class="muted">In attesa...</p>
           {/if}
         </div>
+        {#if lobbyError}
+          <p class="muted" role="status">{lobbyError}</p>
+        {/if}
 
         <p class="waiting-hint">
           Aspetta che l'host avvii la partita...
@@ -271,9 +285,11 @@
         <button class="leave-btn btn" onclick={onLeave}> Esci </button>
       </div>
 
-      {#if !connectionStore.connected}
-        <div class="disconnected">⚠️ Disconnesso</div>
-      {/if}
+      <div role="status" aria-live="polite">
+        {#if !connectionStore.connected}
+          <div class="disconnected">⚠️ Disconnesso &mdash; riconnessione in corso...</div>
+        {/if}
+      </div>
     </div>
 
   {:else if view === 'gameover'}

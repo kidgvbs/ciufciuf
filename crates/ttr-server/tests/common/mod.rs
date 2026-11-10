@@ -62,13 +62,23 @@ impl TestServer {
         Self::start_with_state(state, saves).await
     }
 
+    /// Avvia un server con limiti di sessione ridotti (TTL in millisecondi, ecc.).
+    #[allow(dead_code)]
+    pub async fn start_with_limits(limits: ttr_server::SessionLimits) -> Self {
+        let saves = temp_saves_dir();
+        let state = ttr_server::AppState::new(data_dir(), saves.clone(), 0)
+            .expect("AppState::new")
+            .with_limits(limits);
+        Self::start_with_state(state, saves).await
+    }
+
     /// Avvia un server axum da un `AppState` già costruito (es. test resume).
     pub async fn start_with_state(state: ttr_server::AppState, saves: PathBuf) -> Self {
         Self::start_with_client_dist(state, saves, PathBuf::new()).await
     }
 
     /// Avvia un server axum servendo i statici del client da `client_dist`
-    /// (Fase 3b: fallback SPA a index.html).
+    /// (fallback SPA a index.html).
     #[allow(dead_code)]
     pub async fn start_with_client_dist(
         state: ttr_server::AppState,
@@ -201,6 +211,50 @@ pub async fn join_game(base: &str, game_id: &str, name: &str, color: Option<&str
     resp.json().await.expect("parse JoinedPlayer")
 }
 
+/// Join di un giocatore in una partita ripresa: richiede il token originale.
+#[allow(dead_code)]
+pub async fn join_game_resume(base: &str, game_id: &str, name: &str, token: &str) -> JoinedPlayer {
+    let (status, body) = post_json(
+        base,
+        &format!("/api/games/{}/join", game_id),
+        serde_json::json!({ "name": name, "token": token }),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "join di resume deve tornare 200: {}: {}",
+        name, body
+    );
+    serde_json::from_value(body).expect("parse JoinedPlayer")
+}
+
+/// POST JSON a un path del server; ritorna status e corpo (Null se non è JSON).
+#[allow(dead_code)]
+pub async fn post_json(
+    base: &str,
+    path: &str,
+    body: serde_json::Value,
+) -> (u16, serde_json::Value) {
+    let resp = reqwest::Client::new()
+        .post(format!("{}{}", base, path))
+        .json(&body)
+        .send()
+        .await
+        .unwrap_or_else(|e| panic!("POST {}: {}", path, e));
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap_or(serde_json::Value::Null))
+}
+
+/// GET JSON da un path del server.
+#[allow(dead_code)]
+pub async fn get_json(base: &str, path: &str) -> (u16, serde_json::Value) {
+    let resp = reqwest::get(format!("{}{}", base, path))
+        .await
+        .unwrap_or_else(|e| panic!("GET {}: {}", path, e));
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap_or(serde_json::Value::Null))
+}
+
 /// Avvia una partita via REST (richiede hostToken).
 pub async fn start_game(base: &str, game_id: &str, host_token: &str) {
     let client = reqwest::Client::new();
@@ -211,6 +265,18 @@ pub async fn start_game(base: &str, game_id: &str, host_token: &str) {
         .await
         .expect("POST /api/games/{id}/start");
     assert_eq!(resp.status(), 204, "start deve tornare 204");
+}
+
+/// Attende (fino a 5 s) che il writer asincrono abbia scritto `path`.
+#[allow(dead_code)]
+pub async fn wait_for_file(path: &std::path::Path) {
+    for _ in 0..100 {
+        if path.exists() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("file non scritto entro 5 s: {:?}", path);
 }
 
 // ── Client WebSocket "scemo" ────────────────────────────────────────
@@ -328,7 +394,7 @@ impl WsClient {
     }
 
     /// Invia testo grezzo (es. REQUEST_SNAPSHOT dello spettatore senza
-    /// `player_id`, che non è rappresentabile come `InboundAction` — N1).
+    /// `player_id`, che non è rappresentabile come `InboundAction`).
     #[allow(dead_code)]
     pub async fn send_raw(&mut self, text: &str) {
         self.write
@@ -384,10 +450,10 @@ impl WsClient {
     }
 }
 
-// ── Costruzione pagamento claim (client "scemo", pacchetto §9.1) ────
+// ── Costruzione pagamento claim (client "scemo") ────────────────────
 
 /// Ordine enum dei colori carta (senza Locomotive), per il pagamento
-/// deterministico delle rotte grigie (pacchetto: "primo colore con
+/// deterministico delle rotte grigie ("primo colore con
 /// conteggio sufficiente in ordine enum").
 pub const CARD_COLOR_ORDER: [CardColor; 8] = [
     CardColor::Red,
@@ -418,7 +484,7 @@ pub fn route_color_card(color: &str) -> Option<CardColor> {
 }
 
 /// Costruisce un pagamento valido (`cards_discarded`) per una rotta a barra
-/// dalla mano corrente, secondo la regola del pacchetto §9.1: colore della
+/// dalla mano corrente: colore della
 /// rotta, o (grigia) il primo colore con conteggio sufficiente in ordine enum,
 /// locomotive a riempimento. `len` è la lunghezza della rotta (`route.len`).
 pub fn build_payment(hand: &[CardColor], route_color: &str, len: usize) -> Option<Vec<CardColor>> {

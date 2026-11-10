@@ -1,4 +1,4 @@
-//! Test di integrazione WebSocket reali (pacchetto Fase 2 §9).
+//! Test di integrazione WebSocket reali.
 //!
 //! Server axum su porta effimera, client tokio-tungstenite "scemi" che
 //! decidono solo dai messaggi WS (`legalMoves`, `offeredTickets`). Un unico
@@ -15,7 +15,7 @@ use common::*;
 use futures_util::StreamExt;
 use ttr_proto::{GameState, InboundAction, ServerMessage};
 
-/// Test §9.1: partita completa fino a `GAME_OVER` con `finalScores` coerenti.
+/// Partita completa fino a `GAME_OVER` con `finalScores` coerenti.
 #[tokio::test]
 async fn full_game_over_ws() {
     let server = TestServer::start().await;
@@ -57,7 +57,7 @@ async fn full_game_over_ws() {
     );
 }
 
-/// Test §9.2: disconnect mid-game e reconnect con snapshot coerente.
+/// Disconnect mid-game e reconnect con snapshot coerente.
 #[tokio::test]
 async fn reconnect_mid_game() {
     let server = TestServer::start().await;
@@ -230,9 +230,9 @@ async fn reconnect_mid_game() {
     assert!(fp.final_scores.as_ref().unwrap().len() == 2);
 }
 
-/// Test §9.3: idempotenza inbound — stesso clientSeq ritrasmesso.
+/// Un `client_seq` ripetuto è scartato e il server rinvia lo stato privato corrente.
 #[tokio::test]
-async fn idempotency() {
+async fn duplicate_client_seq_is_dropped_and_state_resent() {
     let server = TestServer::start().await;
     let map = usa_map();
 
@@ -353,6 +353,7 @@ async fn idempotency() {
         }
     }
     let hand_after = a.client.as_ref().unwrap().view.hand.clone();
+    let seq_after_first = a.client.as_ref().unwrap().view.seq;
     assert_eq!(
         hand_after.len(),
         hand_before.len() + 1,
@@ -380,9 +381,17 @@ async fn idempotency() {
         hand_after_retransmit, hand_after,
         "idempotenza: ritrasmissione non deve cambiare la mano"
     );
+    let view = &a.client.as_ref().unwrap().view;
+    assert!(
+        view.seq > seq_after_first,
+        "il duplicato produce un nuovo PRIVATE_STATE (seq {} > {})",
+        view.seq,
+        seq_after_first
+    );
+    assert!(view.last_error.is_none(), "il duplicato non è un errore");
 }
 
-/// Test F1: spettatore (connessione senza playerId) riceve solo pubblico.
+/// Spettatore (connessione senza playerId) riceve solo pubblico.
 #[tokio::test]
 async fn spectator_public_only() {
     let server = TestServer::start().await;
@@ -408,11 +417,22 @@ async fn spectator_public_only() {
         "spettatore riceve SNAPSHOT iniziale"
     );
     if let ServerMessage::Snapshot(ref s) = snap_spec {
-        assert!(s.private.is_none(), "spettatore: private None nello SNAPSHOT");
+        assert!(
+            s.private.is_none(),
+            "spettatore: private None nello SNAPSHOT"
+        );
     }
 
-    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
-    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+    apply_msg(
+        &a.client.as_mut().unwrap().recv().await,
+        &mut a,
+        &mut public,
+    );
+    apply_msg(
+        &b.client.as_mut().unwrap().recv().await,
+        &mut b,
+        &mut public,
+    );
 
     // Draft entrambi i giocatori (spettatore non partecipa).
     let draft_a = decide(
@@ -450,7 +470,11 @@ async fn spectator_public_only() {
                 apply_msg(&msg, &mut b, &mut public);
             }
         }
-        if public.as_ref().map(|p| p.state == GameState::PlayerTurn).unwrap_or(false) {
+        if public
+            .as_ref()
+            .map(|p| p.state == GameState::PlayerTurn)
+            .unwrap_or(false)
+        {
             break;
         }
     }
@@ -484,7 +508,7 @@ async fn spectator_public_only() {
     );
 }
 
-/// Test N1 (Fase 3b): lo spettatore può chiedere REQUEST_SNAPSHOT.
+/// Lo spettatore può chiedere REQUEST_SNAPSHOT.
 ///
 /// Il client TV/spettatore non ha `player_id`, quindi il suo
 /// `{"actionType":"REQUEST_SNAPSHOT","client_seq":null}` non è
@@ -540,7 +564,7 @@ async fn spectator_request_snapshot() {
     );
 }
 
-/// Test F2: token errato → socket chiuso dal server.
+/// Token errato → socket chiuso dal server.
 #[tokio::test]
 async fn wrong_token_closes_socket() {
     let server = TestServer::start().await;
@@ -569,8 +593,7 @@ async fn wrong_token_closes_socket() {
         }
         Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
             // Verifica che sia ERROR Unauthorized
-            let parsed: ServerMessage =
-                serde_json::from_str(&text).expect("parse close msg");
+            let parsed: ServerMessage = serde_json::from_str(&text).expect("parse close msg");
             assert!(
                 matches!(parsed, ServerMessage::Error(ref e) if e.reason == ttr_proto::ErrorReason::Unauthorized),
                 "token errato → ERROR Unauthorized"
@@ -598,7 +621,7 @@ async fn wrong_token_closes_socket() {
     }
 }
 
-/// Test F5: `client_seq: Some(0)` non deve bypassare il dedup.
+/// `client_seq: Some(0)` non deve bypassare il dedup.
 #[tokio::test]
 async fn client_seq_zero_dedup() {
     let server = TestServer::start().await;
@@ -617,8 +640,16 @@ async fn client_seq_zero_dedup() {
     let mut public: Option<ttr_proto::PublicState> = None;
 
     // Consuma SNAPSHOT iniziali e draft.
-    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
-    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+    apply_msg(
+        &a.client.as_mut().unwrap().recv().await,
+        &mut a,
+        &mut public,
+    );
+    apply_msg(
+        &b.client.as_mut().unwrap().recv().await,
+        &mut b,
+        &mut public,
+    );
 
     let draft_a = decide(
         &a.player_id,
@@ -701,7 +732,7 @@ async fn client_seq_zero_dedup() {
 
     assert_eq!(
         hand_after_second, hand_after_first,
-        "F5: stesso client_seq Some(0) → dedup, mano invariata"
+        "stesso client_seq Some(0) → dedup, mano invariata"
     );
     // Verifica che la prima applicazione abbia effettivamente cambiato la mano.
     assert!(
@@ -977,7 +1008,8 @@ async fn deck_size_reported_and_decreases() {
         }
     }
     assert_eq!(
-        spec_deck, d0 - 1,
+        spec_deck,
+        d0 - 1,
         "spettatore vede deck_size aggiornato dopo pescata"
     );
 }

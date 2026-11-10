@@ -9,7 +9,9 @@ use ttr_proto::CardColor;
 
 use crate::types::{RouteId, TicketId};
 
+/// Evento emesso da `Engine::apply`, in ordine cronologico nel vettore restituito.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub enum GameEvent {
     /// Carta pescata dal mazzo coperto.
     CardDrawnFromDeck {
@@ -22,14 +24,16 @@ pub enum GameEvent {
         index: usize,
         card: CardColor,
     },
-    /// Nuova carta rivelata nelle scoperte.
+    /// Nuova carta apparsa nello slot `index` delle scoperte.
     FaceUpRevealed { index: usize, card: CardColor },
-    /// Pool scoperte resettato (≥3 locomotive).
+    /// Pool scoperte resettato (≥3 locomotive): `discarded` sono le scoperte
+    /// scartate, `new_face_up` le nuove cinque.
     FaceUpReset {
         discarded: Vec<CardColor>,
         new_face_up: Vec<Option<CardColor>>,
     },
-    /// Mazzo rimescolato dagli scarti.
+    /// Mazzo ricostruito: scarti rimescolati oppure, con mazzo e scarti vuoti,
+    /// mazzo nuovo (D27).
     DeckReshuffled,
     /// Turno di pesca completato.
     DrawTurnComplete { player_index: usize },

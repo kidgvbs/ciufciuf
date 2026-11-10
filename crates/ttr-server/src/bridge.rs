@@ -1,6 +1,4 @@
 //! Conversione core ↔ proto: `PublicState`, `PrivateState`, `ErrorReason`, `FinalScoreInfo`.
-//!
-//! Regole di conversione dal pacchetto Fase 2 §7.
 
 use std::collections::{BTreeMap, HashSet};
 
@@ -60,11 +58,7 @@ pub(crate) fn build_public_state(
         .unwrap_or_default();
 
     // Numero di carte nel mazzo coperto (0 pre-start, Engine non ancora costruito).
-    let deck_size = session
-        .engine
-        .as_ref()
-        .map(|e| e.deck_size())
-        .unwrap_or(0);
+    let deck_size = session.engine.as_ref().map(|e| e.deck_size()).unwrap_or(0);
 
     let claimed_routes: Vec<ClaimedRoute> = if let Some(ref engine) = session.engine {
         let mut claimed: Vec<ClaimedRoute> = Vec::new();
@@ -118,6 +112,11 @@ fn game_phase_to_game_state(phase: GamePhase) -> GameState {
         GamePhase::TicketChoice => GameState::TicketChoice,
         GamePhase::LastRound => GameState::LastRound,
         GamePhase::GameOver => GameState::GameOver,
+        // Fasi future del motore senza un GameState dedicato.
+        other => {
+            tracing::error!(phase = ?other, "fase del motore senza GameState corrispondente");
+            GameState::PlayerTurn
+        }
     }
 }
 
@@ -130,10 +129,12 @@ fn build_players_summary(
     let mut ordered: Vec<(usize, &String, &SessionPlayer)> = session
         .player_index
         .iter()
-        .filter_map(|(pid, &idx)| session.players.get(idx).map(|p| {
-            let engine_idx = p.index.unwrap_or(idx);
-            (engine_idx, pid, p)
-        }))
+        .filter_map(|(pid, &idx)| {
+            session.players.get(idx).map(|p| {
+                let engine_idx = p.index.unwrap_or(idx);
+                (engine_idx, pid, p)
+            })
+        })
         .collect();
     ordered.sort_by_key(|(ei, _, _)| *ei);
 
@@ -203,7 +204,7 @@ pub(crate) fn build_private_state(
         tix
     };
 
-    // E3: offered_tickets con guardie
+    // Biglietti offerti: solo quelli che il giocatore può scegliere ora.
     let offered_tickets: Vec<TicketInfo> = build_offered_tickets(engine, map, pi);
 
     let legal_moves = {
@@ -227,7 +228,8 @@ pub(crate) fn build_private_state(
     })
 }
 
-/// Costruisce i biglietti offerti con le guardie (E3).
+/// Biglietti offerti al giocatore: quelli del draft iniziale non ancora scelto
+/// o, a metà partita, quelli della sua scelta in corso.
 fn build_offered_tickets(
     engine: &ttr_core::Engine,
     map: &ttr_core::MapData,
@@ -278,7 +280,7 @@ fn build_offered_tickets(
     offered
 }
 
-// ── FinalScoreInfo (E4) ──────────────────────────────────────────────
+// ── FinalScoreInfo ───────────────────────────────────────────────────
 
 pub(crate) fn build_final_scores(
     final_scores: &[ttr_core::event::FinalScore],
@@ -286,7 +288,7 @@ pub(crate) fn build_final_scores(
     players: &[SessionPlayer],
     player_index: &BTreeMap<String, usize>,
 ) -> Vec<FinalScoreInfo> {
-    // F3: mappa engine_index → player_id usando SessionPlayer.index.
+    // Mappa engine_index → player_id usando SessionPlayer.index.
     let index_to_id: BTreeMap<usize, &String> = player_index
         .iter()
         .filter_map(|(id, &session_pos)| {
@@ -317,7 +319,7 @@ pub(crate) fn build_final_scores(
         .collect()
 }
 
-// ── EngineError → ErrorReason (match esaustivo, pacchetto §7.2) ─────
+// ── EngineError → ErrorReason ────────────────────────────────────────
 
 pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
     match err {
@@ -340,6 +342,8 @@ pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
         | EngineError::InvalidRouteColor { .. }
         | EngineError::InvalidPayload { .. }
         | EngineError::DraftNotComplete => ErrorReason::InvalidAction,
+        // Errori futuri del motore: azione rifiutata senza una ragione dedicata.
+        _ => ErrorReason::InvalidAction,
     }
 }
 
@@ -373,7 +377,7 @@ mod tests {
 
     #[test]
     fn engine_error_to_reason_exhaustive() {
-        // §7.2: ogni variante di EngineError mappa al ErrorReason corretto.
+        // Ogni variante di EngineError mappa al ErrorReason corretto.
 
         // WrongState
         assert_eq!(

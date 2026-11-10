@@ -147,12 +147,21 @@ GET  /api/lan        → {"port":8080,"candidates":[{"ip":"192.168.1.10",
 GET  /qr?data=<url>  → 200 image/svg+xml (QR dell'URL; crate `qrcode`)
 POST /api/games      {"rulesetId":"usa_v2","name":"Serata"} → 201
                        {"gameId","hostToken","rulesetId","maxPlayers"}
+                       (oltre 20 partite attive → 429 TOO_MANY_GAMES; nome con
+                        caratteri di controllo o invisibili → 400 INVALID_NAME)
 GET  /api/games      → {"games":[{gameId,name,rulesetId,playersJoined,maxPlayers,started}]}
-GET  /api/games/{id} → lobby: {gameId,name,rulesetId,players:[{playerId,name,color}],started,maxPlayers}
-POST /api/games/{id}/join  {"name":"Gino","color":"BLUE"} → {"playerId","token","wsUrl":"/ws/{id}"}
+GET  /api/games/{id} → lobby: {gameId,name,rulesetId,players:[{playerId,name,color}],started,
+                       maxPlayers,missingPlayers:["Alice"]}  (missingPlayers = nomi del save
+                       non ancora rientrati; [] fuori dal resume)
+POST /api/games/{id}/join  {"name":"Gino","color":"BLUE","token":"…"} → {"playerId","token","wsUrl":"/ws/{id}"}
                        (color facoltativa → primo colore libero in ordine
-                        RED,BLUE,GREEN,YELLOW,BLACK; nome univoco case-insensitive;
-                        pieno → 409 GAME_FULL; già started → 409 GAME_STARTED)
+                        RED,BLUE,GREEN,YELLOW,BLACK; nome univoco dopo normalizzazione NFC e
+                        minuscolo; pieno → 409 GAME_FULL; già started → 409 GAME_STARTED;
+                        `token` serve solo in resume, vedi §8)
+POST /api/games/{id}/reassign {"hostToken","name"} → {"playerId","token"}
+                       (solo partite riprese: token nuovo per un giocatore del save;
+                        hostToken errato → 401 UNAUTHORIZED; nome non nel save → 409
+                        NAME_NOT_IN_SAVE; partita non ripresa → 400 BAD_REQUEST)
 POST /api/games/{id}/start {"hostToken"} → 204; richiede ≥ ruleset.players.min
                        (già started → 409)
 WS   /ws/{gameId}?playerId=…&token=…   (senza parametri = spettatore/table view)
@@ -173,16 +182,21 @@ telefono": lista completa + preferred basta (D16).
 crates/ttr-server/
 ├── Cargo.toml      # lib + [[bin]] ttr-server; axum(ws), tokio, serde, serde_json,
 │                   # uuid(v4), local-ip-address, qrcode, tracing(+subscriber),
-│                   # futures-util, ttr-core(path), ttr-proto(path)
-│                   # dev-deps: tokio-tungstenite, reqwest(default-features=false,json)
+│                   # futures-util, clap(derive), sha2, subtle, thiserror, time,
+│                   # unicode-normalization, unicode-properties, ttr-core(path), ttr-proto(path)
+│                   # dev-deps: tokio-tungstenite, reqwest(default-features=false,json), tempfile
 └── src/
-    ├── main.rs     # CLI (--port 8080, --data-dir ./data, --saves-dir ./saves,
-    │               #  --resume <file.json>), bind 0.0.0.0, avvio
+    ├── main.rs     # CLI clap (--port u16, --bind ip, --data-dir, --saves-dir,
+    │               #  --client-dist, --resume <file.json>), shutdown su SIGINT/SIGTERM
     ├── lib.rs      # build_router(state) → Router (testabile), moduli
     ├── state.rs    # AppState: registry BTreeMap<GameId, GameHandle>, config,
     │               #  ruleset registry (scan di data/rulesets/*.json, id = file stem,
     │               #  mappa via ruleset.map → data/maps/{map}.json)
     ├── lobby.rs    # endpoint REST di cui sopra
+    ├── error.rs    # LobbyError (thiserror): codice, status HTTP e messaggio italiano
+    ├── names.rs    # nomi: NFC, rifiuto categorie Unicode Cc/Cf, chiave di confronto
+    ├── profiles.rs # profiles.json: quarantena se illeggibile, MAX_PROFILES = 200
+    ├── writer.rs   # SaveWriter per partita: spawn_blocking, coalescing, archivio risultato
     ├── session.rs  # GameSession + attore: mpsc<GameCommand>; possiede Option<Engine>,
     │               #  roster (playerId→index, nomi, colori, token), collegamenti
     │               #  (BTreeMap<playerId, Vec<mpsc::Sender<ServerMessage>>>, spettatori),
@@ -190,7 +204,7 @@ crates/ttr-server/
     ├── ws.rs       # upgrade WS, auth, ciclo di vita connessione (split sink/stream),
     │               # inbound→GameCommand, outbound→sink
     ├── bridge.rs   # conversione core↔proto + mapping errori (§7 qui sotto)
-    └── save.rs     # formato D18, scrittura atomica (tmp+rename), replay da save
+    └── save.rs     # formato save, durable_write, results.jsonl, replay da save
 ```
 
 **Attore per game** (niente lock attraversanti await): ogni `GameSession` è un task
@@ -256,35 +270,79 @@ pieno `GameFull`, nome dup. `NameTaken`.
 - `offered_tickets`: E3 (guardie su `initial_draft_done` e fase+current player).
 - `legal_moves`: `engine.legal_moves(player_index)` → struct proto 1:1.
 
-## 8. Persistenza (D18) — `save.rs`
+## 8. Persistenza — `save.rs`, `writer.rs`
 
-`saves/{gameId}.json`, scritto alla creazione e dopo **ogni** azione applicata
-(scrittura atomica: tmp + rename), `status` → `"completed"` al `GameOver`:
+`saves/{gameId}.json`, scritto dopo lo start e dopo **ogni** azione applicata, `status` →
+`"completed"` al `GameOver`. Le scritture passano da un `SaveWriter` per partita: l'attore
+accoda lo `SaveData` e un task le esegue in `spawn_blocking`, in ordine; con più snapshot in
+coda si scrive solo l'ultimo. L'helper unico `durable_write` scrive su un tmp univoco
+(`{nome}.{pid}.{n}.tmp`), `sync_all` del file, `rename` e `sync_all` della directory.
 
 ```jsonc
 {
-  "formatVersion": 1,
+  "formatVersion": 2,            // si accettano 1 e 2
+  "rulesVersion": 2,             // = ttr_core::RULES_VERSION
   "gameId": "…", "gameName": "Serata",
-  "mapId": "usa", "rulesetId": "usa_v2",
+  "mapId": "usa",                // = ruleset.map
+  "rulesetId": "usa_v2",
   "seed": 123456, "firstPlayer": 0,
-  "players": [{"id":"p1","name":"Gino","color":"BLUE"}],   // ordine = ordine di join
+  "players": [{"id":"p1","name":"Gino","color":"BLUE","tokenHash":"<sha256 hex>"}],  // ordine = indice del motore
   "actions": [ /* serde di ttr_core::Action, solo le applicate con Ok */ ],
   "status": "in_progress" | "completed",
-  "createdAt": "…", "updatedAt": "…"
+  "createdAt": "…", "updatedAt": "…"   // RFC 3339 UTC; createdAt resta quello della prima scrittura
 }
 ```
 
 Le azioni si prendono da `engine.action_log()` (contiene solo le Ok; `Action` è già
 `Serialize/Deserialize`). **Replay:** `Engine::new(seed, ruleset, map, ids, names,
 colors, first)` + `apply()` in ordine → stato identico (`serialize_state()` per
-verificare nei test). `mapId`/`rulesetId` = file stem con cui il server li ha caricati.
+verificare nei test). Un save con `rulesVersion` 1 o assente è rifiutato con
+"save creato con regole precedenti: non riproducibile"; un `formatVersion` diverso da 1 o
+2 è rifiutato. Nel save finisce solo `tokenHash` (SHA-256 esadecimale), mai il token.
 
-**Resume (`--resume saves/x.json`)**: il server ricostruisce il motore via replay,
-registra la partita in modalità lobby con il roster salvato; `hostToken` va nel log di
-avvio. `join` con un nome salvato → ri-binding al playerId/colori originali (token
-nuovo); nomi non salvati → rifiuto. `/start` (dopo che l'host ha deciso, anche con
-roster parziale) rimette in moto la partita ricostruita. Limitazione documentata: i
-turni dei giocatori non rientrati restano in attesa (niente auto-skip in Fase 2).
+**Fine partita:** il writer aggiunge il risultato a `results.jsonl` e solo dopo elimina il
+save. `append_result` lavora sotto `AppState::results_lock`, scrive la riga con un solo
+`write_all`, antepone `\n` se il file non finisce con un a-capo, non aggiunge un `gameId`
+già presente; `read_results` scarta le righe illeggibili con un `warn!` col numero di riga.
+Se l'archiviazione fallisce il save completato resta su disco.
+
+**Profili:** `saves/profiles.json`. Un file illeggibile non viene mai sovrascritto: al
+prossimo `add_profile` è spostato in `profiles.json.corrupt-<unix>` (suffisso `-N` se il
+nome esiste) e se ne crea uno nuovo; `GET /api/profiles` risponde 200 con elenco vuoto.
+Oltre `MAX_PROFILES` (200) i nuovi nomi non vengono salvati.
+
+**Resume (`--resume saves/x.json`)**: il server ricostruisce il motore via replay e
+registra la partita in modalità lobby con il roster salvato; `hostToken` (nuovo) va nel log
+di avvio. Un save di una partita già conclusa è rifiutato ("partita già conclusa").
+
+- `join` con un nome salvato richiede `token`: se `sha256(token)` coincide (confronto a
+  tempo costante) con `tokenHash` del giocatore, il join riesce con lo stesso `playerId` e
+  **lo stesso token**; altrimenti 401 `RESUME_TOKEN_MISMATCH`. Il solo nome non basta.
+- Un telefono che ha perso il token si recupera con `POST /api/games/{id}/reassign`
+  `{hostToken, name}`: l'attore assegna un token nuovo (il vecchio smette di funzionare e le
+  sue connessioni WS sono scollegate). I save di formato 1 non hanno `tokenHash`: accettano
+  solo la riassegnazione dell'host.
+- `/start` è rifiutato con `ROSTER_INCOMPLETE` finché non sono rientrati tutti i giocatori
+  del save, e non riscrive il save. A ogni resume il save è copiato in
+  `{id}.resume-{unix}[-n].bak`.
+
+## 8bis. Ciclo di vita e limiti
+
+Costanti in `session.rs`, riunite in `SessionLimits` (campo `AppState::limits`, con
+`Default`; i test usano durate di millisecondi):
+
+| Costante | Valore | Effetto |
+|---|---|---|
+| `LOBBY_IDLE_TTL` | 30 min | lobby non avviata senza `Join`/`Start`/`Connect`/`Reassign`: l'attore termina |
+| `ABANDONED_TTL` | 6 h | partita avviata senza connessioni attive: l'attore termina, il save resta su disco |
+| `GAME_OVER_LINGER` | 30 min | partita conclusa: schermata finale, poi l'attore termina |
+| `MAX_ACTIVE_GAMES` | 20 | oltre, `POST /api/games` risponde 429 `TOO_MANY_GAMES` |
+| `MAX_SPECTATORS_PER_GAME` | 8 | oltre, il WS risponde `ERROR GAME_FULL` (detail `TOO_MANY_SPECTATORS`) e chiude |
+
+WebSocket: messaggi e frame in ingresso oltre 16 KiB chiudono la connessione; il canale
+outbound è `mpsc::channel(64)` con `try_send`: se è pieno la connessione viene chiusa e il
+client si riconnette ricevendo lo SNAPSHOT. Su SIGINT/SIGTERM il server ferma le partite,
+attende le scritture in coda e poi chiude le connessioni.
 
 ## 9. Test e criteri di accettazione (Fase 2)
 
@@ -307,15 +365,16 @@ che il test carica come dev-dep) e knowMin (costanti di test).
    gioca 1–2 turni; A riconnette (stesso playerId+token) → riceve `SNAPSHOT`: mano
    identica alla pre-disconnessione, biglietti identici, `legalMoves` coerenti con lo
    stato nuovo, seq > ultimo visto. Poi la partita finisce regolarmente.
-3. **`idempotency`** — stessa azione ritrasmessa con stesso `clientSeq` → nessun doppio
-   effetto (mano invariata dopo ritrasmissione di una pesca) + re-push di PrivateState.
-4. **`save_and_replay`** — a fine partita il file `saves/{id}.json` esiste, `status:
-   completed`, N azioni > 0; replay da file → `GameOver` con stessi `final_scores`
-   ( confronto `serialize_state()` tra replay e motore di riferimento del test).
-5. **`resume_flow`** — partita salvata a metà (unit: motore diretto + save.rs);
-   `--resume` (funzione lib, testabile senza porta); join col nome salvato → stesso
-   playerId; start → `PUBLIC_STATE` uguale a quella pre-save (fase, claimedRoutes,
-   playersSummary).
+3. **`duplicate_client_seq_is_dropped_and_state_resent`** — stessa azione ritrasmessa con
+   stesso `clientSeq` → nessun doppio effetto (mano invariata dopo ritrasmissione di una
+   pesca) + re-push di PrivateState con `seq` maggiore.
+4. **`save_and_replay`** — a fine partita il save `saves/{id}.json` viene eliminato e il
+   risultato (punteggi coerenti con `finalScores`) è in `saves/results.jsonl`.
+5. **`resume_flow`** — partita salvata a metà; `--resume` (funzione lib, testabile senza
+   porta); join col nome salvato **e token originale** → stesso playerId e stesso token;
+   start → `PUBLIC_STATE` uguale a quella pre-save (fase, claimedRoutes, playersSummary).
+   Il join per solo nome è 401 `RESUME_TOKEN_MISMATCH`; `reassign` dell'host dà un token
+   nuovo (`resume_join_requires_original_token`, `resume_reassign_by_host`).
 6. **Unit** — mapping errori esaustivo (§7.2), derivazioni bridge vs motore golden,
    lobby (nome dup. → `NameTaken`, colore auto, start < min → 400, join dopo start → 409),
    seq monotono per giocatore, `/api/lan` filtra loopback, `/qr` restituisce SVG.

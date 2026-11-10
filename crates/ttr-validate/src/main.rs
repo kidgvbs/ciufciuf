@@ -1,117 +1,14 @@
 //! CiufCiuf! — Validatore dati mappa e ruleset.
 //!
-//! Carica una mappa e un ruleset e verifica tutti i check del piano §4.2.
+//! Carica una mappa e un ruleset e verifica tutti i check del piano §4.2; la
+//! coerenza tra ruleset, mappa e mazzi è la stessa che `ttr-core` applica
+//! all'avvio di una partita (`Ruleset::validate`).
 
-#![allow(dead_code)]
-
-use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
-struct City {
-    id: String,
-    name: String,
-    #[allow(dead_code)]
-    lat: f64,
-    #[allow(dead_code)]
-    lon: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct Route {
-    id: String,
-    from: String,
-    to: String,
-    len: u32,
-    color: String,
-    double: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct Ticket {
-    id: String,
-    from: String,
-    to: String,
-    points: u32,
-    deck: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct MapData {
-    cities: Vec<City>,
-    routes: Vec<Route>,
-    tickets: Vec<Ticket>,
-}
-
-#[derive(Debug, Deserialize)]
-struct DeckConfig {
-    #[serde(rename = "perColor")]
-    per_color: u32,
-    locomotives: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct TicketDealtEntry {
-    deck: String,
-    count: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct InitialTickets {
-    dealt: Vec<TicketDealtEntry>,
-    #[serde(rename = "keepMin")]
-    keep_min: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct TicketDraw {
-    deck: String,
-    count: u32,
-    #[serde(rename = "keepMin")]
-    keep_min: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct Bonus {
-    #[allow(dead_code)]
-    #[serde(rename = "type")]
-    bonus_type: String,
-    #[allow(dead_code)]
-    label: String,
-    points: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct PlayersConfig {
-    min: u32,
-    max: u32,
-}
-
-#[derive(Debug, Deserialize)]
-struct Ruleset {
-    map: String,
-    players: PlayersConfig,
-    #[serde(rename = "trainsPerPlayer")]
-    trains_per_player: u32,
-    deck: DeckConfig,
-    #[serde(rename = "ticketDecks")]
-    ticket_decks: Vec<String>,
-    #[serde(rename = "initialTickets")]
-    initial_tickets: InitialTickets,
-    #[serde(rename = "ticketDraw")]
-    ticket_draw: TicketDraw,
-    #[serde(rename = "setupDiscards")]
-    setup_discards: String,
-    #[serde(rename = "routePoints")]
-    route_points: BTreeMap<String, u32>,
-    bonuses: Vec<Bonus>,
-    #[serde(rename = "doubleRouteMinPlayers")]
-    double_route_min_players: u32,
-    #[serde(rename = "finalRoundIncludesTrigger")]
-    final_round_includes_trigger: bool,
-}
+use ttr_core::types::{MapData, Route, Ruleset};
 
 // ── Validazione ─────────────────────────────────────────────────────
 
@@ -217,33 +114,9 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
         ));
     }
 
-    // ── Check 4: ticket deck coherence ──
-    for t in &map.tickets {
-        if !ruleset.ticket_decks.contains(&t.deck) {
-            r.err(format!(
-                "Biglietto '{}': deck '{}' non in ticketDecks",
-                t.id, t.deck
-            ));
-        }
-    }
-    let mut per_deck: BTreeMap<&str, u32> = BTreeMap::new();
-    for t in &map.tickets {
-        *per_deck.entry(&t.deck).or_default() += 1;
-    }
-    for (deck_name, count) in &per_deck {
-        let needed = ruleset
-            .initial_tickets
-            .dealt
-            .iter()
-            .find(|e| e.deck == *deck_name)
-            .map(|e| e.count)
-            .unwrap_or(0);
-        if *count < needed {
-            r.err(format!(
-                "Mazzo '{}': {} biglietti totali, setup ne pesca {} per giocatore",
-                deck_name, count, needed
-            ));
-        }
+    // ── Check 4: coerenza ruleset/mappa (stessa di Engine::new) ──
+    if let Err(e) = ruleset.validate(map) {
+        r.err(format!("Ruleset: {e}"));
     }
 
     // ── Check 5: route lengths in routePoints ──
@@ -330,11 +203,11 @@ fn main() {
         eprintln!("Errore: {}: {}", ruleset_path.display(), e);
         std::process::exit(1);
     });
-    let map: MapData = serde_json::from_str(&map_json).unwrap_or_else(|e| {
+    let map: MapData = ttr_core::load_map_from_json(&map_json).unwrap_or_else(|e| {
         eprintln!("Errore parsing mappa: {}", e);
         std::process::exit(1);
     });
-    let ruleset: Ruleset = serde_json::from_str(&ruleset_json).unwrap_or_else(|e| {
+    let ruleset: Ruleset = ttr_core::load_ruleset_from_json(&ruleset_json).unwrap_or_else(|e| {
         eprintln!("Errore parsing ruleset: {}", e);
         std::process::exit(1);
     });
@@ -357,7 +230,7 @@ fn main() {
         "Città: tutte esistono per rotte e biglietti",
         "Biglietti: tutti raggiungibili sul grafo",
         "Mazzo treno: conteggi coerenti",
-        "Mazzi biglietti: coerenza ruleset",
+        "Ruleset/mappa: colori rotte, bonus, mazzi biglietti, giocatori",
         "RoutePoints: ogni lunghezza rotta ha entry",
         "Rotte doppie: max 2 per coppia, double marcato",
     ];

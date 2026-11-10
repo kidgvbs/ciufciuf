@@ -1,9 +1,11 @@
-// Client REST per la lobby CiufCiuf! (7 endpoint).
+// Client REST per la lobby CiufCiuf!.
 //
-// Copre: creazione/join partita, seed opzionale per test, `hostToken` per start (E9).
-// Persistenza identità (playerId+token) in localStorage per reconnect dopo standby.
+// Copre: creazione/join/reassign/start partita, seed opzionale per test, `hostToken` per start.
+// Persistenza identità (playerId+token) per partita in localStorage, per il reconnect dopo standby.
 
 import type { PlayerColor } from './proto';
+import { isAllowedHost, currentHostEnv, type HostEnv } from './server-host';
+import { isRecord } from './guards';
 
 // ── Tipi di risposta ─────────────────────────────────────────────────
 
@@ -18,6 +20,12 @@ export interface JoinedPlayer {
   playerId: string;
   token: string;
   wsUrl: string;
+}
+
+/** Identità nuova per un nome di una partita salvata (rilasciata all'host). */
+export interface ReassignedPlayer {
+  playerId: string;
+  token: string;
 }
 
 export interface GameListItem {
@@ -40,6 +48,8 @@ export interface GameDetail {
   name: string;
   rulesetId: string;
   players: GameDetailPlayer[];
+  /** Nomi del salvataggio che non sono ancora rientrati (solo lobby di resume). */
+  missingPlayers?: string[];
   started: boolean;
   maxPlayers: number;
 }
@@ -58,7 +68,7 @@ export interface LanInfo {
 
 export interface ApiError {
   error: string;
-  detail: string;
+  detail: string | null;
 }
 
 /** Riga della classifica generale (partite concluse archiviate). */
@@ -75,9 +85,50 @@ export interface Standings {
   standings: StandingRow[];
 }
 
-// ── LocalStorage identity ────────────────────────────────────────────
+// ── Accesso a localStorage ───────────────────────────────────────────
+// localStorage può mancare o lanciare (modalità privata, quota piena, cookie bloccati):
+// in quel caso l'app funziona senza persistenza.
 
-const STORAGE_KEY = 'ciufciuf-identity';
+function readStorage(key: string): string | null {
+  try {
+    return globalThis.localStorage?.getItem(key) ?? null;
+  } catch (e) {
+    console.warn('[storage] lettura fallita:', key, e);
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    globalThis.localStorage?.setItem(key, value);
+  } catch (e) {
+    console.warn('[storage] scrittura fallita:', key, e);
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    globalThis.localStorage?.removeItem(key);
+  } catch (e) {
+    console.warn('[storage] rimozione fallita:', key, e);
+  }
+}
+
+function readJson(key: string): unknown {
+  const raw = readStorage(key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (e) {
+    console.warn('[storage] JSON non valido:', key, e);
+    return null;
+  }
+}
+
+// ── Identità del giocatore (una per partita) ─────────────────────────
+
+const IDENTITY_PREFIX = 'ciufciuf-identity:';
+const LAST_IDENTITY_KEY = 'ciufciuf-last-identity';
 
 export interface StoredIdentity {
   playerId: string;
@@ -86,22 +137,42 @@ export interface StoredIdentity {
   host: string;
 }
 
+/** Salva l'identità sotto la chiave della sua partita e la ricorda come ultima usata. */
 export function saveIdentity(identity: StoredIdentity): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(identity));
+  writeStorage(IDENTITY_PREFIX + identity.gameId, JSON.stringify(identity));
+  writeStorage(LAST_IDENTITY_KEY, identity.gameId);
 }
 
-export function loadIdentity(): StoredIdentity | null {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredIdentity;
-  } catch {
+/**
+ * Identità salvata per `gameId` (default: l'ultima partita usata).
+ * Un'identità completa il cui host non coincide con l'ambiente corrente viene ignorata.
+ */
+export function loadIdentity(
+  gameId?: string,
+  env: HostEnv = currentHostEnv(),
+): StoredIdentity | null {
+  const id = gameId ?? readStorage(LAST_IDENTITY_KEY);
+  if (!id) return null;
+  const v = readJson(IDENTITY_PREFIX + id);
+  if (!isRecord(v)) return null;
+  const { playerId, token, gameId: storedGame, host } = v;
+  if (
+    typeof playerId !== 'string' || !playerId ||
+    typeof token !== 'string' || !token ||
+    typeof storedGame !== 'string' || storedGame !== id ||
+    typeof host !== 'string' || !isAllowedHost(host, env)
+  ) {
     return null;
   }
+  return { playerId, token, gameId: storedGame, host };
 }
 
-export function clearIdentity(): void {
-  localStorage.removeItem(STORAGE_KEY);
+/** Rimuove l'identità di `gameId` (default: l'ultima partita usata). */
+export function clearIdentity(gameId?: string): void {
+  const id = gameId ?? readStorage(LAST_IDENTITY_KEY);
+  if (!id) return;
+  removeStorage(IDENTITY_PREFIX + id);
+  if (readStorage(LAST_IDENTITY_KEY) === id) removeStorage(LAST_IDENTITY_KEY);
 }
 
 // ── Ultimo nome giocatore usato (prefill del JoinScreen) ────────────
@@ -109,11 +180,11 @@ export function clearIdentity(): void {
 const NAME_KEY = 'ciufciuf-name';
 
 export function savePlayerName(name: string): void {
-  localStorage.setItem(NAME_KEY, name);
+  writeStorage(NAME_KEY, name);
 }
 
 export function loadPlayerName(): string {
-  return localStorage.getItem(NAME_KEY) ?? '';
+  return readStorage(NAME_KEY) ?? '';
 }
 
 // ── Ultima partita vista dalla table view (attach dopo reload) ───────
@@ -127,21 +198,46 @@ export interface StoredLastGame {
 }
 
 export function saveLastGame(last: StoredLastGame): void {
-  localStorage.setItem(LAST_GAME_KEY, JSON.stringify(last));
+  writeStorage(LAST_GAME_KEY, JSON.stringify(last));
 }
 
 export function loadLastGame(): StoredLastGame | null {
-  const raw = localStorage.getItem(LAST_GAME_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as StoredLastGame;
-  } catch {
+  const v = readJson(LAST_GAME_KEY);
+  if (!isRecord(v) || typeof v.gameId !== 'string' || typeof v.hostToken !== 'string') {
     return null;
   }
+  return { gameId: v.gameId, hostToken: v.hostToken };
 }
 
 export function clearLastGame(): void {
-  localStorage.removeItem(LAST_GAME_KEY);
+  removeStorage(LAST_GAME_KEY);
+}
+
+// ── Errori ───────────────────────────────────────────────────────────
+
+/** Testi italiani per i codici di errore REST che il server può non accompagnare da un dettaglio. */
+const ERROR_TEXT: Record<string, string> = {
+  GAME_NOT_FOUND: 'La partita non esiste più',
+  GAME_FULL: 'Partita al completo',
+  NAME_TAKEN: 'Nome già in uso',
+  COLOR_TAKEN: 'Questo colore è già stato scelto da un altro giocatore',
+  NAME_NOT_IN_SAVE: 'Questo nome non fa parte della partita salvata',
+  RESUME_TOKEN_MISMATCH:
+    'Identità non riconosciuta: chiedi alla TV di riassegnarti il posto',
+  UNAUTHORIZED: 'Non autorizzato',
+  TOO_MANY_GAMES: 'Troppe partite attive sul server: riprova più tardi',
+};
+
+export class LobbyError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    /** Codice di errore del server (`error` nel corpo JSON), se presente. */
+    public code: string | null = null,
+  ) {
+    super(message);
+    this.name = 'LobbyError';
+  }
 }
 
 // ── Client REST ──────────────────────────────────────────────────────
@@ -158,26 +254,42 @@ export class LobbyClient {
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const init: RequestInit = {
       method,
       headers: { 'Content-Type': 'application/json' },
     };
+    if (signal) init.signal = signal;
     if (body !== undefined) {
       init.body = JSON.stringify(body);
     }
     const resp = await fetch(url, init);
     if (!resp.ok) {
-      let detail = resp.statusText;
+      let code: string | null = null;
+      let detail: string | null = null;
       try {
-        const err = (await resp.json()) as ApiError;
-        detail = err.detail || err.error || detail;
-      } catch { /* usa statusText */ }
-      throw new LobbyError(resp.status, detail);
+        const err = (await resp.json()) as Partial<ApiError>;
+        code = typeof err.error === 'string' ? err.error : null;
+        detail = typeof err.detail === 'string' ? err.detail : null;
+      } catch (e) {
+        console.warn('[lobby] corpo di errore non JSON:', e);
+      }
+      const message =
+        detail ||
+        (code !== null ? ERROR_TEXT[code] : undefined) ||
+        code ||
+        resp.statusText ||
+        `Errore ${resp.status}`;
+      throw new LobbyError(resp.status, message, code);
     }
     if (resp.status === 204) return undefined as T;
     return resp.json() as Promise<T>;
+  }
+
+  private gamePath(gameId: string): string {
+    return `/api/games/${encodeURIComponent(gameId)}`;
   }
 
   // GET /api/lan
@@ -223,49 +335,37 @@ export class LobbyClient {
 
   // GET /api/games/{id}
   async getGame(gameId: string): Promise<GameDetail> {
-    return this.request<GameDetail>('GET', `/api/games/${gameId}`);
+    return this.request<GameDetail>('GET', this.gamePath(gameId));
   }
 
-  // POST /api/games/{id}/join
+  // POST /api/games/{id}/join — `token` è l'identità già posseduta (richiesto al resume)
   async joinGame(
     gameId: string,
     name: string,
     color?: PlayerColor,
+    token?: string,
+    signal?: AbortSignal,
   ): Promise<JoinedPlayer> {
     const body: Record<string, string> = { name };
     if (color) body['color'] = color;
-    return this.request<JoinedPlayer>(
-      'POST',
-      `/api/games/${gameId}/join`,
-      body,
-    );
+    if (token) body['token'] = token;
+    return this.request<JoinedPlayer>('POST', `${this.gamePath(gameId)}/join`, body, signal);
+  }
+
+  // POST /api/games/{id}/reassign — nuova identità per un nome del salvataggio (solo host)
+  async reassignPlayer(
+    gameId: string,
+    hostToken: string,
+    name: string,
+  ): Promise<ReassignedPlayer> {
+    return this.request<ReassignedPlayer>('POST', `${this.gamePath(gameId)}/reassign`, {
+      hostToken,
+      name,
+    });
   }
 
   // POST /api/games/{id}/start
   async startGame(gameId: string, hostToken: string): Promise<void> {
-    return this.request<void>(
-      'POST',
-      `/api/games/${gameId}/start`,
-      { hostToken },
-    );
-  }
-
-  /** URL WebSocket per una partita (senza parametri di query). */
-  wsBaseUrl(gameId: string): string {
-    const protocol = this.baseUrl.startsWith('https') ? 'wss' : 'ws';
-    const hostPart = this.baseUrl.replace(/^https?:\/\//, '');
-    return `${protocol}://${hostPart}/ws/${gameId}`;
-  }
-}
-
-// ── Errori ───────────────────────────────────────────────────────────
-
-export class LobbyError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(`Lobby error ${status}: ${message}`);
-    this.name = 'LobbyError';
+    return this.request<void>('POST', `${this.gamePath(gameId)}/start`, { hostToken });
   }
 }

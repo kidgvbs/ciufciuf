@@ -2,11 +2,11 @@
   // SVG mappa USA interattiva (pan & zoom).
   // Rende rotte (non reclamate + reclamate), città, vagoni.
   //
-  // Fase 3f+5: layout SCHEMATICO precalcolato (deterministico) in
-  // usa-layout.json — le posizioni città NON vengono più proiettate dalle
-  // coordinate geografiche; il file generato è la verità a runtime.
+  // Layout SCHEMATICO precalcolato (deterministico) in usa-layout.json:
+  // le posizioni delle città sono quelle del file generato, non una
+  // proiezione delle coordinate geografiche.
   //
-  // Props opzionali (Fase 3c, mappa sul controller):
+  // Props opzionali (mappa sul controller):
   // - highlightRouteIds: rotte da evidenziare con glow (es. claimabili da legalMoves)
   // - selectedRouteId:   rotta in pagamento (glow più marcato)
   // - onRouteTap:        tap/click su una rotta (distinto dal pan via soglia)
@@ -44,7 +44,7 @@
     selectedRouteId?: string | null;
     onRouteTap?: (routeId: string) => void;
     compact?: boolean;
-    /** Biglietti destinazione pinnati (Fase 3f→3f+2): pin + dashed line
+    /** Biglietti destinazione pinnati: pin + dashed line
         tra le due città, uno per biglietto, con colore ciascuno.
         Solo controller — la TV non li riceve mai. */
     highlightTickets?: Array<{ from: string; to: string }>;
@@ -73,14 +73,14 @@
   const interactive = $derived(onRouteTap !== undefined);
   const highlightSet = $derived(new Set(highlightRouteIds));
 
-  // Fase 3e: nel compact gli stroke pensati per il full sembrano il doppio
+  // Nel compact gli stroke pensati per il full sembrano il doppio
   // sul telefono → fattore di scala solo visivo. Geometria invariata.
   const swFactor = $derived(compact ? 0.7 : 1);
   // Font etichette: full = quello validato dal generatore; compact 16
   // (il compact ha dot e stroke più piccoli → l'ingombro resta ≈ al full).
   const cityFontSize = $derived(compact ? 16 : (layout.font?.size ?? 15.5));
   const cityLabelStroke = $derived(compact ? 3.2 : 4.2);
-  // 3f+4: TV (full) r=8; compact (controller) pallino più piccolo (6).
+  // TV (full) r=8; compact (controller) pallino più piccolo (6).
   const cityDotR = $derived(compact ? 6 : 8);
   const routeGap = $derived(cityDotR + 2.5);
 
@@ -140,7 +140,7 @@
     return out;
   }
 
-  // ── Quadratic Bézier helpers (3f+9: curve lisce al bend) ────
+  // ── Quadratic Bézier helpers (curve lisce al bend) ────
   // Formula di de Casteljau: B(t) = (1-t)²P₀ + 2(1-t)tP₁ + t²P₂
   // La curva è sempre contenuta nel triangolo P₀-P₁-P₂.
   function bezierPoint(t: number, p0: Point, p1: Point, p2: Point): { x: number; y: number } {
@@ -415,7 +415,7 @@
     new Map(publicStore.claimedRoutes.map(cr => [cr.route_id, cr.claimed_by_player_id]))
   );
 
-  // Fase 3f→3f+2: layer multipli — un pin + una dashed line per OGNI
+  // Layer multipli — un pin + una dashed line per OGNI
   // biglietto pinnato, colore per indice dalla palette (distingue i
   // tratteggiati quando più biglietti sono pinnati insieme). Decorativo:
   // pointer-events none, il tap-to-claim sulle rotte sottostanti resta
@@ -660,7 +660,7 @@
 </div>
 
 <style>
-  /* Board in pergamena con cornice di legno (Fase 3d): la mappa è una
+  /* Board in pergamena con cornice di legno: la mappa è una
      "scatola aperta sul tavolo" — bordo, ombra, angoli. */
   .map-container {
     flex: 1;

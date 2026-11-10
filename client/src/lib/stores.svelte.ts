@@ -29,7 +29,7 @@ class PublicStore {
   lastRound = $state<boolean>(false);
   lastRoundTriggerPlayerId = $state<string | null>(null);
   visibleDeck = $state<(CardColor | null)[]>([]);
-  /** Carte rimaste nel mazzo coperto (Fase 3e-server). */
+  /** Carte rimaste nel mazzo coperto. */
   deckSize = $state<number>(0);
   claimedRoutes = $state<ClaimedRoute[]>([]);
   playersSummary = $state<PlayerSummary[]>([]);

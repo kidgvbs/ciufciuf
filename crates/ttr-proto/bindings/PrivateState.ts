@@ -8,10 +8,10 @@ import type { TicketInfo } from "./TicketInfo";
  */
 export type PrivateState = { 
 /**
- * Numero di sequenza outbound per idempotenza client (E6).
+ * Numero di sequenza outbound: cresce a ogni messaggio privato per il giocatore.
  */
 seq: bigint, hand: Array<CardColor>, tickets: Array<TicketInfo>, 
 /**
- * Biglietti attualmente offerti per la scelta (E3).
+ * Biglietti attualmente offerti per la scelta.
  */
 offered_tickets: Array<TicketInfo>, legal_moves: LegalMoves, };

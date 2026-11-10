@@ -2,66 +2,73 @@
 //!
 //! Uso: `ttr-server --port 8080 --data-dir ./data --saves-dir ./saves [--resume <file>]`
 
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
+use std::time::Duration;
 
+use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use ttr_server::{AppState, build_router, resume_game};
+use ttr_server::{AppState, build_router, resume_game, shutdown_sessions};
+
+/// Attesa massima per le scritture in coda alla chiusura.
+const SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Argomenti da riga di comando.
+#[derive(Parser, Debug)]
+#[command(name = "ttr-server", version, about = "CiufCiuf! — server di gioco")]
 struct Args {
+    /// Porta TCP su cui ascoltare.
+    #[arg(long, default_value_t = 8080)]
     port: u16,
+
+    /// Indirizzo IP su cui ascoltare.
+    #[arg(long, default_value = "0.0.0.0")]
+    bind: IpAddr,
+
+    /// Cartella con mappe e ruleset.
+    #[arg(long, default_value = "data")]
     data_dir: PathBuf,
+
+    /// Cartella con save, profili e risultati.
+    #[arg(long, default_value = "saves")]
     saves_dir: PathBuf,
+
+    /// Cartella con i file statici del client.
+    #[arg(long, default_value = "../client/dist")]
     client_dist: PathBuf,
+
+    /// Ripristina la partita di questo save.
+    #[arg(long, value_name = "FILE")]
     resume: Option<PathBuf>,
 }
 
-fn parse_args() -> Args {
-    let args: Vec<String> = std::env::args().collect();
-    let mut port = 8080u16;
-    let mut data_dir = PathBuf::from("data");
-    let mut saves_dir = PathBuf::from("saves");
-    let mut client_dist = PathBuf::from("../client/dist");
-    let mut resume = None;
-
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--port" => {
-                i += 1;
-                port = args[i].parse().unwrap_or(8080);
-            }
-            "--data-dir" => {
-                i += 1;
-                data_dir = PathBuf::from(&args[i]);
-            }
-            "--saves-dir" => {
-                i += 1;
-                saves_dir = PathBuf::from(&args[i]);
-            }
-            "--client-dist" => {
-                i += 1;
-                client_dist = PathBuf::from(&args[i]);
-            }
-            "--resume" => {
-                i += 1;
-                resume = Some(PathBuf::from(&args[i]));
-            }
-            _ => {}
+/// Completa all'arrivo di SIGINT o SIGTERM.
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if tokio::signal::ctrl_c().await.is_err() {
+            std::future::pending::<()>().await;
         }
-        i += 1;
-    }
+    };
 
-    Args {
-        port,
-        data_dir,
-        saves_dir,
-        client_dist,
-        resume,
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
     }
+    info!("segnale di chiusura ricevuto");
 }
 
 #[tokio::main]
@@ -72,7 +79,7 @@ async fn main() {
         )
         .init();
 
-    let args = parse_args();
+    let args = Args::parse();
 
     // Crea directory saves se non esiste
     if let Err(e) = std::fs::create_dir_all(&args.saves_dir) {
@@ -91,9 +98,9 @@ async fn main() {
         }
     };
 
-    // Flusso di resume (D18 §8): carica il save, ricostruisce il motore,
+    // Flusso di resume: carica il save, ricostruisce il motore,
     // registra la partita in lobby col roster salvato.
-    if let Some(ref resume_path) = args.resume {
+    if let Some(resume_path) = &args.resume {
         match resume_game(&state, resume_path).await {
             Ok((game_id, host_token)) => {
                 info!(
@@ -108,8 +115,8 @@ async fn main() {
         }
     }
 
-    let router = build_router(state, args.client_dist);
-    let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
+    let router = build_router(state.clone(), args.client_dist);
+    let addr = SocketAddr::new(args.bind, args.port);
 
     let listener = match tokio::net::TcpListener::bind(addr).await {
         Ok(l) => l,
@@ -121,7 +128,19 @@ async fn main() {
 
     info!("CiufCiuf! server in ascolto su http://{}", addr);
 
-    if let Err(e) = axum::serve(listener, router).await {
+    // Le partite si fermano prima del rilascio delle connessioni: i WebSocket
+    // si chiudono quando il loro attore termina.
+    let shutdown_state = state.clone();
+    let served = axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            shutdown_sessions(&shutdown_state, SHUTDOWN_FLUSH_TIMEOUT).await;
+        })
+        .await;
+
+    info!("server fermato");
+
+    if let Err(e) = served {
         eprintln!("ERRORE server: {}", e);
         std::process::exit(1);
     }

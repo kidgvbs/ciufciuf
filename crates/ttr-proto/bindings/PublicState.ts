@@ -12,7 +12,7 @@ import type { TunnelReveal } from "./TunnelReveal";
  */
 export type PublicState = { game_id: string, protocol_version: number, state: GameState, current_turn_player_id: string | null, last_round: boolean, last_round_trigger_player_id: string | null, 
 /**
- * Carte scoperte: `None` = slot vuoto (E5). Gli indici di `drawFaceUp` restano allineati.
+ * Carte scoperte: `None` = slot vuoto. Gli indici di `drawFaceUp` restano allineati.
  */
 visible_deck: Array<CardColor | null>, 
 /**
@@ -28,10 +28,10 @@ tunnel_reveal: TunnelReveal | null,
  */
 stations: Array<StationPlacement>, 
 /**
- * Punteggi finali: `None` finché la partita non è terminata (E4).
+ * Punteggi finali: `None` finché la partita non è terminata.
  */
 final_scores: Array<FinalScoreInfo> | null, 
 /**
- * Vincitori del longest path: id giocatori, non indici (E4).
+ * Vincitori del longest path: id giocatori, non indici.
  */
 longest_path_player_ids: Array<string> | null, };

@@ -4,4 +4,4 @@ export type ChooseTicketsPayload = { player_id: string,
 /**
  * Id dei biglietti da tenere (in ordine lessicografico).
  */
-keep: Array<string>, client_seq: bigint | null, };
+keep: Array<string>, client_seq?: bigint, };

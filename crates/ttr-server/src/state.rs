@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use ttr_core::{MapData, Ruleset};
 
-use crate::session::GameHandle;
+use crate::session::{GameHandle, SessionLimits};
 
 /// Stato condiviso dell'applicazione.
 #[derive(Clone)]
@@ -26,13 +26,19 @@ pub struct AppState {
     pub port: u16,
     /// Serializza le scritture di `saves/profiles.json`.
     pub profiles_lock: Arc<std::sync::Mutex<()>>,
+    /// Serializza le scritture di `saves/results.jsonl`.
+    pub results_lock: Arc<std::sync::Mutex<()>>,
+    /// Durate e limiti delle sessioni; i test li riducono.
+    pub limits: SessionLimits,
 }
 
 impl AppState {
     /// Crea lo stato dell'applicazione caricando dati da `data_dir`.
+    /// Fallisce se un ruleset non è coerente con la sua mappa.
     pub fn new(data_dir: PathBuf, saves_dir: PathBuf, port: u16) -> Result<Self, String> {
         let rulesets = load_rulesets(&data_dir)?;
         let maps = load_maps(&data_dir, &rulesets)?;
+        validate_rulesets(&rulesets, &maps)?;
 
         Ok(Self {
             games: Arc::new(RwLock::new(BTreeMap::new())),
@@ -42,7 +48,15 @@ impl AppState {
             data_dir,
             port,
             profiles_lock: Arc::new(std::sync::Mutex::new(())),
+            results_lock: Arc::new(std::sync::Mutex::new(())),
+            limits: SessionLimits::default(),
         })
+    }
+
+    /// Sostituisce i limiti delle sessioni.
+    pub fn with_limits(mut self, limits: SessionLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     /// Restituisce il ruleset dato l'id, se esiste.
@@ -118,4 +132,20 @@ fn load_maps(
         return Err(format!("nessuna mappa trovata in {:?}", maps_dir));
     }
     Ok(loaded)
+}
+
+/// Verifica ogni coppia ruleset/mappa: il server non parte con dati incoerenti.
+fn validate_rulesets(
+    rulesets: &BTreeMap<String, Ruleset>,
+    maps: &BTreeMap<String, MapData>,
+) -> Result<(), String> {
+    for (id, ruleset) in rulesets {
+        let map = maps
+            .get(&ruleset.map)
+            .ok_or_else(|| format!("mappa '{}' del ruleset '{}' non caricata", ruleset.map, id))?;
+        ruleset
+            .validate(map)
+            .map_err(|e| format!("ruleset '{}' non valido: {}", id, e))?;
+    }
+    Ok(())
 }

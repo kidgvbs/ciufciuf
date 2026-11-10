@@ -5,8 +5,10 @@
   import { publicStore, privateStore, connectionStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
   import { errorMessage } from '../errors';
+  import { nextClientSeq } from '../client-seq';
+  import { offerKey, isDialogOpen, nextDismissedKey } from '../ticket-offer';
   import { routePoints } from '../map-utils';
-  import type { InboundAction, CardColor, TicketInfo, LegalMoves } from '../proto';
+  import type { InboundAction, CardColor } from '../proto';
   import TicketChoiceDialog from './TicketChoiceDialog.svelte';
   import MapSvg from './MapSvg.svelte';
   import TrainCard from './TrainCard.svelte';
@@ -65,16 +67,14 @@
 
   // Stato locale
   let choosingRoute = $state(false);
-  let showTicketDialog = $state(false);
   // Carta della mano toccata: mostrata ingrandita in primo piano
   let focusedColor = $state<CardColor | null>(null);
-  let ticketMinKeep = $state(1);
-  // Mappa sul telefono (D25): visibile di default, collassabile
+  // Mappa sul telefono: visibile di default, collassabile
   let showMap = $state(true);
   // Claim: percorso principale = tap sulla mappa; lista testuale = fallback
   let claimTab = $state<'map' | 'list'>('map');
 
-  // Biglietti pinnati sulla mappa (Fase 3f→3f+2): MULTI-pin — ogni
+  // Biglietti pinnati sulla mappa: MULTI-pin — ogni
   // biglietto cliccato aggiunge/rimuove il proprio tratteggiato, senza
   // spegnere gli altri. Il tratteggiato sparisce anche quando il SERVER
   // dichiara il biglietto completato (filtro su t.completed: zero
@@ -110,12 +110,14 @@
   let ticketFlash = $state<string[]>([]);
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // Guard degli offered_tickets (E3)
+  // Il dialog dei biglietti si apre alla comparsa di un'offerta nuova; "Annulla" lo tiene chiuso
+  // finché l'offerta non cambia. Quando l'offerta sparisce la chiusura manuale viene dimenticata.
+  const offerId = $derived(offerKey(offered));
+  let dismissedOfferId = $state('');
+  const ticketDialogOpen = $derived(isDialogOpen(offerId, dismissedOfferId));
+  const ticketMinKeep = $derived(gameState === 'INITIAL_DRAFT' ? 2 : 1);
   $effect(() => {
-    if (offered.length > 0) {
-      showTicketDialog = true;
-      ticketMinKeep = gameState === 'INITIAL_DRAFT' ? 2 : 1;
-    }
+    dismissedOfferId = nextDismissedKey(offerId, dismissedOfferId);
   });
 
   // Flash verde quando un biglietto passa a completato
@@ -134,7 +136,7 @@
     }
   });
 
-  // E8: il banner di errore si auto-chiude dopo pochi secondi. Il cleanup
+  // Il banner di errore si auto-chiude dopo pochi secondi. Il cleanup
   // cancella il timer quando arriva un nuovo errore o allo smontaggio.
   $effect(() => {
     if (!connectionStore.lastError) return;
@@ -142,12 +144,12 @@
     return () => clearTimeout(t);
   });
 
-  // F1: cancella i timer one-shot allo smontaggio del componente
+  // Cancella i timer one-shot allo smontaggio del componente
   $effect(() => () => {
     if (flashTimer) clearTimeout(flashTimer);
   });
 
-  // D3: vibrazione quando diventa il mio turno (silenziosa dove non supportata)
+  // Vibrazione quando diventa il mio turno (silenziosa dove non supportata)
   let wasMyTurn = false;
   $effect(() => {
     const now = isMyTurn && canAct;
@@ -163,7 +165,7 @@
       actionType: 'DRAW_TRAIN_CARD',
       player_id: playerId,
       source: 'deck',
-      client_seq: null,
+      client_seq: nextClientSeq(playerId),
     });
   }
 
@@ -172,7 +174,7 @@
       actionType: 'DRAW_TRAIN_CARD',
       player_id: playerId,
       source: { faceUp: { index } },
-      client_seq: null,
+      client_seq: nextClientSeq(playerId),
     });
   }
 
@@ -180,13 +182,13 @@
     sendAction({
       actionType: 'DRAW_TICKETS',
       player_id: playerId,
-      client_seq: null,
+      client_seq: nextClientSeq(playerId),
     });
   }
 
   // ── Pagamento rotta ────────────────────────────────────────────
   // L'utente sceglie SOLO colore e numero di locomotive (client scemo);
-  // il server valida il pagamento (E8: errore mostrato come banner).
+  // il server valida il pagamento (errore mostrato come banner).
 
   function handCount(color: CardColor): number {
     return hand.filter((c) => c === color).length;
@@ -235,7 +237,7 @@
     payingRouteId = null;
   }
 
-  // Tap-to-claim dalla mappa (D25): rotta claimabile → pannello pagamento.
+  // Tap-to-claim dalla mappa: rotta claimabile → pannello pagamento.
   // Rotte non claimabili: niente (client scemo — la verità è legalMoves).
   function onRouteTap(routeId: string) {
     if (!legalMoves) return;
@@ -267,7 +269,7 @@
       player_id: playerId,
       route_id: route.id,
       cards_discarded: cards,
-      client_seq: null,
+      client_seq: nextClientSeq(playerId),
     });
     // Se l'azione non è partita il pannello resta aperto per riprovare.
     if (!sent) return;
@@ -281,13 +283,13 @@
       actionType: 'CHOOSE_TICKETS',
       player_id: playerId,
       keep,
-      client_seq: null,
+      client_seq: nextClientSeq(playerId),
     });
-    if (sent) showTicketDialog = false;
+    if (sent) dismissedOfferId = offerId;
   }
 
   function cancelTicketChoice() {
-    showTicketDialog = false;
+    dismissedOfferId = offerId;
   }
 
   // ── Label stato ────────────────────────────────────────────────
@@ -359,7 +361,7 @@
   </div>
 
   <!-- Status -->
-  <div class="status-bar" class:my-turn={isMyTurn && canAct}>
+  <div class="status-bar" class:my-turn={isMyTurn && canAct} role="status" aria-live="polite">
     {statusLabel}
   </div>
 
@@ -367,8 +369,8 @@
     <div class="last-round-banner">⚠️ ULTIMO GIRO</div>
   {/if}
 
-  {#if offered.length > 0 && !showTicketDialog}
-    <button class="btn reopen-tickets" onclick={() => (showTicketDialog = true)}>
+  {#if offerId !== '' && !ticketDialogOpen}
+    <button class="btn reopen-tickets" onclick={() => (dismissedOfferId = '')}>
       🎫 Devi scegliere i biglietti ({offered.length})
     </button>
   {/if}
@@ -404,8 +406,8 @@
   <!-- Layout principale: mappa dominante + colonna laterale (biglietti/azioni).
        Portrait: colonna sotto la mappa via CSS; landscape: affiancata. -->
   <div class="cv-main">
-    <!-- Mappa con tap-to-claim (D25): nessun glow sulle claimabili
-         (3f+2: l'utente le trova da solo; il tap alla cieca resta
+    <!-- Mappa con tap-to-claim: nessun glow sulle claimabili
+         (l'utente le trova da solo; il tap alla cieca resta
          comunque sicuro perché onRouteTap filtra su legalMoves).
          highlightTickets: solo i biglietti pinnati, mai le claimabili. -->
     <div class="cv-map" class:map-hidden={!showMap}>
@@ -631,13 +633,11 @@
   {/if}
 
   {#if connectionStore.lastError}
-    <button
-      class="error-banner"
-      aria-live="assertive"
-      onclick={() => (connectionStore.lastError = null)}
-    >
-      ❌ {errorMessage(connectionStore.lastError)}
-    </button>
+    <div role="alert">
+      <button class="error-banner" onclick={() => (connectionStore.lastError = null)}>
+        ❌ {errorMessage(connectionStore.lastError)}
+      </button>
+    </div>
   {/if}
 
   {#if ticketFlash.length > 0}
@@ -653,7 +653,7 @@
   {/if}
 
   <!-- Ticket choice dialog -->
-  {#if showTicketDialog}
+  {#if ticketDialogOpen}
     <TicketChoiceDialog
       offeredTickets={offered}
       minKeep={ticketMinKeep}
@@ -1179,7 +1179,7 @@
     .cv-map :global(.map-container) {
       min-height: 0;
     }
-    /* Rail compatta (~250px): resta leggibile ma discreta (Fase 3f) */
+    /* Rail compatta (~250px): resta leggibile ma discreta */
     .cv-rail {
       flex: 0 0 250px;
       overflow-y: auto;
@@ -1212,8 +1212,8 @@
       padding: 0.45rem 0.6rem;
       font-size: 0.85rem;
     }
-    /* Mano = ventaglio orizzontale (3f) ancorato in basso a SINISTRA
-       (3f+2), come carte tenute nel pugno sul bordo del tavolo: il
+    /* Mano = ventaglio orizzontale ancorato in basso a SINISTRA,
+       come carte tenute nel pugno sul bordo del tavolo: il
        centro e il nord della mappa restano scoperti. Fuori dal flusso
        → la mappa arriva in fondo; cattura il puntatore solo sulla sua
        area (fit-content + max-width per non coprire la rail a destra). */
@@ -1228,7 +1228,7 @@
       align-items: center;
       gap: 0.5rem;
       /* I margini del flusso portrait si applicherebbero come offset
-         anche all'absolute: azzerati (lezione F1 review 3f). */
+         anche all'absolute: azzerati. */
       margin: 0;
       padding: 0.25rem 0.6rem 0.3rem;
       background: rgba(23, 16, 8, 0.88);

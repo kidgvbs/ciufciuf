@@ -1,4 +1,4 @@
-//! Test di integrazione Fase 3b: serving dei statici del client con fallback SPA.
+//! Test di integrazione: serving dei statici del client con fallback SPA.
 //!
 //! Con `--client-dist` presente, il server serve `index.html` per `/` e per
 //! le rotte client-side (`/controller`), senza oscurare le API.
@@ -18,8 +18,11 @@ fn temp_client_dist(marker: &str) -> PathBuf {
         uuid::Uuid::new_v4()
     ));
     std::fs::create_dir_all(&p).expect("creazione dir dist di test");
-    std::fs::write(p.join("index.html"), format!("<html><body>{marker}</body></html>"))
-        .expect("scrittura index.html di test");
+    std::fs::write(
+        p.join("index.html"),
+        format!("<html><body>{marker}</body></html>"),
+    )
+    .expect("scrittura index.html di test");
     p
 }
 
@@ -54,7 +57,10 @@ async fn spa_fallback_serves_index() {
         .expect("GET /controller");
     assert_eq!(resp.status(), 200, "GET /controller deve tornare 200");
     let body = resp.text().await.expect("body /controller");
-    assert!(body.contains(marker), "GET /controller serve index.html (SPA)");
+    assert!(
+        body.contains(marker),
+        "GET /controller serve index.html (SPA)"
+    );
 
     // Le API non sono oscurate dal fallback statico.
     let resp = client

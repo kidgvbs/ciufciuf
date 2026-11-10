@@ -2,7 +2,7 @@
 //!
 //! Questo crate definisce i tipi serializzabili (serde) che costituiscono
 //! il contratto tra server Rust e client TypeScript. L'export TypeScript
-//! via `ts-rs` garantisce che i tipi non vadano in drift (piano §11, R2).
+//! via `ts-rs` garantisce che i tipi non vadano in drift.
 //!
 //! # Convenzioni di identificazione
 //!
@@ -49,7 +49,7 @@ pub enum PlayerColor {
 
 // ── Stati di gioco ──────────────────────────────────────────────────
 
-/// Macchina a stati del server (piano §6).
+/// Macchina a stati del server.
 ///
 /// L'enum è marcato `#[non_exhaustive]` per consentire l'aggiunta di stati
 /// futuri (es. `WAITING_FOR_PLAYERS` e stati Europe) senza breaking change.
@@ -88,7 +88,7 @@ pub enum InboundAction {
     /// Pescare una carta treno dal mazzo coperto.
     #[serde(rename = "DRAW_TRAIN_CARD")]
     DrawTrainCard(DrawCardPayload),
-    /// Pescare nuovi biglietti mid-game (azione nº 3 del turno, piano §3.1/§7.1).
+    /// Pescare nuovi biglietti mid-game (azione nº 3 del turno).
     #[serde(rename = "DRAW_TICKETS")]
     DrawTickets(DrawTicketsPayload),
     /// Scegliere quali biglietti tenere (initial draft o mid-game).
@@ -107,8 +107,9 @@ pub enum InboundAction {
 pub struct DrawCardPayload {
     pub player_id: String,
     pub source: DrawSource,
-    /// Numero di sequenza client per idempotenza (E6). `None` = client semplice.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Numero di sequenza client per idempotenza: un valore minore o uguale
+    /// all'ultimo ricevuto è un duplicato scartato. Assente = nessuna deduplica.
+    #[ts(optional)]
     pub client_seq: Option<u64>,
 }
 
@@ -124,7 +125,7 @@ pub enum DrawSource {
 #[ts(export)]
 pub struct DrawTicketsPayload {
     pub player_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub client_seq: Option<u64>,
 }
 
@@ -134,7 +135,7 @@ pub struct ChooseTicketsPayload {
     pub player_id: String,
     /// Id dei biglietti da tenere (in ordine lessicografico).
     pub keep: Vec<TicketId>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub client_seq: Option<u64>,
 }
 
@@ -145,7 +146,7 @@ pub struct ClaimRoutePayload {
     pub route_id: RouteId,
     /// Suggerimento: il server valida e risolve il pagamento (locomotive automatiche).
     pub cards_discarded: Vec<CardColor>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub client_seq: Option<u64>,
 }
 
@@ -153,16 +154,16 @@ pub struct ClaimRoutePayload {
 #[ts(export)]
 pub struct RequestSnapshotPayload {
     pub player_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
     pub client_seq: Option<u64>,
 }
 
-// ── Envelope outbound (E1) ──────────────────────────────────────────
+// ── Envelope outbound ───────────────────────────────────────────────
 
 /// Messaggio outbound inviato sul WebSocket.
 ///
 /// L'envelope usa adjacent tagging: `{"type":"PUBLIC_STATE","payload":{…}}`.
-/// I "canali" §7 diventano varianti di questo enum.
+/// Ogni canale di notifica è una variante di questo enum.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "type", content = "payload")]
 #[ts(export)]
@@ -193,7 +194,7 @@ pub struct PublicState {
     pub current_turn_player_id: Option<String>,
     pub last_round: bool,
     pub last_round_trigger_player_id: Option<String>,
-    /// Carte scoperte: `None` = slot vuoto (E5). Gli indici di `drawFaceUp` restano allineati.
+    /// Carte scoperte: `None` = slot vuoto. Gli indici di `drawFaceUp` restano allineati.
     pub visible_deck: Vec<Option<CardColor>>,
     /// Numero di carte nel mazzo coperto (solo la pila pesca, NON gli scarti).
     pub deck_size: u32,
@@ -203,9 +204,9 @@ pub struct PublicState {
     pub tunnel_reveal: Option<TunnelReveal>,
     /// Europe: stazioni costruite.
     pub stations: Vec<StationPlacement>,
-    /// Punteggi finali: `None` finché la partita non è terminata (E4).
+    /// Punteggi finali: `None` finché la partita non è terminata.
     pub final_scores: Option<Vec<FinalScoreInfo>>,
-    /// Vincitori del longest path: id giocatori, non indici (E4).
+    /// Vincitori del longest path: id giocatori, non indici.
     pub longest_path_player_ids: Option<Vec<String>>,
 }
 
@@ -246,7 +247,7 @@ pub struct StationPlacement {
     pub player_id: String,
 }
 
-/// Punteggio finale per giocatore (E4).
+/// Punteggio finale per giocatore.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export)]
@@ -267,11 +268,11 @@ pub struct FinalScoreInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PrivateState {
-    /// Numero di sequenza outbound per idempotenza client (E6).
+    /// Numero di sequenza outbound: cresce a ogni messaggio privato per il giocatore.
     pub seq: u64,
     pub hand: Vec<CardColor>,
     pub tickets: Vec<TicketInfo>,
-    /// Biglietti attualmente offerti per la scelta (E3).
+    /// Biglietti attualmente offerti per la scelta.
     pub offered_tickets: Vec<TicketInfo>,
     pub legal_moves: LegalMoves,
 }
@@ -317,14 +318,14 @@ pub enum ErrorReason {
     NotYourTurn,
     WrongState,
     TicketChoiceOutOfRange,
-    // Errori server-level (E8)
+    // Errori server-level
     GameNotFound,
     Unauthorized,
     GameFull,
     NameTaken,
 }
 
-/// Snapshot completo dopo (re)connect (E7).
+/// Snapshot completo dopo (re)connect.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct Snapshot {
@@ -739,7 +740,7 @@ mod tests {
 
     #[test]
     fn roundtrip_visible_deck_empty_slot() {
-        // E5: slot vuoto = null nel JSON
+        // Slot vuoto = null nel JSON
         let deck: Vec<Option<CardColor>> = vec![Some(CardColor::Red), None, None];
         let json = serde_json::to_string(&deck).unwrap();
         assert_eq!(json, "[\"RED\",null,null]");

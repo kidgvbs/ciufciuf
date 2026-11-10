@@ -1,4 +1,4 @@
-//! Test di persistenza e resume (pacchetto Fase 2 §9.4–§9.5).
+//! Test di persistenza e resume: save su disco, replay e rientro dei giocatori.
 //!
 //! `save_and_replay`: partita completa → save file → replay motore → stessi
 //! final_scores.
@@ -37,7 +37,10 @@ async fn save_and_replay() {
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     let save_path = server.saves_dir.join(format!("{}.json", game.game_id));
-    assert!(!save_path.exists(), "il save della partita conclusa va eliminato");
+    assert!(
+        !save_path.exists(),
+        "il save della partita conclusa va eliminato"
+    );
 
     let results = ttr_server::save::read_results(&server.saves_dir);
     assert_eq!(results.len(), 1, "un risultato archiviato");
@@ -51,8 +54,16 @@ async fn save_and_replay() {
         .expect("final_scores originali");
     assert_eq!(r.players.len(), orig_scores.len());
     for fs in orig_scores {
-        let name = if fs.player_id == pa.player_id { "Alice" } else { "Bob" };
-        let p = r.players.iter().find(|p| p.name == name).expect("giocatore archiviato");
+        let name = if fs.player_id == pa.player_id {
+            "Alice"
+        } else {
+            "Bob"
+        };
+        let p = r
+            .players
+            .iter()
+            .find(|p| p.name == name)
+            .expect("giocatore archiviato");
         assert_eq!(p.total, fs.total, "totale archiviato di {}", name);
         assert_eq!(p.winner, fs.winner, "vincitore archiviato di {}", name);
     }
@@ -69,7 +80,7 @@ async fn save_and_replay() {
     assert_eq!(body["standings"].as_array().unwrap().len(), 2);
 }
 
-/// §9.5: partita salvata a metà → `resume_game` → join col nome salvato →
+/// Partita salvata a metà → `resume_game` → join col nome salvato →
 /// stesso playerId → start → stesso PUBLIC_STATE.
 #[tokio::test]
 async fn resume_flow() {
@@ -214,12 +225,12 @@ async fn resume_flow() {
         .expect("resume_game");
 
     // Join di Alice col nome salvato.
-    let resumed_pa = join_game(&server.base_url, &resumed_id, "Alice", None).await;
+    let resumed_pa = join_game_resume(&server.base_url, &resumed_id, "Alice", &pa.token).await;
     assert!(!resumed_pa.player_id.is_empty());
     assert!(!resumed_pa.token.is_empty());
 
     // Join di Bob.
-    let resumed_pb = join_game(&server.base_url, &resumed_id, "Bob", None).await;
+    let resumed_pb = join_game_resume(&server.base_url, &resumed_id, "Bob", &pb.token).await;
     assert!(!resumed_pb.player_id.is_empty());
 
     // Avvia la partita ripresa.
@@ -286,7 +297,7 @@ async fn resume_flow() {
     assert_eq!(snap_names, pre_names, "stessi nomi giocatori dopo resume");
 }
 
-/// Test F3: resume con ordine di re-join invertito (Bob prima di Alice).
+/// Resume con ordine di re-join invertito (Bob prima di Alice).
 /// I playerId e i colori devono restare quelli salvati.
 #[tokio::test]
 async fn resume_inverted_order() {
@@ -306,13 +317,37 @@ async fn resume_inverted_order() {
     let mut public: Option<ttr_proto::PublicState> = None;
 
     // Consuma SNAPSHOT iniziali.
-    apply_msg(&a.client.as_mut().unwrap().recv().await, &mut a, &mut public);
-    apply_msg(&b.client.as_mut().unwrap().recv().await, &mut b, &mut public);
+    apply_msg(
+        &a.client.as_mut().unwrap().recv().await,
+        &mut a,
+        &mut public,
+    );
+    apply_msg(
+        &b.client.as_mut().unwrap().recv().await,
+        &mut b,
+        &mut public,
+    );
 
     // Draft entrambi.
-    let draft_a = decide(&a.player_id, &mut a.client.as_mut().unwrap().view, public.as_ref().unwrap(), &map, &mut a.drafted).unwrap().unwrap();
+    let draft_a = decide(
+        &a.player_id,
+        &mut a.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut a.drafted,
+    )
+    .unwrap()
+    .unwrap();
     a.client.as_mut().unwrap().send(&draft_a).await;
-    let draft_b = decide(&b.player_id, &mut b.client.as_mut().unwrap().view, public.as_ref().unwrap(), &map, &mut b.drafted).unwrap().unwrap();
+    let draft_b = decide(
+        &b.player_id,
+        &mut b.client.as_mut().unwrap().view,
+        public.as_ref().unwrap(),
+        &map,
+        &mut b.drafted,
+    )
+    .unwrap()
+    .unwrap();
     b.client.as_mut().unwrap().send(&draft_b).await;
 
     // Consuma post-draft.
@@ -332,11 +367,15 @@ async fn resume_inverted_order() {
         let msg = a.client.as_mut().unwrap().recv().await;
         let fresh = apply_msg(&msg, &mut a, &mut public);
         let p = public.as_ref().unwrap();
-        if matches!(p.state, GameState::GameOver) { break; }
+        if matches!(p.state, GameState::GameOver) {
+            break;
+        }
         if fresh && p.current_turn_player_id.as_deref() == Some(&a.player_id) {
             let a_c = a.client.as_mut().unwrap();
             let a_act = decide(&a.player_id, &mut a_c.view, p, &map, &mut a.drafted).unwrap();
-            if let Some(act) = a_act { a_c.send(&act).await; }
+            if let Some(act) = a_act {
+                a_c.send(&act).await;
+            }
             break;
         }
     }
@@ -354,62 +393,138 @@ async fn resume_inverted_order() {
     let expected_engine =
         ttr_server::save::replay_engine(&expected_save, &map, &load_usa_ruleset())
             .expect("replay engine atteso");
-    let expected_turn = expected_save.players[expected_engine.current_player()].id.clone();
-    let expected_hands: Vec<Vec<ttr_proto::CardColor>> =
-        (0..2).map(|i| sorted_hand(expected_engine.player_hand(i).unwrap())).collect();
+    let expected_turn = expected_save.players[expected_engine.current_player()]
+        .id
+        .clone();
+    let expected_hands: Vec<Vec<ttr_proto::CardColor>> = (0..2)
+        .map(|i| sorted_hand(expected_engine.player_hand(i).unwrap()))
+        .collect();
     let expected_claimed = claimed_by_engine(&expected_engine, &expected_save);
 
     // Usa il PublicState per i conteggi (più affidabile della view privata).
     let ps = public.as_ref().expect("public state pre-resume");
-    let a_name_pre: u32 = ps.players_summary.iter().find(|s| s.name == "Alice").map(|s| s.tickets_count).unwrap_or(0);
-    let b_name_pre: u32 = ps.players_summary.iter().find(|s| s.name == "Bob").map(|s| s.tickets_count).unwrap_or(0);
+    let a_name_pre: u32 = ps
+        .players_summary
+        .iter()
+        .find(|s| s.name == "Alice")
+        .map(|s| s.tickets_count)
+        .unwrap_or(0);
+    let b_name_pre: u32 = ps
+        .players_summary
+        .iter()
+        .find(|s| s.name == "Bob")
+        .map(|s| s.tickets_count)
+        .unwrap_or(0);
 
     // Resume.
-    let (resumed_id, resumed_host_token) =
-        ttr_server::resume_game(&server.state, &save_path).await.expect("resume_game");
+    let (resumed_id, resumed_host_token) = ttr_server::resume_game(&server.state, &save_path)
+        .await
+        .expect("resume_game");
 
-    // F3: re-join in ordine invertito: prima Bob, poi Alice.
-    let resumed_pb = join_game(&server.base_url, &resumed_id, "Bob", None).await;
-    let resumed_pa = join_game(&server.base_url, &resumed_id, "Alice", None).await;
+    // Re-join in ordine invertito: prima Bob, poi Alice.
+    let resumed_pb = join_game_resume(&server.base_url, &resumed_id, "Bob", &pb.token).await;
+    let resumed_pa = join_game_resume(&server.base_url, &resumed_id, "Alice", &pa.token).await;
 
     // I playerId devono essere quelli originali salvati.
-    assert_eq!(resumed_pa.player_id, pa.player_id, "Alice: stesso playerId dopo resume");
-    assert_eq!(resumed_pb.player_id, pb.player_id, "Bob: stesso playerId dopo resume");
+    assert_eq!(
+        resumed_pa.player_id, pa.player_id,
+        "Alice: stesso playerId dopo resume"
+    );
+    assert_eq!(
+        resumed_pb.player_id, pb.player_id,
+        "Bob: stesso playerId dopo resume"
+    );
 
     start_game(&server.base_url, &resumed_id, &resumed_host_token).await;
 
-    let ra_ws = WsClient::connect(&server, &resumed_id, &resumed_pa.player_id, &resumed_pa.token).await;
-    let rb_ws = WsClient::connect(&server, &resumed_id, &resumed_pb.player_id, &resumed_pb.token).await;
+    let ra_ws = WsClient::connect(
+        &server,
+        &resumed_id,
+        &resumed_pa.player_id,
+        &resumed_pa.token,
+    )
+    .await;
+    let rb_ws = WsClient::connect(
+        &server,
+        &resumed_id,
+        &resumed_pb.player_id,
+        &resumed_pb.token,
+    )
+    .await;
 
     let mut ra = Player::new(ra_ws);
     let mut rb = Player::new(rb_ws);
     let mut resumed_public: Option<ttr_proto::PublicState> = None;
 
-    apply_msg(&ra.client.as_mut().unwrap().recv().await, &mut ra, &mut resumed_public);
-    apply_msg(&rb.client.as_mut().unwrap().recv().await, &mut rb, &mut resumed_public);
+    apply_msg(
+        &ra.client.as_mut().unwrap().recv().await,
+        &mut ra,
+        &mut resumed_public,
+    );
+    apply_msg(
+        &rb.client.as_mut().unwrap().recv().await,
+        &mut rb,
+        &mut resumed_public,
+    );
 
     let snap = resumed_public.expect("SNAPSHOT dopo resume invertito");
 
     // Verifica che i nomi siano nell'ordine originale (Alice indice 0, Bob indice 1).
-    assert_eq!(snap.players_summary[0].name, "Alice", "Alice primo giocatore (indice motore 0)");
-    assert_eq!(snap.players_summary[1].name, "Bob", "Bob secondo giocatore (indice motore 1)");
-    assert_eq!(snap.players_summary[0].color, ttr_proto::PlayerColor::Red, "Alice colore Red");
-    assert_eq!(snap.players_summary[1].color, ttr_proto::PlayerColor::Blue, "Bob colore Blue");
+    assert_eq!(
+        snap.players_summary[0].name, "Alice",
+        "Alice primo giocatore (indice motore 0)"
+    );
+    assert_eq!(
+        snap.players_summary[1].name, "Bob",
+        "Bob secondo giocatore (indice motore 1)"
+    );
+    assert_eq!(
+        snap.players_summary[0].color,
+        ttr_proto::PlayerColor::Red,
+        "Alice colore Red"
+    );
+    assert_eq!(
+        snap.players_summary[1].color,
+        ttr_proto::PlayerColor::Blue,
+        "Bob colore Blue"
+    );
 
     // Verifica che i biglietti siano preservati.
     let ra_tickets = ra.client.as_ref().unwrap().view.tickets.len() as u32;
     let rb_tickets = rb.client.as_ref().unwrap().view.tickets.len() as u32;
-    assert_eq!(ra_tickets, a_name_pre, "Alice: stessi biglietti dopo resume invertito");
-    assert_eq!(rb_tickets, b_name_pre, "Bob: stessi biglietti dopo resume invertito");
+    assert_eq!(
+        ra_tickets, a_name_pre,
+        "Alice: stessi biglietti dopo resume invertito"
+    );
+    assert_eq!(
+        rb_tickets, b_name_pre,
+        "Bob: stessi biglietti dopo resume invertito"
+    );
 
     // Turno, mani private e proprietà delle rotte seguono l'indice del motore.
-    assert_eq!(snap.current_turn_player_id, Some(expected_turn), "turno dopo resume invertito");
-    assert_eq!(sorted_hand(&ra.client.as_ref().unwrap().view.hand), expected_hands[0], "mano di Alice");
-    assert_eq!(sorted_hand(&rb.client.as_ref().unwrap().view.hand), expected_hands[1], "mano di Bob");
-    assert_eq!(claimed_in_public(&snap), expected_claimed, "proprietà delle rotte");
+    assert_eq!(
+        snap.current_turn_player_id,
+        Some(expected_turn),
+        "turno dopo resume invertito"
+    );
+    assert_eq!(
+        sorted_hand(&ra.client.as_ref().unwrap().view.hand),
+        expected_hands[0],
+        "mano di Alice"
+    );
+    assert_eq!(
+        sorted_hand(&rb.client.as_ref().unwrap().view.hand),
+        expected_hands[1],
+        "mano di Bob"
+    );
+    assert_eq!(
+        claimed_in_public(&snap),
+        expected_claimed,
+        "proprietà delle rotte"
+    );
 }
 
-// ── Regressioni review di robustezza (9/11/2026) ─────────────────────
+// ── Resume: identità, turno e proprietà delle rotte ──────────────────
 
 fn read_save(path: &std::path::Path) -> serde_json::Value {
     serde_json::from_str(&std::fs::read_to_string(path).expect("lettura save")).expect("parse save")
@@ -466,7 +581,10 @@ fn backups_of(saves_dir: &std::path::Path, game_id: &str) -> Vec<std::path::Path
         .map(|e| e.expect("voce dir").path())
         .filter(|p| {
             p.extension().is_some_and(|e| e == "bak")
-                && p.file_name().unwrap().to_string_lossy().starts_with(game_id)
+                && p.file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .starts_with(game_id)
         })
         .collect()
 }
@@ -485,7 +603,7 @@ async fn r1_resume_inverted_rejoin_keeps_turn_and_save() {
     let server = TestServer::start().await;
     let g = create_game_with_seed(&server.base_url, "R1", Some(42)).await;
     let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
-    let _pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     let mut a = WsClient::connect(&server, &g.game_id, &pa.player_id, &pa.token).await;
     let s0 = next_snapshot(&mut a).await;
@@ -494,36 +612,59 @@ async fn r1_resume_inverted_rejoin_keeps_turn_and_save() {
     a.disconnect().await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_file(&save).await;
     let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
-    let _rb = join_game(&server.base_url, &rid, "Bob", None).await;
-    let ra = join_game(&server.base_url, &rid, "Alice", None).await;
+    let _rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
+    let ra = join_game_resume(&server.base_url, &rid, "Alice", &pa.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
     let mut a = WsClient::connect(&server, &rid, &ra.player_id, &ra.token).await;
     let s1 = next_snapshot(&mut a).await;
 
     // Un'azione dopo il resume forza la riscrittura del save.
-    let keep: Vec<String> = a.view.offered_tickets.iter().take(2).map(|t| t.id.clone()).collect();
-    a.send(&ttr_proto::InboundAction::ChooseTickets(ttr_proto::ChooseTicketsPayload {
-        player_id: ra.player_id.clone(),
-        keep,
-        client_seq: None,
-    }))
+    let keep: Vec<String> = a
+        .view
+        .offered_tickets
+        .iter()
+        .take(2)
+        .map(|t| t.id.clone())
+        .collect();
+    a.send(&ttr_proto::InboundAction::ChooseTickets(
+        ttr_proto::ChooseTicketsPayload {
+            player_id: ra.player_id.clone(),
+            keep,
+            client_seq: None,
+        },
+    ))
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     a.disconnect().await;
     let sv = read_save(&save);
-    assert_eq!(sv["actions"].as_array().unwrap().len(), 1, "l'azione deve essere salvata");
+    assert_eq!(
+        sv["actions"].as_array().unwrap().len(),
+        1,
+        "l'azione deve essere salvata"
+    );
 
     let (rid2, rtok2) = ttr_server::resume_game(&server.state, &save).await.unwrap();
-    let ra2 = join_game(&server.base_url, &rid2, "Alice", None).await;
-    let _rb2 = join_game(&server.base_url, &rid2, "Bob", None).await;
+    let ra2 = join_game_resume(&server.base_url, &rid2, "Alice", &pa.token).await;
+    let _rb2 = join_game_resume(&server.base_url, &rid2, "Bob", &pb.token).await;
     start_game(&server.base_url, &rid2, &rtok2).await;
     let mut a = WsClient::connect(&server, &rid2, &ra2.player_id, &ra2.token).await;
     let s2 = next_snapshot(&mut a).await;
 
-    assert_eq!(s1.public.current_turn_player_id, turn0, "turno attribuito al giocatore sbagliato");
-    assert_eq!(sv["players"][0]["name"], "Alice", "ordine giocatori nel save riscritto");
-    assert_eq!(s2.private.unwrap().hand, alice_hand0, "Alice ha la mano di un altro");
+    assert_eq!(
+        s1.public.current_turn_player_id, turn0,
+        "turno attribuito al giocatore sbagliato"
+    );
+    assert_eq!(
+        sv["players"][0]["name"], "Alice",
+        "ordine giocatori nel save riscritto"
+    );
+    assert_eq!(
+        s2.private.unwrap().hand,
+        alice_hand0,
+        "Alice ha la mano di un altro"
+    );
     assert_eq!(
         backups_of(&server.saves_dir, &g.game_id).len(),
         2,
@@ -540,8 +681,8 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
     let server = TestServer::start().await;
     let map = usa_map();
     let g = create_game_with_seed(&server.base_url, "R1Routes", Some(42)).await;
-    join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
-    join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
@@ -549,12 +690,14 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
     let mut raw = read_save(&save);
     let parsed: ttr_server::save::SaveData =
         serde_json::from_value(raw.clone()).expect("parse SaveData");
-    let mut engine = ttr_server::save::replay_engine(&parsed, &map, &load_usa_ruleset())
-        .expect("replay engine");
+    let mut engine =
+        ttr_server::save::replay_engine(&parsed, &map, &load_usa_ruleset()).expect("replay engine");
 
     for player_index in 0..2 {
         let keep = engine.initial_tickets_for(player_index).unwrap()[..2].to_vec();
-        engine.apply(Action::ChooseTickets { player_index, keep }).unwrap();
+        engine
+            .apply(Action::ChooseTickets { player_index, keep })
+            .unwrap();
     }
     while engine.claimed_route_ids().is_empty() {
         let player_index = engine.current_player();
@@ -567,10 +710,15 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
             })
             .flatten();
         let action = match claim {
-            Some((route_id, cards_discarded)) => {
-                Action::ClaimRoute { player_index, route_id, cards_discarded }
-            }
-            None => Action::DrawTrainCard { player_index, source: DrawSource::Deck },
+            Some((route_id, cards_discarded)) => Action::ClaimRoute {
+                player_index,
+                route_id,
+                cards_discarded,
+            },
+            None => Action::DrawTrainCard {
+                player_index,
+                source: DrawSource::Deck,
+            },
         };
         engine.apply(action).unwrap();
     }
@@ -583,39 +731,51 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
     std::fs::write(&save, raw.to_string()).expect("scrittura save");
 
     let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
-    let rb = join_game(&server.base_url, &rid, "Bob", None).await;
-    join_game(&server.base_url, &rid, "Alice", None).await;
+    let rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
+    join_game_resume(&server.base_url, &rid, "Alice", &pa.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
     let mut b = WsClient::connect(&server, &rid, &rb.player_id, &rb.token).await;
     let snap = next_snapshot(&mut b).await;
 
-    assert_eq!(claimed_in_public(&snap.public), expected, "rotta attribuita al giocatore sbagliato");
+    assert_eq!(
+        claimed_in_public(&snap.public),
+        expected,
+        "rotta attribuita al giocatore sbagliato"
+    );
 }
 
 #[tokio::test]
 async fn r2_partial_resume_start_is_rejected_and_save_survives() {
     let server = TestServer::start().await;
     let g = create_game_with_seed(&server.base_url, "R2", Some(7)).await;
-    join_game(&server.base_url, &g.game_id, "Alice", None).await;
-    join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     let original = std::fs::read_to_string(&save).expect("lettura save");
 
     let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
-    join_game(&server.base_url, &rid, "Alice", None).await;
+    join_game_resume(&server.base_url, &rid, "Alice", &pa.token).await;
 
     let rejected = post_start(&server.base_url, &rid, &rtok).await;
     assert_eq!(rejected.status(), 409, "start con roster parziale");
     let body: serde_json::Value = rejected.json().await.expect("body errore");
     assert_eq!(body["error"], "ROSTER_INCOMPLETE");
-    assert!(body["detail"].as_str().is_some_and(|d| !d.is_empty()), "detail: {}", body);
+    assert!(
+        body["detail"].as_str().is_some_and(|d| !d.is_empty()),
+        "detail: {}",
+        body
+    );
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-    assert_eq!(read_save(&save)["players"].as_array().unwrap().len(), 2, "save con roster parziale");
+    assert_eq!(
+        read_save(&save)["players"].as_array().unwrap().len(),
+        2,
+        "save con roster parziale"
+    );
 
     // Il rifiuto non consuma il motore: Bob entra e la partita parte.
-    join_game(&server.base_url, &rid, "Bob", None).await;
+    join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     assert_eq!(
@@ -626,7 +786,10 @@ async fn r2_partial_resume_start_is_rejected_and_save_survives() {
 
     let backups = backups_of(&server.saves_dir, &g.game_id);
     assert_eq!(backups.len(), 1, "backup prima del resume: {:?}", backups);
-    assert_eq!(std::fs::read_to_string(&backups[0]).expect("lettura backup"), original);
+    assert_eq!(
+        std::fs::read_to_string(&backups[0]).expect("lettura backup"),
+        original
+    );
 }
 
 #[tokio::test]
@@ -655,7 +818,12 @@ async fn r3_resume_rejects_game_id_that_is_not_a_canonical_uuid() {
         std::fs::write(&evil, v.to_string()).unwrap();
 
         let res = ttr_server::resume_game(&server.state, &evil).await;
-        assert!(res.is_err(), "gameId {:?} deve essere rifiutato: {:?}", bad_id, res);
+        assert!(
+            res.is_err(),
+            "gameId {:?} deve essere rifiutato: {:?}",
+            bad_id,
+            res
+        );
     }
 
     // `saves_dir` sta dentro la temp dir: la scansione copre entrambi i percorsi.
@@ -664,7 +832,11 @@ async fn r3_resume_rejects_game_id_that_is_not_a_canonical_uuid() {
         .map(|e| e.expect("voce dir").file_name())
         .filter(|name| name.to_string_lossy().starts_with(&unique))
         .collect();
-    assert!(escaped.is_empty(), "file scritti fuori da saves/: {:?}", escaped);
+    assert!(
+        escaped.is_empty(),
+        "file scritti fuori da saves/: {:?}",
+        escaped
+    );
 }
 
 /// I limiti della lobby valgono solo per i nuovi join: un save esistente deve
@@ -673,7 +845,7 @@ async fn r3_resume_rejects_game_id_that_is_not_a_canonical_uuid() {
 async fn resume_accepts_saved_names_outside_lobby_limits() {
     let server = TestServer::start().await;
     let g = create_game_with_seed(&server.base_url, "LongName", Some(3)).await;
-    join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
     join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -685,18 +857,23 @@ async fn resume_accepts_saved_names_outside_lobby_limits() {
     std::fs::write(&save, v.to_string()).unwrap();
 
     let (rid, _) = ttr_server::resume_game(&server.state, &save).await.unwrap();
-    join_game(&server.base_url, &rid, &long_name, None).await;
+    join_game_resume(&server.base_url, &rid, &long_name, &pa.token).await;
 }
 
 // ── Validazione dei save ─────────────────────────────────────────────
 
 fn save_player(id: &str, name: &str, color: &str) -> ttr_server::save::SavePlayer {
-    ttr_server::save::SavePlayer { id: id.into(), name: name.into(), color: color.into() }
+    ttr_server::save::SavePlayer {
+        id: id.into(),
+        name: name.into(),
+        color: color.into(),
+        token_hash: None,
+    }
 }
 
 fn valid_save() -> ttr_server::save::SaveData {
     ttr_server::save::SaveData {
-        format_version: 1,
+        format_version: ttr_server::save::FORMAT_VERSION,
         rules_version: ttr_core::RULES_VERSION,
         game_id: uuid::Uuid::new_v4().to_string(),
         game_name: "Validazione".into(),
@@ -704,7 +881,10 @@ fn valid_save() -> ttr_server::save::SaveData {
         ruleset_id: "usa_v2".into(),
         seed: 42,
         first_player: 0,
-        players: vec![save_player("p1", "Alice", "RED"), save_player("p2", "Bob", "BLUE")],
+        players: vec![
+            save_player("p1", "Alice", "RED"),
+            save_player("p2", "Bob", "BLUE"),
+        ],
         actions: vec![],
         status: "in_progress".into(),
         created_at: "2026-01-01T00:00:00Z".into(),
@@ -718,7 +898,12 @@ fn replay(save: &ttr_server::save::SaveData) -> Result<ttr_core::Engine, String>
 
 fn assert_rejected(save: ttr_server::save::SaveData, expected: &str) {
     let err = replay(&save).err().expect("il save deve essere rifiutato");
-    assert!(err.contains(expected), "errore {:?}, atteso {:?}", err, expected);
+    assert!(
+        err.contains(expected),
+        "errore {:?}, atteso {:?}",
+        err,
+        expected
+    );
 }
 
 #[test]
@@ -729,8 +914,15 @@ fn valid_save_is_accepted() {
 #[test]
 fn save_with_unknown_format_version_is_rejected() {
     let mut save = valid_save();
-    save.format_version = 2;
+    save.format_version = ttr_server::save::FORMAT_VERSION + 1;
     assert_rejected(save, "formato del save");
+}
+
+#[test]
+fn save_with_format_version_1_is_accepted() {
+    let mut save = valid_save();
+    save.format_version = 1;
+    assert!(replay(&save).is_ok());
 }
 
 #[test]
@@ -800,12 +992,22 @@ fn save_with_unknown_color_is_rejected() {
 }
 
 #[test]
-fn save_without_rules_version_is_accepted() {
+fn save_with_rules_version_1_is_rejected() {
+    let mut save = valid_save();
+    save.rules_version = 1;
+    assert_rejected(save, "save creato con regole precedenti: non riproducibile");
+}
+
+#[test]
+fn save_without_rules_version_is_rejected() {
     let mut raw = serde_json::to_value(valid_save()).expect("serializzazione save");
-    raw.as_object_mut().unwrap().remove("rulesVersion").expect("campo rulesVersion");
+    raw.as_object_mut()
+        .unwrap()
+        .remove("rulesVersion")
+        .expect("campo rulesVersion");
     let save: ttr_server::save::SaveData = serde_json::from_value(raw).expect("parse SaveData");
     assert_eq!(save.rules_version, 1);
-    assert!(replay(&save).is_ok());
+    assert_rejected(save, "save creato con regole precedenti: non riproducibile");
 }
 
 #[tokio::test]
@@ -818,7 +1020,35 @@ async fn server_writes_rules_version_in_save() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let save = read_save(&server.saves_dir.join(format!("{}.json", g.game_id)));
-    assert_eq!(save["rulesVersion"], 1);
+    assert_eq!(ttr_core::RULES_VERSION, 2);
+    assert_eq!(save["rulesVersion"], 2);
+    assert_eq!(save["formatVersion"], 2);
+}
+
+/// Nel save finisce solo l'hash SHA-256 del token, mai il token in chiaro.
+#[tokio::test]
+async fn save_contains_only_token_hash() {
+    let server = TestServer::start().await;
+    let g = create_game_with_seed(&server.base_url, "TokenHash", Some(5)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    let path = server.saves_dir.join(format!("{}.json", g.game_id));
+    let raw = std::fs::read_to_string(&path).expect("lettura save");
+    for secret in [&pa.token, &pb.token, &g.host_token] {
+        assert!(!raw.contains(secret.as_str()), "token in chiaro nel save");
+    }
+    let save = read_save(&path);
+    assert_eq!(
+        save["players"][0]["tokenHash"],
+        ttr_server::save::hash_token(&pa.token)
+    );
+    assert_eq!(
+        save["players"][1]["tokenHash"],
+        ttr_server::save::hash_token(&pb.token)
+    );
 }
 
 /// Il nome digitato al resume (maiuscole/spazi diversi) non sostituisce quello salvato.
@@ -826,18 +1056,211 @@ async fn server_writes_rules_version_in_save() {
 async fn resume_keeps_saved_name_when_typed_differently() {
     let server = TestServer::start().await;
     let g = create_game_with_seed(&server.base_url, "ResumeName", Some(3)).await;
-    join_game(&server.base_url, &g.game_id, "Alice", None).await;
-    join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
-    let ra = join_game(&server.base_url, &rid, "  ALICE ", None).await;
-    let _rb = join_game(&server.base_url, &rid, "Bob", None).await;
+    let ra = join_game_resume(&server.base_url, &rid, "  ALICE ", &pa.token).await;
+    let _rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
 
     let mut ws = WsClient::connect(&server, &rid, &ra.player_id, &ra.token).await;
     let snap = next_snapshot(&mut ws).await;
     assert_eq!(snap.public.players_summary[0].name, "Alice");
+}
+
+// ── Resume con token ─────────────────────────────────────────────────
+
+/// Crea una partita a due giocatori già avviata e ritorna i dati per il resume.
+async fn started_two_player_game(
+    server: &TestServer,
+    name: &str,
+) -> (CreatedGame, JoinedPlayer, JoinedPlayer, std::path::PathBuf) {
+    let g = create_game_with_seed(&server.base_url, name, Some(3)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    assert!(save.exists(), "save iniziale scritto");
+    (g, pa, pb, save)
+}
+
+fn assert_error(res: &(u16, serde_json::Value), status: u16, code: &str) {
+    assert_eq!(res.0, status, "status inatteso per {}: {}", code, res.1);
+    assert_eq!(res.1["error"], code, "codice errore inatteso: {}", res.1);
+}
+
+#[tokio::test]
+async fn resume_join_requires_original_token() {
+    let server = TestServer::start().await;
+    let (_g, pa, pb, save) = started_two_player_game(&server, "ResumeToken").await;
+    let (rid, _rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let join_path = format!("/api/games/{}/join", rid);
+    let base = server.base_url.as_str();
+
+    let detail = get_json(base, &format!("/api/games/{}", rid)).await.1;
+    assert_eq!(
+        detail["missingPlayers"],
+        serde_json::json!(["Alice", "Bob"])
+    );
+
+    // Il solo nome non basta, in nessuna grafia.
+    for typed in ["Alice", "  ALICE "] {
+        let res = post_json(base, &join_path, serde_json::json!({ "name": typed })).await;
+        assert_error(&res, 401, "RESUME_TOKEN_MISMATCH");
+    }
+    // Token sbagliato, o di un altro giocatore.
+    let wrong = post_json(
+        base,
+        &join_path,
+        serde_json::json!({ "name": "Alice", "token": "x" }),
+    )
+    .await;
+    assert_error(&wrong, 401, "RESUME_TOKEN_MISMATCH");
+    let others = post_json(
+        base,
+        &join_path,
+        serde_json::json!({ "name": "Alice", "token": pb.token }),
+    )
+    .await;
+    assert_error(&others, 401, "RESUME_TOKEN_MISMATCH");
+    assert_eq!(
+        get_json(base, &format!("/api/games/{}", rid)).await.1["players"],
+        serde_json::json!([]),
+        "i join rifiutati non entrano nel roster"
+    );
+
+    // Il token originale riesce e resta lo stesso, con lo stesso playerId.
+    let again = join_game_resume(base, &rid, "Alice", &pa.token).await;
+    assert_eq!(again.player_id, pa.player_id);
+    assert_eq!(again.token, pa.token);
+    let detail = get_json(base, &format!("/api/games/{}", rid)).await.1;
+    assert_eq!(detail["missingPlayers"], serde_json::json!(["Bob"]));
+
+    // Ripetere il join col proprio token è innocuo; il solo nome ora è un conflitto.
+    let repeat = join_game_resume(base, &rid, "Alice", &pa.token).await;
+    assert_eq!(repeat.player_id, pa.player_id);
+    let taken = post_json(base, &join_path, serde_json::json!({ "name": "Alice" })).await;
+    assert_error(&taken, 409, "NAME_TAKEN");
+}
+
+#[tokio::test]
+async fn resume_reassign_by_host() {
+    let server = TestServer::start().await;
+    let (g, pa, pb, save) = started_two_player_game(&server, "ResumeReassign").await;
+    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let reassign_path = format!("/api/games/{}/reassign", rid);
+    let base = server.base_url.as_str();
+
+    // Host token sbagliato (anche quello della partita originale).
+    for bad in ["x", g.host_token.as_str()] {
+        let res = post_json(
+            base,
+            &reassign_path,
+            serde_json::json!({ "hostToken": bad, "name": "Alice" }),
+        )
+        .await;
+        assert_error(&res, 401, "UNAUTHORIZED");
+    }
+    let unknown = post_json(
+        base,
+        &reassign_path,
+        serde_json::json!({ "hostToken": rtok, "name": "Zoe" }),
+    )
+    .await;
+    assert_error(&unknown, 409, "NAME_NOT_IN_SAVE");
+
+    // Alice non ha più il token: l'host gliene assegna uno nuovo.
+    let (status, body) = post_json(
+        base,
+        &reassign_path,
+        serde_json::json!({ "hostToken": rtok, "name": "alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "reassign: {}", body);
+    assert_eq!(body["playerId"], pa.player_id.as_str());
+    let new_token = body["token"].as_str().expect("token").to_string();
+    assert_ne!(new_token, pa.token, "il token è nuovo");
+
+    // Il token vecchio non entra più; quello nuovo sì, anche in WS.
+    let old = post_json(
+        base,
+        &format!("/api/games/{}/join", rid),
+        serde_json::json!({ "name": "Alice", "token": pa.token }),
+    )
+    .await;
+    assert_ne!(
+        old.0, 200,
+        "token vecchio dopo la riassegnazione: {}",
+        old.1
+    );
+    let mut stale = WsClient::connect(&server, &rid, &pa.player_id, &pa.token).await;
+    match stale.recv().await {
+        ttr_proto::ServerMessage::Error(e) => {
+            assert_eq!(e.reason, ttr_proto::ErrorReason::Unauthorized)
+        }
+        other => panic!("atteso UNAUTHORIZED, ricevuto {:?}", other),
+    }
+    let mut fresh = WsClient::connect(&server, &rid, &pa.player_id, &new_token).await;
+    next_snapshot(&mut fresh).await;
+
+    // Bob rientra col suo token; la partita parte con Alice sul token nuovo.
+    join_game_resume(base, &rid, "Bob", &pb.token).await;
+    start_game(base, &rid, &rtok).await;
+    let mut alice = WsClient::connect(&server, &rid, &pa.player_id, &new_token).await;
+    let snap = next_snapshot(&mut alice).await;
+    assert!(snap.private.is_some(), "Alice vede il suo stato privato");
+}
+
+/// I save di formato 1 non hanno `tokenHash`: si rientra solo con la riassegnazione dell'host.
+#[tokio::test]
+async fn resume_save_without_token_hash_only_accepts_reassign() {
+    let server = TestServer::start().await;
+    let (_g, pa, _pb, save) = started_two_player_game(&server, "ResumeLegacy").await;
+    let mut raw = read_save(&save);
+    raw["formatVersion"] = serde_json::json!(1);
+    for player in raw["players"].as_array_mut().unwrap() {
+        player.as_object_mut().unwrap().remove("tokenHash");
+    }
+    std::fs::write(&save, raw.to_string()).unwrap();
+
+    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let base = server.base_url.as_str();
+    let join = post_json(
+        base,
+        &format!("/api/games/{}/join", rid),
+        serde_json::json!({ "name": "Alice", "token": pa.token }),
+    )
+    .await;
+    assert_error(&join, 401, "RESUME_TOKEN_MISMATCH");
+
+    for name in ["Alice", "Bob"] {
+        let (status, body) = post_json(
+            base,
+            &format!("/api/games/{}/reassign", rid),
+            serde_json::json!({ "hostToken": rtok, "name": name }),
+        )
+        .await;
+        assert_eq!(status, 200, "reassign {}: {}", name, body);
+    }
+    start_game(base, &rid, &rtok).await;
+}
+
+/// Il reassign è ammesso solo nelle partite riprese da un save.
+#[tokio::test]
+async fn reassign_on_fresh_game_is_rejected() {
+    let server = TestServer::start().await;
+    let g = create_game(&server.base_url, "Fresh").await;
+    join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let res = post_json(
+        &server.base_url,
+        &format!("/api/games/{}/reassign", g.game_id),
+        serde_json::json!({ "hostToken": g.host_token, "name": "Alice" }),
+    )
+    .await;
+    assert_error(&res, 400, "BAD_REQUEST");
 }

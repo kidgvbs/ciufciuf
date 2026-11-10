@@ -119,7 +119,11 @@ fn main() {
         player_names,
         colors,
         first_player,
-    );
+    )
+    .unwrap_or_else(|e| {
+        eprintln!("Errore creando la partita: {}", e);
+        std::process::exit(1);
+    });
 
     println!("=== CiufCiuf! CLI ===");
     println!("Seed: {}, Giocatori: {}", seed, num_players);

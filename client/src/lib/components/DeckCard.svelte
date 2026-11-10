@@ -1,5 +1,5 @@
 <script lang="ts">
-  // Pila del mazzo coperto (Fase 3e): retro di carta disegnato da noi —
+  // Pila del mazzo coperto: retro di carta disegnato da noi —
   // fondo inchiostro con righe diagonali dorate, medaglione pergamena con
   // silhouette TrainIcon. CSS/SVG 100% originale (regola d'oro 2).
   //

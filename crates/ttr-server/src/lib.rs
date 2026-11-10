@@ -1,24 +1,31 @@
 //! CiufCiuf! — Server Axum: WebSocket, lobby, QR, persistenza, statici.
 //!
 //! Fornisce `build_router(state, client_dist)` per costruire il router Axum testabile,
-//! e `resume_game(state, path)` per il resume da save (D18 §8).
+//! `resume_game(state, path)` per il resume da save e `shutdown_sessions` per
+//! fermare le partite scrivendo su disco quanto è in coda.
 
 use axum::Router;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 mod bridge;
+mod error;
 mod lobby;
+mod names;
 pub mod profiles;
 pub mod save;
 mod session;
 mod state;
+mod writer;
 mod ws;
 
+pub use session::SessionLimits;
 pub use state::AppState;
 
 /// Avvia l'attore di una partita. Quando termina (partita conclusa da
-/// tempo), la partita sparisce dall'elenco, ma solo se l'entry è ancora la
-/// sua: un resume con lo stesso game_id registra un attore nuovo.
+/// tempo, lobby o partita abbandonata, shutdown) la partita sparisce
+/// dall'elenco, ma solo se l'entry è ancora la sua: un resume con lo stesso
+/// game_id registra un attore nuovo.
 pub(crate) fn spawn_session(
     state: &AppState,
     game_id: String,
@@ -30,7 +37,10 @@ pub(crate) fn spawn_session(
     tokio::spawn(async move {
         session.run().await;
         let mut games = games.write().await;
-        if games.get(&game_id).is_some_and(|h| h.tx.same_channel(&own_tx)) {
+        if games
+            .get(&game_id)
+            .is_some_and(|h| h.tx.same_channel(&own_tx))
+        {
             games.remove(&game_id);
         }
     });
@@ -52,16 +62,17 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
         )
         .route("/api/games/{id}", get(lobby::get_game))
         .route("/api/games/{id}/join", post(lobby::join_game))
+        .route("/api/games/{id}/reassign", post(lobby::reassign_player))
         .route("/api/games/{id}/start", post(lobby::start_game))
         .route("/api/standings", get(lobby::standings))
         .route("/api/profiles", get(lobby::list_profiles))
         .route("/ws/{game_id}", get(ws::ws_handler));
 
-    // Serving statici del client con fallback SPA (Fase 3b)
+    // Statici del client con fallback SPA.
     if client_dist.exists() {
         use tower_http::services::{ServeDir, ServeFile};
-        let serve_dir = ServeDir::new(&client_dist)
-            .fallback(ServeFile::new(client_dist.join("index.html")));
+        let serve_dir =
+            ServeDir::new(&client_dist).fallback(ServeFile::new(client_dist.join("index.html")));
 
         Router::new()
             .merge(api_router)
@@ -76,11 +87,30 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
     }
 }
 
-/// Ripristina una partita da un file di salvataggio (D18 §8).
+/// Ferma tutte le partite e attende, fino a `timeout`, che le scritture in
+/// coda siano su disco. I save delle partite in corso restano dove sono.
+pub async fn shutdown_sessions(state: &AppState, timeout: Duration) {
+    let handles: Vec<session::GameHandle> = state.games.read().await.values().cloned().collect();
+    for handle in &handles {
+        let _ = handle.tx.send(session::GameCommand::Shutdown).await;
+    }
+    let drained = async {
+        while !state.games.read().await.is_empty() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    };
+    if tokio::time::timeout(timeout, drained).await.is_err() {
+        tracing::warn!("chiusura: alcune partite non hanno terminato le scritture in tempo");
+    }
+}
+
+/// Ripristina una partita da un file di salvataggio.
 ///
 /// Restituisce `(game_id, host_token)` se il resume ha successo.
 /// La partita viene registrata in lobby col roster salvato; i giocatori
-/// si riagganciano per nome via `POST /api/games/{id}/join`.
+/// si riagganciano per nome e token originale via `POST /api/games/{id}/join`,
+/// oppure ricevono un token nuovo dall'host via `POST /api/games/{id}/reassign`.
+/// Un save di una partita già conclusa è rifiutato.
 pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, String), String> {
     use tokio::sync::mpsc;
     use uuid::Uuid;
@@ -90,7 +120,10 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
     // `game_id` finisce in un percorso su disco: solo la forma canonica è ammessa.
     let canonical_id = Uuid::parse_str(&save_data.game_id).map(|id| id.to_string());
     if canonical_id.as_deref() != Ok(save_data.game_id.as_str()) {
-        return Err(format!("gameId non valido nel save: {:?}", save_data.game_id));
+        return Err(format!(
+            "gameId non valido nel save: {:?}",
+            save_data.game_id
+        ));
     }
 
     let ruleset = state
@@ -104,6 +137,9 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
         .clone();
 
     let engine = save::replay_engine(&save_data, &map, &ruleset)?;
+    if matches!(engine.phase(), ttr_core::error::GamePhase::GameOver) {
+        return Err("partita già conclusa".to_string());
+    }
 
     let game_id = save_data.game_id.clone();
     let host_token = Uuid::new_v4().to_string();
@@ -113,29 +149,38 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
     save::backup_before_resume(&save_path)?;
     let (tx, rx) = mpsc::channel(256);
 
-    let saved_player_entries: Vec<(String, String, ttr_proto::PlayerColor)> = save_data
+    let players = save_data
         .players
         .iter()
         .map(|p| {
-            (
-                p.id.clone(),
-                p.name.clone(),
-                save::parse_color(&p.color).unwrap_or(ttr_proto::PlayerColor::Red),
-            )
+            Ok(session::SavedPlayer {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                color: save::parse_color(&p.color)?,
+                token_hash: p.token_hash.clone(),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, String>>()?;
 
     let session = session::GameSession::new_resumed(
-        game_id.clone(),
-        save_data.game_name.clone(),
-        save_data.ruleset_id.clone(),
-        max_players,
-        host_token.clone(),
-        Some(save_path),
+        session::SessionConfig {
+            game_id: game_id.clone(),
+            game_name: save_data.game_name.clone(),
+            ruleset_id: save_data.ruleset_id.clone(),
+            map_id: ruleset.map.clone(),
+            max_players,
+            host_token: host_token.clone(),
+            save_path: Some(save_path),
+            results_lock: state.results_lock.clone(),
+            limits: state.limits,
+        },
         rx,
-        engine,
-        map,
-        saved_player_entries,
+        session::ResumedGame {
+            engine,
+            map_data: map,
+            players,
+            created_at: save_data.created_at.clone(),
+        },
     );
 
     let handle = session::GameHandle {
@@ -153,8 +198,7 @@ pub async fn resume_game(state: &AppState, save_path: &Path) -> Result<(String, 
         games.insert(game_id.clone(), handle.clone());
     }
 
-    let tx_for_cleanup = handle.tx.clone();
-    spawn_session(state, game_id.clone(), &tx_for_cleanup, session);
+    spawn_session(state, game_id.clone(), &handle.tx, session);
 
     Ok((game_id, host_token))
 }

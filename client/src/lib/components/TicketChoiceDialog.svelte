@@ -38,6 +38,45 @@
   function confirm() {
     onConfirm([...selected]);
   }
+
+  const FOCUSABLE = 'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+  // Focus iniziale nel dialog e ripristino dell'elemento che lo aveva prima.
+  let dialogEl = $state<HTMLDivElement>();
+  $effect(() => {
+    const previous = document.activeElement;
+    const first = dialogEl?.querySelector<HTMLElement>(FOCUSABLE);
+    (first ?? dialogEl)?.focus();
+    return () => {
+      if (previous instanceof HTMLElement) previous.focus();
+    };
+  });
+
+  // Escape annulla; Tab e Maiusc+Tab restano dentro il dialog.
+  function onDialogKeydown(e: KeyboardEvent) {
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      onCancel();
+      return;
+    }
+    if (e.key !== 'Tab' || !dialogEl) return;
+    const items = [...dialogEl.querySelectorAll<HTMLElement>(FOCUSABLE)];
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (!first || !last) {
+      e.preventDefault();
+      dialogEl.focus();
+      return;
+    }
+    const active = document.activeElement;
+    if (e.shiftKey && (active === first || active === dialogEl)) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
 </script>
 
 <div
@@ -52,8 +91,9 @@
     aria-modal="true"
     aria-label="Scegli i biglietti"
     tabindex="-1"
+    bind:this={dialogEl}
     onclick={(e: MouseEvent) => e.stopPropagation()}
-    onkeydown={(e: KeyboardEvent) => e.stopPropagation()}
+    onkeydown={onDialogKeydown}
   >
     <h2>Scegli i biglietti</h2>
     <p class="hint">
