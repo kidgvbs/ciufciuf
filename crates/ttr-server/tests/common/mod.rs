@@ -345,10 +345,9 @@ impl WsClient {
     /// Legge il prossimo messaggio e aggiorna la vista.
     pub async fn recv(&mut self) -> ServerMessage {
         loop {
-            let msg = self
-                .read
-                .next()
+            let msg = tokio::time::timeout(std::time::Duration::from_secs(15), self.read.next())
                 .await
+                .expect("timeout 15s in attesa di un messaggio WS")
                 .expect("stream chiuso")
                 .expect("read");
             if let Message::Text(text) = msg {

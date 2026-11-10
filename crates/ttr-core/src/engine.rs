@@ -101,28 +101,37 @@ impl Engine {
             &ruleset.deck,
         );
 
-        // --- Ticket deck ---
-        let mut ticket_ids: Vec<TicketId> = map
-            .tickets
-            .iter()
-            .filter(|t| t.deck == "regular")
-            .map(|t| t.id.clone())
-            .collect();
-        rng.shuffle(&mut ticket_ids);
+        // --- Ticket decks (da ruleset.ticket_decks) ---
+        let mut ticket_piles: BTreeMap<String, Vec<TicketId>> = BTreeMap::new();
+        for deck_name in &ruleset.ticket_decks {
+            let mut ids: Vec<TicketId> = map
+                .tickets
+                .iter()
+                .filter(|t| &t.deck == deck_name)
+                .map(|t| t.id.clone())
+                .collect();
+            rng.shuffle(&mut ids);
+            ticket_piles.insert(deck_name.clone(), ids);
+        }
 
         // --- Deal initial tickets ---
         let mut pending_initial: Vec<Vec<TicketId>> = Vec::with_capacity(num_players);
         for _ in 0..num_players {
             let mut dealt: Vec<TicketId> = Vec::new();
             for entry in &ruleset.initial_tickets.dealt {
-                for _ in 0..entry.count {
-                    if let Some(tid) = ticket_ids.pop() {
-                        dealt.push(tid);
+                if let Some(pile) = ticket_piles.get_mut(&entry.deck) {
+                    for _ in 0..entry.count {
+                        if let Some(tid) = pile.pop() {
+                            dealt.push(tid);
+                        }
                     }
                 }
             }
             pending_initial.push(dealt);
         }
+        let ticket_ids: Vec<TicketId> = ticket_piles
+            .remove(&ruleset.ticket_draw.deck)
+            .unwrap_or_default();
 
         // --- Players ---
         let mut players: Vec<PlayerState> = Vec::with_capacity(num_players);

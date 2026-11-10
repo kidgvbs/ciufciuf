@@ -2148,3 +2148,29 @@ fn claim_records_mixed_payment_in_declaration_order() {
     assert_eq!(used, vec![CardColor::Red, L, L]);
     assert_eq!(eng.discards_len(), 3);
 }
+
+#[test]
+fn ticket_decks_are_dealt_per_ruleset_and_draw_pile_is_draw_deck_only() {
+    let mut rs = mini_ruleset();
+    rs.ticket_decks = vec!["long".into(), "regular".into()];
+    rs.initial_tickets.dealt = vec![
+        TicketDealtEntry { deck: "long".into(), count: 1 },
+        TicketDealtEntry { deck: "regular".into(), count: 3 },
+    ];
+    rs.ticket_draw.deck = "regular".into();
+    let mut map = mini_map();
+    for i in 0..3 {
+        let mut t = ticket(&format!("long_{}", i), "A", "F", 20);
+        t.deck = "long".into();
+        map.tickets.push(t);
+    }
+    let (ids, names, colors) = two_players();
+    let eng = Engine::new(7, rs, map.clone(), ids, names, colors, 0);
+    let deck_of = |id: &String| map.tickets.iter().find(|t| &t.id == id).unwrap().deck.clone();
+    for pi in 0..2 {
+        let offered = eng.initial_tickets_for(pi).unwrap().to_vec();
+        assert_eq!(offered.iter().filter(|t| deck_of(t) == "long").count(), 1);
+        assert_eq!(offered.iter().filter(|t| deck_of(t) == "regular").count(), 3);
+    }
+    assert!(eng.ticket_pile().iter().all(|t| deck_of(t) == "regular"));
+}

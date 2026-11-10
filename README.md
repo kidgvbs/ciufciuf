@@ -137,11 +137,8 @@ In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
 1. Rientro da un telefono diverso
 2. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi")
-3. Identità al resume, oggi basata solo sul nome
-4. Timeout nei test che si appendono
-5. TV: riquadro con le ultime mosse; WebSocket: ping per rilevare i telefoni in standby
-6. Save e lobby: fsync, metadati del save, rotazione dei backup
-7. Limiti contro gli abusi e prestazioni del longest path
-8. Mappa Europe: deck dei biglietti iniziali preso dal ruleset (oggi fisso a `regular`)
+3. TV: riquadro con le ultime mosse; WebSocket: ping per rilevare i telefoni in standby
+4. Save e lobby: fsync, metadati del save, rotazione dei backup
+5. Limiti contro gli abusi e prestazioni del longest path
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.

@@ -149,8 +149,8 @@ pub(crate) struct GameSession {
     pub resumed_engine: Option<ttr_core::Engine>,
     /// Mappa pre-caricata per resume.
     pub resumed_map_data: Option<ttr_core::MapData>,
-    /// Roster salvato: nome (lowercase) → (player_id, engine_index, colore).
-    pub saved_roster: BTreeMap<String, (String, usize, ttr_proto::PlayerColor)>,
+    /// Roster salvato: nome (lowercase) → (player_id, engine_index, colore, nome salvato).
+    pub saved_roster: BTreeMap<String, (String, usize, ttr_proto::PlayerColor, String)>,
     /// Istante di fine partita: dopo `GAME_OVER_LINGER` l'attore termina.
     pub finished_at: Option<tokio::time::Instant>,
 }
@@ -216,7 +216,7 @@ impl GameSession {
     ) -> Self {
         let mut saved_roster = BTreeMap::new();
         for (idx, (id, name, color)) in saved_player_entries.iter().enumerate() {
-            saved_roster.insert(name.to_lowercase(), (id.clone(), idx, *color));
+            saved_roster.insert(name.to_lowercase(), (id.clone(), idx, *color, name.clone()));
         }
 
         Self {
@@ -320,11 +320,11 @@ impl GameSession {
             return Err("GAME_STARTED".into());
         }
 
-        let name_lower = name.to_lowercase();
+        let name_lower = name.trim().to_lowercase();
 
         // Resume mode: verifica che il nome sia nel roster salvato
         if !self.saved_roster.is_empty() {
-            let (saved_id, saved_index, saved_color) = self
+            let (saved_id, saved_index, saved_color, saved_name) = self
                 .saved_roster
                 .get(&name_lower)
                 .cloned()
@@ -344,7 +344,7 @@ impl GameSession {
             self.last_client_seq.insert(actual_id.clone(), None);
             self.connections.insert(actual_id.clone(), Vec::new());
             self.players.push(SessionPlayer {
-                name,
+                name: saved_name,
                 color: saved_color,
                 token: token.clone(),
                 index: Some(saved_index),

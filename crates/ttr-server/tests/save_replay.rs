@@ -820,3 +820,24 @@ async fn server_writes_rules_version_in_save() {
     let save = read_save(&server.saves_dir.join(format!("{}.json", g.game_id)));
     assert_eq!(save["rulesVersion"], 1);
 }
+
+/// Il nome digitato al resume (maiuscole/spazi diversi) non sostituisce quello salvato.
+#[tokio::test]
+async fn resume_keeps_saved_name_when_typed_differently() {
+    let server = TestServer::start().await;
+    let g = create_game_with_seed(&server.base_url, "ResumeName", Some(3)).await;
+    join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+    let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let ra = join_game(&server.base_url, &rid, "  ALICE ", None).await;
+    let _rb = join_game(&server.base_url, &rid, "Bob", None).await;
+    start_game(&server.base_url, &rid, &rtok).await;
+
+    let mut ws = WsClient::connect(&server, &rid, &ra.player_id, &ra.token).await;
+    let snap = next_snapshot(&mut ws).await;
+    assert_eq!(snap.public.players_summary[0].name, "Alice");
+}
