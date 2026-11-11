@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { clearMapCache, createMapTracker, isMapData, loadRulesetMap, type MapState } from '../map-loader';
+import {
+  clearMapCache,
+  createMapTracker,
+  isMapData,
+  isMapLayout,
+  loadRulesetMap,
+  type MapState,
+  type RulesetMap,
+} from '../map-loader';
 import { MAP_FETCH_TIMEOUT_MS } from '../lobby';
-import type { MapData } from '../map-utils';
+import type { MapData, MapLayout } from '../map-utils';
 
 const MAP = {
   cities: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }],
@@ -9,11 +17,44 @@ const MAP = {
   tickets: [{ id: 't1', from: 'a', to: 'b', points: 5, deck: 'regular' }],
 };
 
+const LAYOUT = {
+  unit: 34,
+  width: 100,
+  height: 60,
+  cities: { a: { x: 10, y: 20 }, b: { x: 80, y: 40 } },
+  labels: {
+    a: { dx: 0, dy: -12, anchor: 'middle' },
+    b: { dx: 0, dy: 20, anchor: 'start' },
+  },
+  routes: { r1: [[10, 20], [45, 25], [80, 40]] },
+  font: { family: 'Barlow Semi Condensed', weight: 600, size: 15.5 },
+  doubleGap: 5,
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
+interface Reply {
+  body: unknown;
+  status?: number;
+}
+
 let fetchMock: ReturnType<typeof vi.fn>;
+
+/** Il server di prova: risponde a `/map` e `/layout` (di default con `MAP` e `LAYOUT`). */
+function serve(replies: { map?: Reply; layout?: Reply } = {}): void {
+  const map = replies.map ?? { body: MAP };
+  const layout = replies.layout ?? { body: LAYOUT };
+  fetchMock.mockImplementation(async (url: string) => {
+    const reply = url.endsWith('/layout') ? layout : map;
+    return jsonResponse(reply.body, reply.status);
+  });
+}
+
+function requestedUrls(): string[] {
+  return fetchMock.mock.calls.map((call) => String(call[0]));
+}
 
 beforeEach(() => {
   clearMapCache();
@@ -26,34 +67,62 @@ afterEach(() => {
 });
 
 describe('loadRulesetMap', () => {
-  it('richiede /api/rulesets/{id}/map e valida la risposta', async () => {
-    fetchMock.mockResolvedValue(jsonResponse({ rulesetId: 'usa_v2', ...MAP }));
-    const map = await loadRulesetMap('http://tv.local:8080', 'usa_v2');
+  it('richiede in parallelo /map e /layout del ruleset e restituisce entrambi', async () => {
+    serve({ map: { body: { rulesetId: 'usa_v2', ...MAP } }, layout: { body: { rulesetId: 'usa_v2', mapId: 'usa', ...LAYOUT } } });
+    const pending = loadRulesetMap('http://tv.local:8080', 'usa_v2');
+    expect(requestedUrls().sort()).toEqual([
+      'http://tv.local:8080/api/rulesets/usa_v2/layout',
+      'http://tv.local:8080/api/rulesets/usa_v2/map',
+    ]);
+    const { map, layout } = await pending;
     expect(map.tickets).toHaveLength(1);
-    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://tv.local:8080/api/rulesets/usa_v2/map');
+    expect(layout?.routes['r1']).toEqual([[10, 20], [45, 25], [80, 40]]);
+    expect(layout?.width).toBe(100);
   });
 
-  it('memorizza la mappa e condivide le richieste concorrenti', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(MAP));
+  it('memorizza mappa e layout e condivide le richieste concorrenti', async () => {
+    serve();
     const [a, b] = await Promise.all([
       loadRulesetMap('http://h', 'usa_v2'),
       loadRulesetMap('http://h', 'usa_v2'),
     ]);
     await loadRulesetMap('http://h', 'usa_v2');
     expect(a).toBe(b);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    await loadRulesetMap('http://h', 'europe');
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    await loadRulesetMap('http://h', 'europe');
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it('gli errori non restano in cache: 404 e risposta non valida', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: 'NOT_FOUND', detail: null }, 404));
+    serve({ map: { body: { error: 'NOT_FOUND', detail: null }, status: 404 } });
     await expect(loadRulesetMap('http://h', 'x')).rejects.toThrow('NOT_FOUND');
-    fetchMock.mockResolvedValueOnce(jsonResponse({ cities: [] }));
+    serve({ map: { body: { cities: [] } } });
     await expect(loadRulesetMap('http://h', 'x')).rejects.toThrow('non valida');
-    fetchMock.mockResolvedValueOnce(jsonResponse(MAP));
+    serve();
     await expect(loadRulesetMap('http://h', 'x')).resolves.toBeDefined();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it('un layout che non copre la mappa dà un errore leggibile e non resta in cache', async () => {
+    const withoutRoute = { ...LAYOUT, routes: {} };
+    serve({ layout: { body: withoutRoute } });
+    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('Layout della mappa incompleto');
+
+    const withoutCity = { ...LAYOUT, cities: { a: LAYOUT.cities.a } };
+    serve({ layout: { body: withoutCity } });
+    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('Layout della mappa incompleto');
+
+    const withoutLabel = { ...LAYOUT, labels: { a: LAYOUT.labels.a } };
+    serve({ layout: { body: withoutLabel } });
+    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('Layout della mappa incompleto');
+
+    serve();
+    await expect(loadRulesetMap('http://h', 'usa_v2')).resolves.toBeDefined();
+  });
+
+  it('un layout malformato è rifiutato', async () => {
+    serve({ layout: { body: { ...LAYOUT, width: 'largo' } } });
+    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('layout non valida');
   });
 });
 
@@ -66,8 +135,32 @@ describe('isMapData', () => {
   });
 });
 
+describe('isMapLayout', () => {
+  it('accetta il layout completo e ignora i campi opzionali assenti', () => {
+    expect(isMapLayout(LAYOUT)).toBe(true);
+    const { font: _font, doubleGap: _gap, unit: _unit, ...minimal } = LAYOUT;
+    expect(isMapLayout(minimal)).toBe(true);
+  });
+
+  it('rifiuta dimensioni, posizioni, etichette, rotte e font malformati', () => {
+    expect(isMapLayout(null)).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, width: 0 })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, height: null })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, cities: { a: { x: 1 } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, cities: [] })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, labels: { a: { dx: 0, dy: 0, anchor: 'left' } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, routes: { r1: [[1, 2]] } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, routes: { r1: [[1, 2], [2, 3], [3, 4], [4, 5]] } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, routes: { r1: [[1, 2], [3]] } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, routes: { r1: [[1, 2], [3, 'x']] } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, font: { family: 'x' } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, doubleGap: 'cinque' })).toBe(false);
+  });
+});
+
 describe('createMapTracker', () => {
-  const data = MAP as unknown as MapData;
+  const bundle: RulesetMap = { map: MAP as unknown as MapData, layout: LAYOUT as unknown as MapLayout };
+  const data = bundle.map;
 
   function setup() {
     const states: MapState[] = [];
@@ -77,18 +170,18 @@ describe('createMapTracker', () => {
 
   it('passa da loading a ready', async () => {
     const { states, tracker } = setup();
-    tracker.track(async () => data);
+    tracker.track(async () => bundle);
     expect(states.map((s) => s.status)).toEqual(['loading']);
     await Promise.resolve();
     await Promise.resolve();
-    expect(states.at(-1)).toEqual({ status: 'ready', data, error: '' });
+    expect(states.at(-1)).toEqual({ status: 'ready', data, layout: bundle.layout, error: '' });
   });
 
   it('errore e retry', async () => {
     const { states, tracker } = setup();
-    const source = vi.fn<() => Promise<MapData>>()
+    const source = vi.fn<() => Promise<RulesetMap>>()
       .mockRejectedValueOnce(new Error('Rete assente'))
-      .mockResolvedValueOnce(data);
+      .mockResolvedValueOnce(bundle);
     tracker.track(source);
     await vi.waitFor(() => expect(states.at(-1)?.status).toBe('error'));
     expect(states.at(-1)?.error).toBe('Rete assente');
@@ -97,21 +190,63 @@ describe('createMapTracker', () => {
     expect(source).toHaveBeenCalledTimes(2);
   });
 
+  it('layout assente (404 LAYOUT_NOT_FOUND) lascia la mappa pronta con layout null', async () => {
+    const { states, tracker } = setup();
+    serve({
+      layout: {
+        body: { error: 'LAYOUT_NOT_FOUND', detail: 'Layout della mappa non trovato.' },
+        status: 404,
+      },
+    });
+    tracker.track(() => loadRulesetMap('http://h', 'usa_v2'));
+    await vi.waitFor(() => expect(states.at(-1)?.status).toBe('ready'));
+    const ready = states.at(-1);
+    expect(ready?.data?.cities).toHaveLength(2);
+    expect(ready?.layout).toBeNull();
+
+    // Il risultato con layout null resta in cache.
+    await loadRulesetMap('http://h', 'usa_v2');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('errore del server sul layout porta allo stato di errore e Riprova lo recupera', async () => {
+    const { states, tracker } = setup();
+    serve({
+      layout: {
+        body: { error: 'INTERNAL_ERROR', detail: 'Errore interno del server.' },
+        status: 500,
+      },
+    });
+    tracker.track(() => loadRulesetMap('http://h', 'usa_v2'));
+    await vi.waitFor(() => expect(states.at(-1)?.status).toBe('error'));
+    expect(states.at(-1)).toEqual({
+      status: 'error',
+      data: null,
+      layout: null,
+      error: 'Errore interno del server.',
+    });
+
+    serve();
+    tracker.retry();
+    await vi.waitFor(() => expect(states.at(-1)?.status).toBe('ready'));
+    expect(states.at(-1)?.layout?.width).toBe(100);
+  });
+
   it('una risposta superata da una richiesta più recente o da reset è ignorata', async () => {
     const { states, tracker } = setup();
-    let resolveOld!: (m: MapData) => void;
-    tracker.track(() => new Promise<MapData>((r) => { resolveOld = r; }));
-    tracker.track(async () => ({ ...data, tickets: [] }));
+    let resolveOld!: (m: RulesetMap) => void;
+    tracker.track(() => new Promise<RulesetMap>((r) => { resolveOld = r; }));
+    tracker.track(async () => ({ ...bundle, map: { ...data, tickets: [] } }));
     await vi.waitFor(() => expect(states.at(-1)?.status).toBe('ready'));
-    resolveOld(data);
+    resolveOld(bundle);
     await Promise.resolve();
     await Promise.resolve();
     expect(states.at(-1)?.data?.tickets).toHaveLength(0);
 
-    let resolveLate!: (m: MapData) => void;
-    tracker.track(() => new Promise<MapData>((r) => { resolveLate = r; }));
+    let resolveLate!: (m: RulesetMap) => void;
+    tracker.track(() => new Promise<RulesetMap>((r) => { resolveLate = r; }));
     tracker.reset();
-    resolveLate(data);
+    resolveLate(bundle);
     await Promise.resolve();
     await Promise.resolve();
     expect(states.at(-1)?.status).toBe('idle');
@@ -119,7 +254,7 @@ describe('createMapTracker', () => {
 });
 
 describe('robustezza del caricamento', () => {
-  const data = MAP as unknown as MapData;
+  const bundle: RulesetMap = { map: MAP as unknown as MapData, layout: LAYOUT as unknown as MapLayout };
 
   it('map_fetch_times_out_into_error', async () => {
     vi.useFakeTimers();
@@ -138,7 +273,36 @@ describe('robustezza del caricamento', () => {
       await vi.advanceTimersByTimeAsync(MAP_FETCH_TIMEOUT_MS - 1);
       expect(states.at(-1)?.status).toBe('loading');
       await vi.advanceTimersByTimeAsync(1);
-      expect(states.at(-1)).toEqual({ status: 'error', data: null, error: 'Timeout caricamento mappa' });
+      expect(states.at(-1)).toEqual({
+        status: 'error',
+        data: null,
+        layout: null,
+        error: 'Timeout caricamento mappa',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('layout_fetch_times_out_into_error', async () => {
+    vi.useFakeTimers();
+    try {
+      fetchMock.mockImplementation((url: string, init: RequestInit) =>
+        url.endsWith('/layout')
+          ? new Promise((_resolve, reject) => {
+              init.signal?.addEventListener('abort', () =>
+                reject(new DOMException('The operation was aborted.', 'AbortError')),
+              );
+            })
+          : Promise.resolve(jsonResponse(MAP)),
+      );
+      const pending = loadRulesetMap('http://h', 'usa_v2');
+      const outcome = pending.then(
+        () => 'ok',
+        (e: Error) => e.message,
+      );
+      await vi.advanceTimersByTimeAsync(MAP_FETCH_TIMEOUT_MS);
+      await expect(outcome).resolves.toBe('Timeout caricamento mappa');
     } finally {
       vi.useRealTimers();
     }
@@ -149,13 +313,18 @@ describe('robustezza del caricamento', () => {
     try {
       const states: MapState[] = [];
       const tracker = createMapTracker((s) => states.push(s));
-      let resolveLate!: (m: MapData) => void;
-      tracker.track(() => new Promise<MapData>((r) => { resolveLate = r; }));
+      let resolveLate!: (m: RulesetMap) => void;
+      tracker.track(() => new Promise<RulesetMap>((r) => { resolveLate = r; }));
       await vi.advanceTimersByTimeAsync(MAP_FETCH_TIMEOUT_MS - 1);
       expect(states.at(-1)?.status).toBe('loading');
       await vi.advanceTimersByTimeAsync(1);
-      expect(states.at(-1)).toEqual({ status: 'error', data: null, error: 'Timeout caricamento mappa' });
-      resolveLate(data);
+      expect(states.at(-1)).toEqual({
+        status: 'error',
+        data: null,
+        layout: null,
+        error: 'Timeout caricamento mappa',
+      });
+      resolveLate(bundle);
       await vi.advanceTimersByTimeAsync(0);
       expect(states.at(-1)?.status).toBe('error');
 
@@ -189,21 +358,21 @@ describe('robustezza del caricamento', () => {
     expect(isMapData(withRoute({ len: 12 }))).toBe(true);
     expect(isMapData(withRoute({ double: 'no' }))).toBe(false);
     expect(isMapData(withRoute({ color: 3 }))).toBe(false);
-    fetchMock.mockResolvedValue(jsonResponse(withRoute({ len: 0 })));
+    serve({ map: { body: withRoute({ len: 0 }) } });
     await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('non valida');
   });
 
   it('cache_is_cleared_on_reset', async () => {
-    fetchMock.mockImplementation(async () => jsonResponse(MAP));
+    serve();
     const tracker = createMapTracker(() => {});
     await loadRulesetMap('http://h', 'usa_v2');
     await loadRulesetMap('http://h', 'usa_v2');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     tracker.reset();
     await loadRulesetMap('http://h', 'usa_v2');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    tracker.track(async () => data);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    tracker.track(async () => bundle);
     await loadRulesetMap('http://h', 'usa_v2');
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 });

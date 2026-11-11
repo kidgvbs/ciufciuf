@@ -264,7 +264,7 @@ async fn resume_of_completed_save_is_rejected() {
     let err = ttr_server::resume_game(&server.state, &save)
         .await
         .expect_err("il resume di una partita conclusa va rifiutato");
-    assert!(err.contains("già conclusa"), "{err}");
+    assert!(err.to_string().contains("già conclusa"), "{err}");
 }
 
 /// Alla chiusura le scritture in coda sono su disco e le partite spariscono dal registro.

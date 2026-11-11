@@ -548,6 +548,41 @@ async fn ruleset_map_endpoint_serves_the_map_document() {
     assert_eq!(body["error"], "RULESET_NOT_FOUND");
 }
 
+/// GET /api/rulesets/{id}/layout serve il layout schematico della mappa del ruleset
+/// con `rulesetId`/`mapId`, e copre ogni città e rotta della mappa; un ruleset
+/// sconosciuto dà 404.
+#[tokio::test]
+async fn ruleset_layout_endpoint_covers_the_map() {
+    let server = TestServer::start().await;
+    let (status, layout) = get_json(&server.base_url, "/api/rulesets/usa_v2/layout").await;
+    assert_eq!(status, 200, "{layout}");
+    assert_eq!(layout["rulesetId"], "usa_v2");
+    assert_eq!(layout["mapId"], "usa");
+    assert!(layout["width"].is_number() && layout["height"].is_number());
+
+    let map: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(data_dir().join("maps/usa.json")).expect("lettura mappa"),
+    )
+    .expect("parsing mappa");
+    for city in map["cities"].as_array().expect("città") {
+        let id = city["id"].as_str().expect("id città");
+        assert!(layout["cities"][id]["x"].is_number(), "posizione di {id}");
+        assert!(layout["labels"][id].is_object(), "etichetta di {id}");
+    }
+    for route in map["routes"].as_array().expect("rotte") {
+        let id = route["id"].as_str().expect("id rotta");
+        let points = layout["routes"][id].as_array();
+        assert!(
+            points.is_some_and(|p| p.len() >= 2),
+            "punti della rotta {id}"
+        );
+    }
+
+    let (status, body) = get_json(&server.base_url, "/api/rulesets/non_esiste/layout").await;
+    assert_eq!(status, 404);
+    assert_eq!(body["error"], "RULESET_NOT_FOUND");
+}
+
 /// I percorsi `/api` sconosciuti (anche con slash finale) rispondono 404 JSON, non l'HTML della SPA.
 #[tokio::test]
 async fn unknown_api_route_is_json_404() {

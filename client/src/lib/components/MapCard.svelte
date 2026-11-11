@@ -1,13 +1,12 @@
 <script lang="ts">
   // Card di selezione mappa stile board-game (lobby "Nuova partita").
   //
-  // La thumbnail USA è un mini-render SVG originale del layout schematico
+  // La thumbnail è un mini-render SVG originale del layout schematico
   // (lo stesso che si vede in partita) — zero asset ufficiali (regola d'oro 2).
-  // Le mappe non disponibili mostrano un placeholder neutro disegnato da noi.
+  // Le mappe non disponibili, o senza mappa/layout caricabili, mostrano un
+  // placeholder neutro disegnato da noi.
   import type { RulesetInfo } from '../rulesets';
-  import type { MapData } from '../map-utils';
-  import { loadRulesetMap } from '../map-loader';
-  import usaLayout from '../data/usa-layout.json';
+  import { loadRulesetMap, type RulesetMap } from '../map-loader';
 
   let { host, ruleset, selected, onSelect }: {
     host: string;
@@ -21,48 +20,48 @@
 
   // Mini-render del layout schematico (stesse posizioni e curve di MapSvg),
   // scalato in "meet" nella thumbnail con padding.
-  // Rotte e città arrivano dal server; il layout schematico resta quello USA.
-  let mapData = $state.raw<MapData | null>(null);
+  // Mappa e layout arrivano dal server per il ruleset della card.
+  let loaded = $state.raw<RulesetMap | null>(null);
   $effect(() => {
-    if (ruleset.id !== 'usa_v2') return;
+    loaded = null;
+    if (!ruleset.available) return;
     let cancelled = false;
     loadRulesetMap(host, ruleset.id).then(
-      (m) => { if (!cancelled) mapData = m; },
-      (e: unknown) => console.warn('[map-card] mappa non disponibile:', e),
+      (m) => { if (!cancelled) loaded = m; },
+      (e: unknown) => { if (!cancelled) console.warn('[map-card] mappa non disponibile:', e); },
     );
     return () => { cancelled = true; };
   });
-  const layout = usaLayout as unknown as {
-    width: number;
-    height: number;
-    cities: Record<string, { x: number; y: number }>;
-    routes: Record<string, [number, number][]>;
-  };
   const PAD = 12;
-  const k = Math.min((THUMB_W - 2 * PAD) / layout.width, (THUMB_H - 2 * PAD) / layout.height);
-  const ox = (THUMB_W - layout.width * k) / 2;
-  const oy = (THUMB_H - layout.height * k) / 2;
-  const tp = ([x, y]: [number, number]) => `${(ox + x * k).toFixed(1)},${(oy + y * k).toFixed(1)}`;
-  const cityPos = new Map(
-    Object.entries(layout.cities).map(([id, p]) => [id, { x: ox + p.x * k, y: oy + p.y * k }]),
-  );
-  const thumbRoutes = $derived.by(() => {
+  const thumb = $derived.by(() => {
+    const map = loaded?.map;
+    const layout = loaded?.layout;
+    if (!map || !layout) return null;
+    const k = Math.min((THUMB_W - 2 * PAD) / layout.width, (THUMB_H - 2 * PAD) / layout.height);
+    const ox = (THUMB_W - layout.width * k) / 2;
+    const oy = (THUMB_H - layout.height * k) / 2;
+    const tp = ([x, y]: [number, number]) => `${(ox + x * k).toFixed(1)},${(oy + y * k).toFixed(1)}`;
     const seenPairs = new Set<string>();
-    return (mapData?.routes ?? [])
-    .filter((r) => {
-      const key = [r.from, r.to].sort().join('|');
-      if (seenPairs.has(key)) return false;
-      seenPairs.add(key);
-      return true;
-    })
-    .map((r) => {
-      const pts = layout.routes[r.id];
-      if (!pts || pts.length < 2) return null;
-      const [a, b, c] = pts;
-      const d = c ? `M ${tp(a!)} Q ${tp(b!)} ${tp(c)}` : `M ${tp(a!)} L ${tp(b!)}`;
-      return { id: r.id, d };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
+    const routes = map.routes
+      .filter((r) => {
+        const key = [r.from, r.to].sort().join('|');
+        if (seenPairs.has(key)) return false;
+        seenPairs.add(key);
+        return true;
+      })
+      .map((r) => {
+        const pts = layout.routes[r.id];
+        if (!pts || pts.length < 2) return null;
+        const [a, b, c] = pts;
+        const d = c ? `M ${tp(a!)} Q ${tp(b!)} ${tp(c)}` : `M ${tp(a!)} L ${tp(b!)}`;
+        return { id: r.id, d };
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    const cities = map.cities.flatMap((c) => {
+      const p = layout.cities[c.id];
+      return p ? [{ x: ox + p.x * k, y: oy + p.y * k }] : [];
+    });
+    return { routes, cities };
   });
 </script>
 
@@ -75,18 +74,15 @@
   aria-pressed={selected}
 >
   <div class="thumb">
-    {#if ruleset.id === 'usa_v2'}
+    {#if thumb}
       <svg viewBox="0 0 {THUMB_W} {THUMB_H}" width="100%" height="100%" aria-hidden="true">
         <rect width={THUMB_W} height={THUMB_H} fill="#f0e3c2" rx="6" />
-        {#each thumbRoutes as r}
+        {#each thumb.routes as r}
           <path d={r.d} fill="none"
             stroke="#a68b5b" stroke-width="1.4" stroke-linecap="round" opacity="0.75" />
         {/each}
-        {#each mapData?.cities ?? [] as c}
-          {@const p = cityPos.get(c.id)}
-          {#if p}
-            <circle cx={p.x} cy={p.y} r="1.8" fill="#57432a" opacity="0.9" />
-          {/if}
+        {#each thumb.cities as p}
+          <circle cx={p.x} cy={p.y} r="1.8" fill="#57432a" opacity="0.9" />
         {/each}
       </svg>
     {:else}

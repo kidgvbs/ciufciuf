@@ -516,6 +516,11 @@ impl GameSession {
                 }
                 GameCommand::Delete { host_token, reply } => {
                     if tokens_equal(&host_token, &self.host_token) {
+                        // Il 204 arriva a scritture chiuse: un resume subito dopo
+                        // non legge né sostituisce un save ancora in scrittura.
+                        if let Some(writer) = self.writer.take() {
+                            writer.finish().await;
+                        }
                         let _ = reply.send(Ok(()));
                         break;
                     }

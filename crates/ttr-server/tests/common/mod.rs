@@ -231,6 +231,19 @@ pub async fn join_game_resume(base: &str, game_id: &str, name: &str, token: &str
     serde_json::from_value(body).expect("parse JoinedPlayer")
 }
 
+/// Simula il riavvio del server: toglie dal registro la partita attiva con
+/// lo stesso gameId del save (il suo attore resta in vita) e la riprende.
+#[allow(dead_code)]
+pub async fn resume_after_restart(
+    server: &TestServer,
+    save: &std::path::Path,
+) -> Result<(String, String), ttr_server::ResumeError> {
+    if let Some(id) = save.file_stem().and_then(|s| s.to_str()) {
+        server.state.games.write().await.remove(id);
+    }
+    ttr_server::resume_game(&server.state, save).await
+}
+
 /// POST JSON a un path del server; ritorna status e corpo (Null se non è JSON).
 #[allow(dead_code)]
 pub async fn post_json(

@@ -14,6 +14,8 @@
     type LanCandidate,
     type GameDetailPlayer,
     type GameListItem,
+    type CreatedGame,
+    type SavedGameItem,
     type Standings,
   } from '../lib/lobby';
   import { gameMap } from '../lib/game-map.svelte.ts';
@@ -25,6 +27,7 @@
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import { rankedScores, winnerNames } from '../lib/scores';
+  import { formatSavedAt } from '../lib/saves';
   import { RULESETS, DEFAULT_RULESET_ID } from '../lib/rulesets';
   import MapSvg from '../lib/components/MapSvg.svelte';
   import MapCard from '../lib/components/MapCard.svelte';
@@ -59,6 +62,9 @@
   // Dopo --resume il token host è solo nel log del server: l'operatore lo incolla qui.
   let hostTokenInput = $state<string>('');
   const effectiveHostToken = $derived(hostToken || hostTokenInput.trim());
+  // Salvataggi riprendibili e id di quello in corso di ripresa (vuoto = nessuno).
+  let savedGames = $state<SavedGameItem[]>([]);
+  let resumingSave = $state<string>('');
 
   const lobby = $derived(new LobbyClient(host));
   const gameState = $derived(publicStore.state);
@@ -101,17 +107,40 @@
         notice = 'Seed non valido: serve un intero non negativo';
         return;
       }
-      const result = await lobby.createGame(rulesetId, gameNameInput, seed);
-      gameId = result.gameId; hostToken = result.hostToken;
-      // Ricorda l'ultima partita: una TV ricaricata si riaggancia da sola
-      // (hostToken serve a riprendere il bottone Start dopo un reload in lobby).
-      saveLastGame({ gameId: result.gameId, hostToken: result.hostToken });
-      updateUrlGame(result.gameId);
-      await refreshLobby(); connectSpectator();
+      await adoptHostedGame(await lobby.createGame(rulesetId, gameNameInput, seed));
     } catch (e) {
       console.error('Creazione fallita:', e);
       notice = `Creazione partita fallita: ${describe(e)}`;
     }
+  }
+
+  // Riprende un salvataggio dalla TV: l'hostToken arriva dal server, senza passare dal log.
+  async function resumeSave(save: SavedGameItem) {
+    if (resumingSave) return;
+    resumingSave = save.gameId;
+    try {
+      const resumed = await lobby.resumeSave(save.gameId);
+      // L'intestazione della lobby mostra il nome del salvataggio, non quello digitato per una partita nuova.
+      gameNameInput = save.name;
+      await adoptHostedGame(resumed);
+    } catch (e) {
+      console.error('Ripresa fallita:', e);
+      // L'elenco può essere vecchio (partita già ripresa o salvataggio sparito): prima
+      // si aggiorna, poi si mostra l'errore, così non viene coperto.
+      await refreshGames();
+      notice = `Ripresa di ${save.name} fallita: ${describe(e)}`;
+    }
+    resumingSave = '';
+  }
+
+  // La TV diventa host della partita appena creata o ripresa.
+  async function adoptHostedGame(result: CreatedGame) {
+    gameId = result.gameId; hostToken = result.hostToken;
+    // Ricorda l'ultima partita: una TV ricaricata si riaggancia da sola
+    // (hostToken serve a riprendere il bottone Start dopo un reload in lobby).
+    saveLastGame({ gameId: result.gameId, hostToken: result.hostToken });
+    updateUrlGame(result.gameId);
+    await refreshLobby(); connectSpectator();
   }
 
   async function refreshLobby() {
@@ -126,14 +155,30 @@
     }
   }
 
+  // Le tre letture sono indipendenti: ognuna aggiorna il suo elenco e, se fallisce, lo dice.
   async function refreshGames() {
-    try {
-      availableGames = await lobby.listGames();
-      standings = await lobby.getStandings();
-    } catch (e) {
-      console.warn('[tv] elenco partite non disponibile:', e);
-      notice = `Impossibile leggere partite e classifica: ${describe(e)}`;
+    const [games, ranking, saves] = await Promise.allSettled([
+      lobby.listGames(),
+      lobby.getStandings(),
+      lobby.listSaves(),
+    ]);
+    const failures: string[] = [];
+    if (games.status === 'fulfilled') availableGames = games.value;
+    else {
+      console.warn('[tv] elenco partite non disponibile:', games.reason);
+      failures.push(`partite (${describe(games.reason)})`);
     }
+    if (ranking.status === 'fulfilled') standings = ranking.value;
+    else {
+      console.warn('[tv] classifica non disponibile:', ranking.reason);
+      failures.push(`classifica (${describe(ranking.reason)})`);
+    }
+    if (saves.status === 'fulfilled') savedGames = saves.value;
+    else {
+      console.warn('[tv] salvataggi non disponibili:', saves.reason);
+      failures.push(`salvataggi (${describe(saves.reason)})`);
+    }
+    if (failures.length > 0) notice = `Impossibile leggere: ${failures.join('; ')}`;
   }
 
   async function startGame() {
@@ -392,7 +437,7 @@
               {#if import.meta.env.DEV}
                 <label>Seed (solo sviluppo — partita ripetibile): <input bind:value={seedInput} inputmode="numeric" placeholder="casuale" /></label>
               {/if}
-              <button class="btn" onclick={createGame}>Crea partita</button>
+              <button class="btn" onclick={createGame} disabled={resumingSave !== ''}>Crea partita</button>
             </div>
             {#if availableGames.length > 0}
               <div class="existing-games">
@@ -406,7 +451,27 @@
                         · {g.started ? 'in corso' : 'in lobby'}
                       </span>
                     </div>
-                    <button class="btn follow-btn" onclick={() => followGame(g)}>Segui</button>
+                    <button class="btn follow-btn" onclick={() => followGame(g)} disabled={resumingSave !== ''}>Segui</button>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            {#if savedGames.length > 0}
+              <div class="existing-games saved-games">
+                <h2>Partite salvate</h2>
+                {#each savedGames as s (s.gameId)}
+                  <div class="game-row">
+                    <div class="game-row-info">
+                      <strong>{s.name}</strong>
+                      <span class="game-meta">
+                        {s.players.join(', ')} · {formatSavedAt(s.updatedAt)}
+                      </span>
+                    </div>
+                    <button
+                      class="btn follow-btn"
+                      onclick={() => resumeSave(s)}
+                      disabled={resumingSave !== ''}
+                    >Riprendi</button>
                   </div>
                 {/each}
               </div>
@@ -453,7 +518,7 @@
                   {/each}
                   {#if !hostToken}
                     <label class="missing-hint">
-                      Token host (dal log del server dopo il resume):
+                      Token host (solo dopo <code>--resume</code> da riga di comando, dal log del server):
                       <input bind:value={hostTokenInput} autocomplete="off" spellcheck="false" />
                     </label>
                   {/if}

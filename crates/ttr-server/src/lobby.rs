@@ -72,6 +72,27 @@ pub async fn ruleset_map(
     Json(body).into_response()
 }
 
+// ── /api/rulesets/{id}/layout ──────────────────────────────────────
+
+/// GET /api/rulesets/{id}/layout — il layout schematico della mappa del ruleset
+/// (`data/layouts/{mapId}.json`) più `rulesetId` e `mapId`; 404 `LAYOUT_NOT_FOUND`
+/// se la mappa non ha un file di layout.
+pub async fn ruleset_layout(
+    State(state): State<AppState>,
+    Path(ruleset_id): Path<String>,
+) -> axum::response::Response {
+    let Some(ruleset) = state.ruleset(&ruleset_id) else {
+        return error_response(LobbyError::RulesetNotFound);
+    };
+    let Some(serde_json::Value::Object(fields)) = state.layout_documents.get(&ruleset.map) else {
+        return error_response(LobbyError::LayoutNotFound);
+    };
+    let mut body = fields.clone();
+    body.insert("rulesetId".into(), ruleset_id.into());
+    body.insert("mapId".into(), ruleset.map.clone().into());
+    Json(body).into_response()
+}
+
 // ── /api/lan ───────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -702,6 +723,65 @@ pub async fn start_game(
     match result {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => error_response(e),
+    }
+}
+
+// ── /api/saves ─────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct ListSavesResponse {
+    saves: Vec<crate::save::SaveSummary>,
+}
+
+/// GET /api/saves — i save `in_progress` che si possono riprendere, cioè
+/// quelli la cui partita non è già in lobby; dal più recente.
+pub async fn list_saves(State(state): State<AppState>) -> axum::response::Response {
+    let list_state = state.clone();
+    let mut saves =
+        match tokio::task::spawn_blocking(move || crate::save::list_in_progress_saves(&list_state))
+            .await
+        {
+            Ok(saves) => saves,
+            Err(e) => {
+                return error_response(LobbyError::Internal(format!("elenco dei save: {e}")));
+            }
+        };
+    {
+        let games = state.games.read().await;
+        saves.retain(|s| !games.contains_key(&s.game_id));
+    }
+    Json(ListSavesResponse { saves }).into_response()
+}
+
+#[derive(Debug, Serialize)]
+struct ResumeSaveResponse {
+    #[serde(rename = "gameId")]
+    game_id: String,
+    #[serde(rename = "hostToken")]
+    host_token: String,
+    #[serde(rename = "rulesetId")]
+    ruleset_id: String,
+    #[serde(rename = "maxPlayers")]
+    max_players: u32,
+}
+
+/// POST /api/saves/{id}/resume — riporta in lobby una partita salvata e dà il
+/// `hostToken` a chi la riprende. Il body è ignorato.
+pub async fn resume_save(
+    State(state): State<AppState>,
+    Path(game_id): Path<String>,
+) -> axum::response::Response {
+    match crate::resume_saved_game(&state, &game_id).await {
+        Ok(resumed) => {
+            let response = ResumeSaveResponse {
+                game_id: resumed.game_id,
+                host_token: resumed.host_token,
+                ruleset_id: resumed.ruleset_id,
+                max_players: resumed.max_players,
+            };
+            (StatusCode::CREATED, Json(response)).into_response()
+        }
+        Err(e) => error_response(e.into()),
     }
 }
 

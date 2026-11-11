@@ -92,6 +92,45 @@ describe('LobbyClient', () => {
     expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ hostToken: 'host', name: 'Ann' });
   });
 
+  it('listSaves restituisce i salvataggi dal corpo', async () => {
+    const saves = [
+      {
+        gameId: 'g1',
+        name: 'Serata',
+        rulesetId: 'usa_v2',
+        players: ['Ann', 'Bob'],
+        createdAt: '2026-11-10T10:00:00Z',
+        updatedAt: '2026-11-10T11:00:00Z',
+      },
+    ];
+    const calls = mockFetch(Response.json({ saves }));
+    expect(await new LobbyClient('http://h:1').listSaves()).toEqual(saves);
+    expect(calls[0]?.url).toBe('http://h:1/api/saves');
+  });
+
+  it('resumeSave posta senza corpo sul gameId codificato e restituisce l’hostToken', async () => {
+    const created = { gameId: 'g/1', hostToken: 'host', rulesetId: 'usa_v2', maxPlayers: 5 };
+    const calls = mockFetch(Response.json(created, { status: 201 }));
+    expect(await new LobbyClient('http://h:1').resumeSave('g/1')).toEqual(created);
+    expect(calls[0]?.url).toBe('http://h:1/api/saves/g%2F1/resume');
+    expect(calls[0]?.init.method).toBe('POST');
+    expect(calls[0]?.init.body).toBeUndefined();
+  });
+
+  it('resumeSave su una partita già attiva lancia un LobbyError col dettaglio del server', async () => {
+    mockFetch(
+      Response.json(
+        { error: 'GAME_ALREADY_ACTIVE', detail: 'La partita è già attiva.' },
+        { status: 409 },
+      ),
+    );
+    const err = await new LobbyClient('http://h:1').resumeSave('g').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LobbyError);
+    expect((err as LobbyError).status).toBe(409);
+    expect((err as LobbyError).code).toBe('GAME_ALREADY_ACTIVE');
+    expect((err as LobbyError).message).toBe('La partita è già attiva.');
+  });
+
   it('un errore del server diventa LobbyError con codice e testo italiano', async () => {
     mockFetch(Response.json({ error: 'RESUME_TOKEN_MISMATCH', detail: null }, { status: 401 }));
     const err = await new LobbyClient('http://h:1')

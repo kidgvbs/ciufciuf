@@ -224,7 +224,7 @@ async fn resume_flow() {
     );
 
     // Usa resume_game con l'AppState del server (condivide il registro partite).
-    let (resumed_id, resumed_host_token) = ttr_server::resume_game(&server.state, &save_path)
+    let (resumed_id, resumed_host_token) = resume_after_restart(&server, &save_path)
         .await
         .expect("resume_game");
 
@@ -422,7 +422,7 @@ async fn resume_inverted_order() {
         .unwrap_or(0);
 
     // Resume.
-    let (resumed_id, resumed_host_token) = ttr_server::resume_game(&server.state, &save_path)
+    let (resumed_id, resumed_host_token) = resume_after_restart(&server, &save_path)
         .await
         .expect("resume_game");
 
@@ -618,7 +618,7 @@ async fn r1_resume_inverted_rejoin_keeps_turn_and_save() {
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     wait_for_file(&save).await;
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     let _rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
     let ra = join_game_resume(&server.base_url, &rid, "Alice", &pa.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
@@ -652,7 +652,7 @@ async fn r1_resume_inverted_rejoin_keeps_turn_and_save() {
         "l'azione deve essere salvata"
     );
 
-    let (rid2, rtok2) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid2, rtok2) = resume_after_restart(&server, &save).await.unwrap();
     let ra2 = join_game_resume(&server.base_url, &rid2, "Alice", &pa.token).await;
     let _rb2 = join_game_resume(&server.base_url, &rid2, "Bob", &pb.token).await;
     start_game(&server.base_url, &rid2, &rtok2).await;
@@ -737,7 +737,7 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
         .collect();
     std::fs::write(&save, raw.to_string()).expect("scrittura save");
 
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     let rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
     join_game_resume(&server.base_url, &rid, "Alice", &pa.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
@@ -762,7 +762,7 @@ async fn r2_partial_resume_start_is_rejected_and_save_survives() {
     wait_for_file(&save).await;
     let original = std::fs::read_to_string(&save).expect("lettura save");
 
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     join_game_resume(&server.base_url, &rid, "Alice", &pa.token).await;
 
     let rejected = post_start(&server.base_url, &rid, &rtok).await;
@@ -868,7 +868,7 @@ async fn resume_accepts_saved_names_outside_lobby_limits() {
     v["players"][0]["name"] = serde_json::json!(long_name);
     std::fs::write(&save, v.to_string()).unwrap();
 
-    let (rid, _) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, _) = resume_after_restart(&server, &save).await.unwrap();
     join_game_resume(&server.base_url, &rid, &long_name, &pa.token).await;
 }
 
@@ -1076,7 +1076,7 @@ async fn resume_keeps_saved_name_when_typed_differently() {
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     wait_for_file(&save).await;
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     let ra = join_game_resume(&server.base_url, &rid, "  ALICE ", &pa.token).await;
     let _rb = join_game_resume(&server.base_url, &rid, "Bob", &pb.token).await;
     start_game(&server.base_url, &rid, &rtok).await;
@@ -1111,7 +1111,7 @@ fn assert_error(res: &(u16, serde_json::Value), status: u16, code: &str) {
 async fn resume_join_requires_original_token() {
     let server = TestServer::start().await;
     let (_g, pa, pb, save) = started_two_player_game(&server, "ResumeToken").await;
-    let (rid, _rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, _rtok) = resume_after_restart(&server, &save).await.unwrap();
     let join_path = format!("/api/games/{}/join", rid);
     let base = server.base_url.as_str();
 
@@ -1165,7 +1165,7 @@ async fn resume_join_requires_original_token() {
 async fn resume_reassign_by_host() {
     let server = TestServer::start().await;
     let (g, pa, pb, save) = started_two_player_game(&server, "ResumeReassign").await;
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     let reassign_path = format!("/api/games/{}/reassign", rid);
     let base = server.base_url.as_str();
 
@@ -1241,7 +1241,7 @@ async fn resume_save_without_token_hash_only_accepts_reassign() {
     }
     std::fs::write(&save, raw.to_string()).unwrap();
 
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     let base = server.base_url.as_str();
     let join = post_json(
         base,
@@ -1406,7 +1406,7 @@ async fn reassigned_token_survives_restart() {
     let server = TestServer::start().await;
     let (_g, pa, _pb, save) = started_two_player_game(&server, "Reassign").await;
 
-    let (rid, rtok) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, rtok) = resume_after_restart(&server, &save).await.unwrap();
     let (status, body) = post_json(
         &server.base_url,
         &format!("/api/games/{rid}/reassign"),
@@ -1426,7 +1426,7 @@ async fn reassigned_token_survives_restart() {
     );
 
     // "Riavvio": un nuovo resume dallo stesso save, poi il join col token nuovo.
-    let (rid2, _) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid2, _) = resume_after_restart(&server, &save).await.unwrap();
     let old = post_json(
         &server.base_url,
         &format!("/api/games/{rid2}/join"),

@@ -52,7 +52,7 @@ Limiti e durate:
 - **Nomi:** giocatori e partite sono normalizzati in NFKC (massimo 24 caratteri) e le sequenze di spazi diventano uno spazio solo. Sono rifiutati con `INVALID_NAME` i caratteri di controllo, invisibili o "vuoti" (zero-width, bidi, Hangul filler, braille blank, variation selector), i segni combinanti iniziali o più di 2 di fila e le parole che mescolano alfabeti (quindi anche "Ωmega", "서울Seoul" e il persiano con ZWNJ). Gli emoji sono ammessi: `U+FE0F` solo dopo un emoji e `U+200D` solo tra due emoji ("Anna ❤️", sequenze di famiglia), altrove sono rifiutati. Sono rifiutati anche i keycap (`#️⃣`) e le bandiere con tag (🏴 dell'Inghilterra). Due nomi con lo stesso aspetto hanno la stessa chiave (skeleton confusabile UTS #39, minuscolo) e il secondo riceve `NAME_TAKEN`: oltre a "А" cirillica e "A" latina, sono lo stesso nome anche "Tim"/"Tirn", "Leo"/"Le0" e "Player1"/"Playerl", e in classifica finiscono in una riga sola.
 - **Seed:** il seed di ogni partita è di 64 bit da un generatore crittografico e finisce solo nel save, mai nelle API o nei messaggi WebSocket. `POST /api/games` con un `seed` risponde `400 SEED_NOT_ALLOWED`, salvo che il server sia avviato con `--allow-client-seed` (test e partite riproducibili: con il seed si ricostruiscono le mani di tutti).
 - **Lobby inattiva:** una lobby non avviata senza join, start o connessioni di giocatori per 30 minuti sparisce; senza giocatori bastano 5 minuti, anche con spettatori collegati.
-- **Partita abbandonata:** una partita avviata senza connessioni per 6 ore sparisce dall'elenco, ma il suo save resta su disco e si può riprendere con `--resume`.
+- **Partita abbandonata:** una partita avviata senza connessioni per 6 ore sparisce dall'elenco, ma il suo save resta su disco e si può riprendere dalla TV ("Partite salvate") o con `--resume`.
 - **Partite attive:** al massimo 20, e le partite concluse non contano; oltre, la creazione risponde `429 TOO_MANY_GAMES`. Al massimo 8 spettatori WebSocket per partita. L'host chiude una partita con `DELETE /api/games/<id>` e `{"hostToken"}` (204, oppure 401): un save su disco resta dov'è.
 - **WebSocket:** messaggi oltre 16 KiB chiudono la connessione; un client che non legge viene scollegato e, riconnettendosi, riceve lo stato aggiornato. Il server manda un ping ogni 15 secondi e scollega chi tace per 45; la scrittura su un socket che non assorbe dati scade dopo 10 secondi. Ogni giocatore ha al massimo 4 connessioni: la quinta chiude la più vecchia.
 
@@ -72,15 +72,19 @@ Limiti e durate:
 
 ### Riprendere una partita salvata
 
+Dalla TV: la home elenca le **Partite salvate** (save `in_progress` riprendibili con le regole attuali e non già in lobby, dal più recente) e il pulsante **Riprendi** registra la partita in lobby. Come per una partita nuova, la TV riceve l'`hostToken` e lo tiene in `sessionStorage`, quindi i pulsanti "Riassegna" e "Start" funzionano subito. Una partita già attiva non si riprende una seconda volta (`409 GAME_ALREADY_ACTIVE`): nessuno può ottenere un secondo `hostToken` per una partita in corso. Chiunque sia in LAN può riprendere un save, con la stessa fiducia richiesta per creare una partita.
+
+Da riga di comando, per l'operatore:
+
 ```bash
 ./target/release/ttr-server --data-dir ./data --saves-dir ./saves --client-dist ./client/dist --resume saves/<id>.json
 ```
 
-Il log stampa l'id della partita e un `hostToken` nuovo. Il resume rifiuta i save di una partita già conclusa e quelli creati con regole precedenti (`RULES_VERSION` 1 o assente: "save creato con regole precedenti: non riproducibile").
+In questo caso il log stampa l'id della partita e un `hostToken` nuovo. Entrambe le strade rifiutano i save di una partita già conclusa e quelli creati con regole precedenti (`RULES_VERSION` 1 o assente: "save creato con regole precedenti: non riproducibile").
 
 I giocatori rientrano con il nome **e il token originale**, che il telefono conserva: `POST /api/games/<id>/join` con `{"name","token"}` restituisce lo stesso `playerId` e lo stesso token, mentre il solo nome dà `401 RESUME_TOKEN_MISMATCH`. Finché non ci sono tutti l'avvio viene rifiutato.
 
-Se un telefono ha perso il token, o il save è di formato 1 (senza hash dei token), l'host assegna un token nuovo con `reassign`; il vecchio smette di funzionare. L'`hostToken` della ripresa sta solo nel log: la TV lo chiede (campo "Token host") per i pulsanti "Riassegna", oppure si possono usare `curl`:
+Se un telefono ha perso il token, o il save è di formato 1 (senza hash dei token), l'host assegna un token nuovo con `reassign`; il vecchio smette di funzionare. Dopo un resume da riga di comando l'`hostToken` sta solo nel log: la TV lo chiede (campo "Token host") per i pulsanti "Riassegna", oppure si possono usare `curl`:
 
 ```bash
 curl -X POST http://localhost:8080/api/games/<id>/reassign -H 'content-type: application/json' -d '{"hostToken":"<token>","name":"Alice"}'
@@ -118,7 +122,7 @@ crates/ttr-core/      motore puro e deterministico, indipendente dalla mappa (pi
 crates/ttr-server/    Axum/Tokio: lobby REST, WebSocket, save e resume, file statici
 crates/ttr-proto/     tipi del protocollo ed export TypeScript con ts-rs
 crates/ttr-validate/  validazione dei dati di mappa e ruleset
-data/                 mappe (maps/) e ruleset (rulesets/) in JSON
+data/                 mappe (maps/), ruleset (rulesets/) e layout schematici (layouts/) in JSON
 client/               Svelte 5: vista TV (/) e controller del telefono (/controller)
 docs/                 piano, convenzioni dati, specifiche di fase
 ```
@@ -151,14 +155,13 @@ bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server 
 - **Major del client:** `vite`, `vitest`, `svelte` e `typescript` richiedono modifiche alla configurazione, quindi le major si approvano dalla Dependency Dashboard di Renovate.
 - **Dati di mappa e ruleset:** `ttr-validate` e l'avvio del server rifiutano dati incoerenti (id duplicati, città inesistenti, rotte doppie non appaiate, biglietti con partenza uguale all'arrivo, ecc.) e le mappe troppo dense per il calcolo esatto del percorso più lungo (numero ciclomatico stimato oltre 14; la USA stima 13). Il percorso più lungo è una ricerca esatta (branch and bound) con un budget di sicurezza: se lo esaurisce il server logga un `warn!` e il risultato di quel giocatore può non essere esatto. Le rotte con partenza uguale all'arrivo sono rifiutate.
 - **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
-- **Layout della mappa:** `cd client && bun tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
+- **Layout della mappa:** il disegno schematico di ogni mappa sta in `data/layouts/<mapId>.json` e il client lo scarica da `GET /api/rulesets/{id}/layout`, insieme alla mappa. All'avvio il server rifiuta un layout che non copre tutte le città (posizione ed etichetta) e tutte le rotte (2 o 3 punti); una mappa senza layout è ammessa: biglietti e nomi delle città funzionano, e al posto del disegno compare «Layout della mappa non disponibile». `cd client && bun tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `data/layouts/usa.json`: va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
 ## Prossimi fix
 
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
-1. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi", `hostToken` della ripresa visibile alla TV)
-2. TV: riquadro con le ultime mosse
-3. Rotazione dei backup `.bak` e layout schematico della mappa per ruleset (oggi `usa-layout.json` e l'elenco dei ruleset sono statici nel client; la mappa e i biglietti arrivano da `GET /api/rulesets/{id}/map`)
+1. TV: riquadro con le ultime mosse
+2. Rotazione dei backup `.bak`; elenco dei ruleset dal server (oggi `rulesets.ts` è statico nel client)
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.

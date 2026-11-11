@@ -34,6 +34,21 @@ export interface Point {
   y: number;
 }
 
+/** Layout schematico di una mappa (`GET /api/rulesets/{id}/layout`, generato da `client/tools/gen-schematic-layout.mjs`). */
+export interface MapLayout {
+  unit?: number;
+  width: number;
+  height: number;
+  cities: Record<string, Point>;
+  labels: Record<string, { dx: number; dy: number; anchor: 'start' | 'middle' | 'end' }>;
+  /** Polyline a 2 o 3 punti `[x, y]` per id rotta (il 3° è il "bend"). */
+  routes: Record<string, [number, number][]>;
+  /** Font con cui il generatore ha validato le etichette. */
+  font?: { family: string; weight: number; size: number };
+  /** Gap libero tra i due binari di una doppia (px viewBox). */
+  doubleGap?: number;
+}
+
 // ── Proiezione ─────────────────────────────────────────────────────
 
 /** Bounding box della mappa USA (dati: lat 25.76–51.04, lon −123.12–−71.06, con margine). */

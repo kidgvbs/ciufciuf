@@ -483,6 +483,93 @@ pub fn read_save(path: &Path) -> Result<SaveData, String> {
     Ok(save)
 }
 
+/// `true` se `s` è un UUID in forma canonica (minuscolo, con trattini): l'unica
+/// ammessa nei nomi dei file di save.
+pub(crate) fn is_canonical_uuid(s: &str) -> bool {
+    uuid::Uuid::parse_str(s).is_ok_and(|id| id.to_string() == s)
+}
+
+/// Una partita salvata e riprendibile, come la elenca `GET /api/saves`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveSummary {
+    pub game_id: String,
+    pub name: String,
+    pub ruleset_id: String,
+    pub players: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Elenca i save riprendibili di `{uuid}.json` nella cartella, dal più recente:
+/// `in_progress`, con ruleset noto e che superano `validate_save` (formato,
+/// versione delle regole, roster; il replay resta al resume). I file che non
+/// sono save (profili, risultati, backup, temporanei) sono ignorati; quelli
+/// illeggibili o con `gameId` diverso dal nome file sono saltati con un avviso.
+pub(crate) fn list_in_progress_saves(state: &AppState) -> Vec<SaveSummary> {
+    let dir = &state.saves_dir;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            if e.kind() != ErrorKind::NotFound {
+                tracing::warn!(dir = %dir.display(), error = %e, "lettura della cartella dei save fallita");
+            }
+            return Vec::new();
+        }
+    };
+
+    let mut saves = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(stem) = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .and_then(|n| n.strip_suffix(".json"))
+            .filter(|stem| is_canonical_uuid(stem))
+        else {
+            continue;
+        };
+        let save = match read_save(&path) {
+            Ok(save) => save,
+            Err(e) => {
+                tracing::warn!(path = %path.display(), error = %e, "save illeggibile: non elencato");
+                continue;
+            }
+        };
+        if save.status != "in_progress" {
+            continue;
+        }
+        if save.game_id != stem {
+            tracing::warn!(path = %path.display(), game_id = %save.game_id, "gameId diverso dal nome del file: save non elencato");
+            continue;
+        }
+        let Some(ruleset) = state.ruleset(&save.ruleset_id) else {
+            tracing::debug!(path = %path.display(), ruleset = %save.ruleset_id, "ruleset sconosciuto: save non elencato");
+            continue;
+        };
+        // Stessi controlli del resume, senza replay: formato, versione delle
+        // regole, roster.
+        if let Err(reason) = validate_save(&save, ruleset) {
+            tracing::debug!(path = %path.display(), %reason, "save non riprendibile: non elencato");
+            continue;
+        }
+        saves.push(SaveSummary {
+            game_id: save.game_id,
+            name: save.game_name,
+            ruleset_id: save.ruleset_id,
+            players: save.players.into_iter().map(|p| p.name).collect(),
+            created_at: save.created_at,
+            updated_at: save.updated_at,
+        });
+    }
+    saves.sort_by(|a, b| {
+        b.updated_at
+            .cmp(&a.updated_at)
+            .then_with(|| a.game_id.cmp(&b.game_id))
+    });
+    saves
+}
+
 /// Replay: ricostruisce il motore da un save file.
 pub fn replay_engine(
     save: &SaveData,

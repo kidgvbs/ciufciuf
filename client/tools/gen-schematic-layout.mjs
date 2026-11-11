@@ -2,7 +2,7 @@
 // gen-schematic-layout.mjs — Generatore deterministico del layout schematico USA.
 //
 // Input:  data/maps/usa.json                  (città + rotte, la "mappa")
-// Output: client/src/lib/data/usa-layout.json (la verità a runtime)
+// Output: data/layouts/usa.json               (servito da GET /api/rulesets/{id}/layout)
 //
 // Il file generato va committato. Questo script va rieseguito SOLO quando
 // cambia data/maps/usa.json (nuove città/rotte): il layout è deterministico (nessuna
@@ -78,7 +78,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const USA_PATH = join(__dirname, '..', '..', 'data', 'maps', 'usa.json');
-const OUT_PATH = join(__dirname, '..', 'src', 'lib', 'data', 'usa-layout.json');
+const OUT_PATH = join(__dirname, '..', '..', 'data', 'layouts', 'usa.json');
 
 // ── Costanti ──────────────────────────────────────────────────────────
 const UNIT = 34;            // px per carta (rotta len-1 ≈ 34px disegnate)

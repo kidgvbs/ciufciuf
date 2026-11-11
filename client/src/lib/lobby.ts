@@ -86,6 +86,17 @@ export interface Standings {
   standings: StandingRow[];
 }
 
+/** Partita salvata riprendibile (`GET /api/saves`). */
+export interface SavedGameItem {
+  gameId: string;
+  name: string;
+  rulesetId: string;
+  /** Nomi dei giocatori del salvataggio. */
+  players: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── Accesso a localStorage ───────────────────────────────────────────
 // localStorage può mancare o lanciare (modalità privata, quota piena, cookie bloccati):
 // in quel caso l'app funziona senza persistenza.
@@ -367,9 +378,9 @@ export class LobbyClient {
     return data.profiles;
   }
 
-  // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader).
-  // Chiude con un errore leggibile se il server non risponde entro `MAP_FETCH_TIMEOUT_MS`.
-  async getRulesetMap(rulesetId: string): Promise<unknown> {
+  // GET di una risorsa di mappa; chiude con un errore leggibile se il server non risponde entro
+  // `MAP_FETCH_TIMEOUT_MS`.
+  private async getWithMapTimeout(path: string): Promise<unknown> {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
@@ -377,18 +388,24 @@ export class LobbyClient {
       controller.abort();
     }, MAP_FETCH_TIMEOUT_MS);
     try {
-      return await this.request<unknown>(
-        'GET',
-        `/api/rulesets/${encodeURIComponent(rulesetId)}/map`,
-        undefined,
-        controller.signal,
-      );
+      return await this.request<unknown>('GET', path, undefined, controller.signal);
     } catch (e) {
       if (timedOut) throw new Error(MAP_TIMEOUT_MESSAGE);
       throw e;
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader).
+  async getRulesetMap(rulesetId: string): Promise<unknown> {
+    return this.getWithMapTimeout(`/api/rulesets/${encodeURIComponent(rulesetId)}/map`);
+  }
+
+  // GET /api/rulesets/{id}/layout — layout schematico della mappa del ruleset (forma non validata:
+  // vedi map-loader).
+  async getRulesetLayout(rulesetId: string): Promise<unknown> {
+    return this.getWithMapTimeout(`/api/rulesets/${encodeURIComponent(rulesetId)}/layout`);
   }
 
   // POST /api/games
@@ -444,5 +461,16 @@ export class LobbyClient {
   // POST /api/games/{id}/start
   async startGame(gameId: string, hostToken: string): Promise<void> {
     return this.request<void>('POST', `${this.gamePath(gameId)}/start`, { hostToken });
+  }
+
+  // GET /api/saves — partite salvate riprendibili (non già in lobby), dalla più recente
+  async listSaves(): Promise<SavedGameItem[]> {
+    const data = await this.request<{ saves: SavedGameItem[] }>('GET', '/api/saves');
+    return data.saves;
+  }
+
+  // POST /api/saves/{id}/resume — riporta in lobby un salvataggio e rilascia l'`hostToken`
+  async resumeSave(gameId: string): Promise<CreatedGame> {
+    return this.request<CreatedGame>('POST', `/api/saves/${encodeURIComponent(gameId)}/resume`);
   }
 }

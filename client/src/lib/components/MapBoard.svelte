@@ -1,10 +1,10 @@
 <script lang="ts">
-  // SVG mappa interattiva (pan & zoom); dati di mappa dal prop `mapData`, layout USA schematico.
+  // SVG mappa interattiva (pan & zoom); dati di mappa dal prop `mapData`, layout schematico dal prop `layout`.
   // Rende rotte (non reclamate + reclamate), città, vagoni.
   //
-  // Layout SCHEMATICO precalcolato (deterministico) in usa-layout.json:
-  // le posizioni delle città sono quelle del file generato, non una
-  // proiezione delle coordinate geografiche.
+  // Layout SCHEMATICO precalcolato (deterministico) dal prop `layout`
+  // (data/layouts/{mapId}.json, servito dal server): le posizioni delle città
+  // sono quelle del file generato, non una proiezione delle coordinate geografiche.
   //
   // Props opzionali (mappa sul controller):
   // - highlightRouteIds: rotte da evidenziare con glow (es. claimabili da legalMoves)
@@ -28,12 +28,12 @@
   import { publicStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS } from '../colors';
   import * as MapUtils from '../map-utils';
-  import type { MapData as MapDataType, Point, RouteData } from '../map-utils';
+  import type { MapData as MapDataType, MapLayout, Point, RouteData } from '../map-utils';
   import * as PZ from '../pan-zoom.ts';
-  import usaLayout from '../data/usa-layout.json';
 
   let {
     mapData,
+    layout,
     highlightRouteIds = [],
     selectedRouteId = null,
     onRouteTap,
@@ -42,6 +42,8 @@
   }: {
     /** Mappa già caricata; il wrapper `MapSvg` rimonta il componente se cambia. */
     mapData: MapDataType;
+    /** Layout schematico della stessa mappa (già verificato da `map-loader`). */
+    layout: MapLayout;
     highlightRouteIds?: string[];
     selectedRouteId?: string | null;
     onRouteTap?: (routeId: string) => void;
@@ -54,22 +56,10 @@
 
   const routeIndex = $derived(MapUtils.groupDoubleRoutes(mapData.routes).routeIndex);
 
-  // Layout schematico generato (client/tools/gen-schematic-layout.mjs).
-  interface UsaLayout {
-    unit: number;
-    width: number;
-    height: number;
-    cities: Record<string, Point>;
-    labels: Record<string, { dx: number; dy: number; anchor: 'start' | 'middle' | 'end' }>;
-    routes: Record<string, [number, number][]>;
-    /** Font con cui il generatore ha validato le etichette. */
-    font?: { family: string; weight: number; size: number };
-    /** Gap libero tra i due binari di una doppia (px viewBox). */
-    doubleGap?: number;
-  }
-  const layout = usaLayout as unknown as UsaLayout;
-  const FONT_FAMILY = `'${layout.font?.family ?? 'Barlow Semi Condensed'}', system-ui, sans-serif`;
-  const DOUBLE_GAP = layout.doubleGap ?? MapUtils.DEFAULT_DOUBLE_GAP;
+  const FONT_FAMILY = $derived(
+    `'${layout.font?.family ?? 'Barlow Semi Condensed'}', system-ui, sans-serif`,
+  );
+  const DOUBLE_GAP = $derived(layout.doubleGap ?? MapUtils.DEFAULT_DOUBLE_GAP);
 
   const interactive = $derived(onRouteTap !== undefined);
   const highlightSet = $derived(new Set(highlightRouteIds));
@@ -314,7 +304,7 @@
     return deg;
   })();
 
-  const cityPositions = new Map<string, Point>(Object.entries(layout.cities));
+  const cityPositions = $derived(new Map<string, Point>(Object.entries(layout.cities)));
 
   // Etichette lontane dal pallino (vincolate dal generatore a ≤32px):
   // filetto sottile pallino→etichetta, così il nome resta legato alla sua
@@ -345,9 +335,9 @@
 
   // ── Pan & Zoom (unità viewBox, pinch, limiti) ─────────────────────────
   // Canvas variabile: viewBox dal layout per ENTRAMBE le viste.
-  const mapWidth = layout.width;
-  const mapHeight = layout.height;
-  const vb: PZ.Size = { width: mapWidth, height: mapHeight };
+  const mapWidth = $derived(layout.width);
+  const mapHeight = $derived(layout.height);
+  const vb: PZ.Size = $derived({ width: mapWidth, height: mapHeight });
   let pz = $state<PZ.PanZoom>({ ...PZ.IDENTITY });
   let dragging = $state(false);
   let svgEl = $state<SVGSVGElement | null>(null);

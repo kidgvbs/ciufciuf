@@ -55,7 +55,7 @@ Cose da ricordare:
 - "Esci" in partita chiede conferma, perché fa perdere il posto.
 - Un telefono disconnesso (standby, Wi-Fi) rientra da solo e riceve lo stato aggiornato.
 - Se chiudo la scheda della TV **prima dell'avvio**, perdo l'`hostToken` (sta in `sessionStorage`): la TV offre "Crea una nuova partita" e la lobby vecchia scade da sola (30 min, 5 se è vuota).
-- Se annullo un join lento il giocatore resta registrato sul server: riprovare con lo stesso nome può dare `NAME_TAKEN` e l'host deve riassegnarlo (vedi §5).
+- Se annullo un join lento e la richiesta riesce in ritardo, il telefono salva comunque l'identità (senza cambiare schermata): riprovando con lo stesso nome riprendo quel giocatore. Solo se la risposta non arriva mai il nuovo tentativo riceve `NAME_TAKEN` e l'host deve riassegnarlo (vedi §5).
 - Una partita finisce quando scatta l'ultimo giro (un giocatore a ≤ 2 treni, oppure nessuno può più reclamare rotte, D28). Se chi può ancora reclamare non lo fa, non finisce.
 
 ### Nomi (giocatori e partite)
@@ -84,16 +84,21 @@ Cose da ricordare:
 
 ## 4. Riprendere una partita salvata
 
+**Dalla TV:** nella home, sezione "Partite salvate", premo **Riprendi** sulla partita. La TV entra nella lobby con l'`hostToken` (in `sessionStorage`), quindi "Riassegna" e "Start" funzionano senza copiare nulla. Elenco: `GET /api/saves`; ripresa: `POST /api/saves/{id}/resume` (§5).
+
+**Da riga di comando:**
+
 ```bash
 ./target/release/ttr-server --data-dir ./data --saves-dir ./saves --client-dist ./client/dist \
   --resume saves/<id>.json
 ```
 
 - Il log stampa l'id e un **`hostToken` nuovo**: sta solo lì. Lo copio subito.
+- Una partita già in lobby non si riprende due volte (`409 GAME_ALREADY_ACTIVE`).
 - Rifiutati: save di una partita già conclusa («partita già conclusa») e save con `RULES_VERSION` vecchia o assente («save creato con regole precedenti: non riproducibile»). Oggi `RULES_VERSION` è 2.
 - Finché non sono rientrati tutti, lo start è rifiutato (`409 ROSTER_INCOMPLETE`).
 - Rientro: ogni giocatore fa join con **nome + token originale** (il telefono ce l'ha in `localStorage`) e riottiene lo stesso `playerId`/token. Solo nome → `401 RESUME_TOKEN_MISMATCH`.
-- Telefono senza token, o save di formato 1 (senza hash): serve `reassign` dall'host (sotto). Il vecchio token smette di funzionare. Sulla TV c'è il campo "Token host" e i pulsanti "Riassegna", che mostrano un QR con l'identità.
+- Telefono senza token, o save di formato 1 (senza hash): serve `reassign` dall'host (sotto). Il vecchio token smette di funzionare. Sulla TV ci sono i pulsanti "Riassegna", che mostrano un QR con l'identità; il campo "Token host" compare solo se la TV non ha l'`hostToken` (resume da riga di comando).
 
 ---
 
@@ -114,6 +119,9 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 | `POST /api/games/{id}/reassign` | `{hostToken, name}` | `{playerId, token}` (token nuovo) |
 | `DELETE /api/games/{id}` | `{hostToken}` | `204` (un save su disco resta) |
 | `GET /api/rulesets/{id}/map` | | Documento della mappa (`cities`, `routes`, `tickets`, con `lat`/`lon`) più `rulesetId` |
+| `GET /api/rulesets/{id}/layout` | | Layout schematico della mappa (`width`, `height`, `cities`, `labels`, `routes` con 2–3 punti) più `rulesetId` e `mapId`; mappa senza layout → `404 LAYOUT_NOT_FOUND` |
+| `GET /api/saves` | | `{saves:[{gameId,name,rulesetId,players:[nome,…],createdAt,updatedAt}]}`: save `in_progress` riprendibili (regole attuali, ruleset noto) e non già attivi, dal più recente; i file illeggibili sono saltati con un warn |
+| `POST /api/saves/{id}/resume` | | `201 {gameId, hostToken, rulesetId, maxPlayers}` (come la creazione) |
 | `GET /api/standings` | | `{games, standings:[{name,games,wins,total_points,best}]}` |
 | `GET /api/profiles` | | `{profiles:[nome,…]}` (illeggibile → lista vuota + warn nel log) |
 | `GET /ws/{gameId}?playerId=&token=` | | Upgrade WebSocket (§6) |
@@ -121,7 +129,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 Note:
 
 - `rulesetId` oggi è solo `usa_v2`.
-- `color` è uno tra `Red`, `Blue`, `Green`, `Yellow`, `Black`; se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
+- `color` è uno tra `RED`, `BLUE`, `GREEN`, `YELLOW`, `BLACK` (maiuscolo; un valore diverso → `422` con testo semplice di axum, non JSON); se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
 - `seed` senza `--allow-client-seed` → `400 SEED_NOT_ALLOWED`. Il seed di default è a 64 bit da un CSPRNG, finisce solo nel save e mai nelle API: con il seed si ricostruiscono le mani di tutti.
 - `DELETE` senza body → `401 UNAUTHORIZED`; body malformato → `400`.
 - Un percorso `/api/*` inesistente (anche con lo slash finale) → `404 {"error":"NOT_FOUND","detail":"Endpoint inesistente."}`, mai la pagina della SPA.
@@ -133,7 +141,11 @@ Note:
 |---|---|---|
 | `GAME_NOT_FOUND` | 404 | id inesistente o partita già chiusa |
 | `RULESET_NOT_FOUND` | 404 | ruleset inesistente |
+| `LAYOUT_NOT_FOUND` | 404 | la mappa del ruleset non ha un file in `data/layouts/` |
 | `NOT_FOUND` | 404 | endpoint `/api/*` inesistente |
+| `SAVE_NOT_FOUND` | 404 | resume di un id non canonico o senza file `saves/<id>.json` |
+| `GAME_ALREADY_ACTIVE` | 409 | resume di una partita già in lobby o in corso |
+| `SAVE_NOT_RESUMABLE` | 409 | save concluso, illeggibile, con regole precedenti o con `gameId` diverso dal nome del file (`detail` spiega) |
 | `GAME_FULL`, `GAME_STARTED`, `ROSTER_INCOMPLETE`, `COLOR_TAKEN`, `NAME_TAKEN`, `NAME_NOT_IN_SAVE` | 409 | conflitti di lobby |
 | `UNAUTHORIZED`, `RESUME_TOKEN_MISMATCH` | 401 | `hostToken` o token sbagliato |
 | `INVALID_NAME`, `BAD_REQUEST`, `MIN_PLAYERS`, `SEED_NOT_ALLOWED` | 400 | input non valido, meno di 2 giocatori allo start |
@@ -147,7 +159,7 @@ Note:
 B=http://localhost:8080
 G=$(curl -s -X POST $B/api/games -H 'content-type: application/json' -d '{"rulesetId":"usa_v2","name":"Prova"}')
 ID=$(echo $G | jq -r .gameId); HOST=$(echo $G | jq -r .hostToken)
-curl -s -X POST $B/api/games/$ID/join -H 'content-type: application/json' -d '{"name":"Anna","color":"Red"}'
+curl -s -X POST $B/api/games/$ID/join -H 'content-type: application/json' -d '{"name":"Anna","color":"RED"}'
 curl -s -X POST $B/api/games/$ID/join -H 'content-type: application/json' -d '{"name":"Bob"}'
 curl -s -X POST $B/api/games/$ID/start -H 'content-type: application/json' -d "{\"hostToken\":\"$HOST\"}"
 curl -s $B/api/games | jq
@@ -216,7 +228,7 @@ bun run copy-bindings  # copia i binding ts-rs da crates/ttr-proto/bindings
 
 - `?server=` non esiste più: in dev si passa dal proxy di Vite.
 - Identità (telefono): `localStorage`, una chiave per partita (`ciufciuf-identity:<gameId>`), scade dopo 24 h; sulla schermata di rientro c'è "Non sono io". L'`hostToken` della TV sta in `sessionStorage`.
-- Mappa e biglietti arrivano da `GET /api/rulesets/{id}/map`. Restano statici nel client `usa-layout.json` (disegno schematico) e l'elenco dei ruleset (`rulesets.ts`): per Europe servono layout per ruleset.
+- Mappa e biglietti arrivano da `GET /api/rulesets/{id}/map`, il disegno schematico da `GET /api/rulesets/{id}/layout` (`data/layouts/<mapId>.json`): le due fetch partono insieme, sotto lo stesso timeout di 10 s. Resta statico nel client solo l'elenco dei ruleset (`rulesets.ts`).
 - Il QR si genera nel browser (`qrcode-generator`): nessun token finisce in una query string.
 - La CSP è in `client/index.html`.
 
@@ -225,7 +237,7 @@ bun run copy-bindings  # copia i binding ts-rs da crates/ttr-proto/bindings
 ```bash
 bun client/smoke-test.mjs http://localhost:8080          # server già avviato con --allow-client-seed
 bun client/tools/fullgame-test.mjs --spawn-server        # partita completa con 2 bot, dopo la build release
-cd client && bun tools/gen-schematic-layout.mjs          # rigenera usa-layout.json (~3 min); solo se cambia la geometria
+cd client && bun tools/gen-schematic-layout.mjs          # rigenera data/layouts/usa.json (~3 min); solo se cambia la geometria
 ```
 
 ---
@@ -237,7 +249,7 @@ crates/ttr-core/      motore puro e deterministico (più il binario ttr-cli per 
 crates/ttr-server/    Axum/Tokio: REST, WebSocket, save/resume, statici
 crates/ttr-proto/     tipi del protocollo + export TypeScript (ts-rs)
 crates/ttr-validate/  validazione di mappe e ruleset
-data/                 maps/ e rulesets/ (JSON)
+data/                 maps/, rulesets/ e layouts/ (JSON)
 ```
 
 - Validare i dati: `./target/release/ttr-validate data/maps/usa.json data/rulesets/usa_v2.json`. Stampa ✓ solo per i controlli passati; exit 1 se qualcosa non va.

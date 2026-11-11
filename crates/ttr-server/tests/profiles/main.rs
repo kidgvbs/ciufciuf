@@ -110,7 +110,7 @@ async fn p3_resume_join_by_name_only_is_rejected() {
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     wait_for_file(&save).await;
-    let (rid, _) = ttr_server::resume_game(&server.state, &save).await.unwrap();
+    let (rid, _) = resume_after_restart(&server, &save).await.unwrap();
 
     // L'attaccante conosce solo il nome.
     let (status, body) = post_json(

@@ -3,7 +3,7 @@
 import { createMapTracker, loadRulesetMap, type MapState } from './map-loader';
 
 class GameMapStore {
-  state = $state.raw<MapState>({ status: 'idle', data: null, error: '' });
+  state = $state.raw<MapState>({ status: 'idle', data: null, layout: null, error: '' });
   private tracker = createMapTracker((s) => {
     this.state = s;
   });

@@ -12,6 +12,8 @@ pub enum LobbyError {
     GameNotFound,
     #[error("Ruleset non trovato.")]
     RulesetNotFound,
+    #[error("Layout della mappa non trovato.")]
+    LayoutNotFound,
     #[error("Endpoint inesistente.")]
     EndpointNotFound,
     #[error("L'attore della partita è terminato.")]
@@ -48,6 +50,12 @@ pub enum LobbyError {
     ShuttingDown,
     #[error("Errore interno del server.")]
     Internal(String),
+    #[error("Partita salvata non trovata.")]
+    SaveNotFound,
+    #[error("La partita è già attiva: unisciti dall'elenco delle partite in LAN.")]
+    GameAlreadyActive,
+    #[error("{0}")]
+    SaveNotResumable(String),
 }
 
 impl LobbyError {
@@ -57,6 +65,7 @@ impl LobbyError {
             Self::GameNotFound | Self::GameActorGone => "GAME_NOT_FOUND",
             Self::EndpointNotFound => "NOT_FOUND",
             Self::RulesetNotFound => "RULESET_NOT_FOUND",
+            Self::LayoutNotFound => "LAYOUT_NOT_FOUND",
             Self::GameFull => "GAME_FULL",
             Self::GameStarted => "GAME_STARTED",
             Self::RosterIncomplete => "ROSTER_INCOMPLETE",
@@ -70,6 +79,9 @@ impl LobbyError {
             Self::MinPlayers(_) => "MIN_PLAYERS",
             Self::TooManyGames => "TOO_MANY_GAMES",
             Self::SeedNotAllowed => "SEED_NOT_ALLOWED",
+            Self::SaveNotFound => "SAVE_NOT_FOUND",
+            Self::GameAlreadyActive => "GAME_ALREADY_ACTIVE",
+            Self::SaveNotResumable(_) => "SAVE_NOT_RESUMABLE",
             Self::ShuttingDown => "SHUTTING_DOWN",
             Self::Internal(_) => "INTERNAL_ERROR",
         }
@@ -81,6 +93,7 @@ impl LobbyError {
             Self::GameNotFound
             | Self::GameActorGone
             | Self::RulesetNotFound
+            | Self::LayoutNotFound
             | Self::EndpointNotFound => StatusCode::NOT_FOUND,
             Self::GameFull
             | Self::GameStarted
@@ -96,6 +109,8 @@ impl LobbyError {
             Self::ShuttingDown => StatusCode::SERVICE_UNAVAILABLE,
             Self::TooManyGames => StatusCode::TOO_MANY_REQUESTS,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            Self::SaveNotFound => StatusCode::NOT_FOUND,
+            Self::GameAlreadyActive | Self::SaveNotResumable(_) => StatusCode::CONFLICT,
         }
     }
 }
@@ -103,5 +118,44 @@ impl LobbyError {
 impl From<NameError> for LobbyError {
     fn from(e: NameError) -> Self {
         Self::InvalidName(e)
+    }
+}
+
+/// Motivo per cui un save non può tornare in lobby: lo condividono il resume da
+/// CLI (`--resume`, che stampa il messaggio) e `POST /api/saves/{id}/resume`.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ResumeError {
+    #[error("salvataggio non trovato")]
+    NotFound,
+    #[error("la partita è già attiva")]
+    AlreadyActive,
+    /// Il file esiste ma non si legge o non è un save valido; il messaggio
+    /// può contenere percorsi, quindi via REST ne esce solo una formula generica.
+    #[error("{0}")]
+    Unreadable(String),
+    #[error("{0}")]
+    NotResumable(String),
+    #[error("troppe partite attive")]
+    TooManyGames,
+    #[error("il server si sta spegnendo")]
+    ShuttingDown,
+    #[error("{0}")]
+    Io(String),
+}
+
+impl From<ResumeError> for LobbyError {
+    fn from(e: ResumeError) -> Self {
+        match e {
+            ResumeError::NotFound => Self::SaveNotFound,
+            ResumeError::AlreadyActive => Self::GameAlreadyActive,
+            ResumeError::Unreadable(cause) => {
+                tracing::warn!(error = %cause, "save non leggibile al resume");
+                Self::SaveNotResumable("Il salvataggio è illeggibile o danneggiato.".to_string())
+            }
+            ResumeError::NotResumable(reason) => Self::SaveNotResumable(reason),
+            ResumeError::TooManyGames => Self::TooManyGames,
+            ResumeError::ShuttingDown => Self::ShuttingDown,
+            ResumeError::Io(cause) => Self::Internal(cause),
+        }
     }
 }
