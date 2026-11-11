@@ -193,7 +193,10 @@ fn load_layouts(
         let path = layouts_dir.join(format!("{}.json", map_name));
         let json = match std::fs::read_to_string(&path) {
             Ok(json) => json,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                tracing::warn!(map = %map_name, path = %path.display(), "layout schematico assente: la mappa resta senza layout");
+                continue;
+            }
             Err(e) => return Err(format!("lettura {:?}: {}", path, e)),
         };
         let layout: serde_json::Value =
@@ -205,26 +208,47 @@ fn load_layouts(
     Ok(layouts)
 }
 
+/// Limite di `width` e `height` di un layout (esclusi 0 e i negativi).
+const LAYOUT_MAX_SIZE: f64 = 100_000.0;
+
+/// Limite del valore assoluto di ogni coordinata di un layout.
+const LAYOUT_MAX_COORD: f64 = 100_000.0;
+
+/// Limite superiore di `unit` e `doubleGap` (il minimo è 0).
+const LAYOUT_MAX_SPACING: f64 = 1000.0;
+
 /// Un layout deve avere `width`/`height` positivi, voci ben formate (come `isMapLayout` del
-/// client) e coprire ogni città (posizione ed etichetta) e ogni rotta della mappa; le voci
-/// in più sono ammesse.
+/// client) con numeri finiti entro i limiti `LAYOUT_MAX_*`, e coprire ogni città (posizione
+/// ed etichetta) e ogni rotta della mappa; le voci in più sono ammesse.
 fn validate_layout(map: &MapData, layout: &serde_json::Value) -> Result<(), String> {
     use serde_json::Value;
 
     let is_number = |v: Option<&Value>| v.is_some_and(Value::is_number);
+    let is_coord = |v: Option<&Value>| {
+        v.and_then(Value::as_f64)
+            .is_some_and(|n| n.is_finite() && n.abs() <= LAYOUT_MAX_COORD)
+    };
     let obj = layout.as_object().ok_or("non è un oggetto")?;
     for key in ["width", "height"] {
         if !obj
             .get(key)
             .and_then(Value::as_f64)
-            .is_some_and(|n| n > 0.0)
+            .is_some_and(|n| n > 0.0 && n <= LAYOUT_MAX_SIZE)
         {
-            return Err(format!("'{key}' mancante o non positivo"));
+            return Err(format!(
+                "'{key}' mancante o fuori da (0, {LAYOUT_MAX_SIZE}]"
+            ));
         }
     }
     for key in ["unit", "doubleGap"] {
-        if obj.get(key).is_some_and(|v| !v.is_number()) {
-            return Err(format!("'{key}' non numerico"));
+        if let Some(v) = obj.get(key)
+            && !v
+                .as_f64()
+                .is_some_and(|n| (0.0..=LAYOUT_MAX_SPACING).contains(&n))
+        {
+            return Err(format!(
+                "'{key}' non numerico o fuori da [0, {LAYOUT_MAX_SPACING}]"
+            ));
         }
     }
     if let Some(font) = obj.get("font") {
@@ -245,8 +269,10 @@ fn validate_layout(map: &MapData, layout: &serde_json::Value) -> Result<(), Stri
     let routes = section("routes")?;
 
     for (id, p) in cities {
-        if !(is_number(p.get("x")) && is_number(p.get("y"))) {
-            return Err(format!("città '{id}' senza posizione {{x, y}}"));
+        if !(is_coord(p.get("x")) && is_coord(p.get("y"))) {
+            return Err(format!(
+                "città '{id}' senza posizione {{x, y}} entro ±{LAYOUT_MAX_COORD}"
+            ));
         }
     }
     for (id, l) in labels {
@@ -254,7 +280,7 @@ fn validate_layout(map: &MapData, layout: &serde_json::Value) -> Result<(), Stri
             l.get("anchor").and_then(Value::as_str),
             Some("start" | "middle" | "end")
         );
-        if !(is_number(l.get("dx")) && is_number(l.get("dy")) && anchor_ok) {
+        if !(is_coord(l.get("dx")) && is_coord(l.get("dy")) && anchor_ok) {
             return Err(format!(
                 "città '{id}' con etichetta {{dx, dy, anchor}} non valida"
             ));
@@ -265,11 +291,13 @@ fn validate_layout(map: &MapData, layout: &serde_json::Value) -> Result<(), Stri
             (2..=3).contains(&pts.len())
                 && pts.iter().all(|p| {
                     p.as_array()
-                        .is_some_and(|xy| xy.len() == 2 && xy.iter().all(Value::is_number))
+                        .is_some_and(|xy| xy.len() == 2 && xy.iter().all(|v| is_coord(Some(v))))
                 })
         });
         if !ok {
-            return Err(format!("rotta '{id}' senza 2 o 3 punti [x, y]"));
+            return Err(format!(
+                "rotta '{id}' senza 2 o 3 punti [x, y] entro ±{LAYOUT_MAX_COORD}"
+            ));
         }
     }
 
@@ -283,7 +311,7 @@ fn validate_layout(map: &MapData, layout: &serde_json::Value) -> Result<(), Stri
     }
     for route in &map.routes {
         if !routes.contains_key(&route.id) {
-            return Err(format!("rotta '{}' senza 2 o 3 punti [x, y]", route.id));
+            return Err(format!("rotta '{}' assente dal layout", route.id));
         }
     }
     Ok(())
@@ -332,7 +360,11 @@ mod tests {
     fn layout_missing_or_degenerate_route_is_rejected() {
         let mut l = layout();
         l["routes"].as_object_mut().unwrap().remove("a-b");
-        assert!(validate_layout(&map(), &l).unwrap_err().contains("'a-b'"));
+        let err = validate_layout(&map(), &l).unwrap_err();
+        assert!(
+            err.contains("'a-b'") && err.contains("assente dal layout"),
+            "{err}"
+        );
 
         let mut l = layout();
         l["routes"]["a-b"] = json!([[1, 2]]);
@@ -341,6 +373,43 @@ mod tests {
         let mut l = layout();
         l["routes"]["a-b"] = json!([[1, 2], [2, 3], [3, 4], [4, 5]]);
         assert!(validate_layout(&map(), &l).unwrap_err().contains("'a-b'"));
+    }
+
+    #[test]
+    fn layout_with_huge_coordinates_is_rejected() {
+        let huge = json!(1e9);
+        let mut cases = Vec::new();
+        for key in ["width", "height"] {
+            let mut l = layout();
+            l[key] = huge.clone();
+            cases.push((l, key));
+        }
+        let mut l = layout();
+        l["cities"]["a"]["x"] = huge.clone();
+        cases.push((l, "'a'"));
+        let mut l = layout();
+        l["labels"]["b"]["dy"] = huge.clone();
+        cases.push((l, "'b'"));
+        let mut l = layout();
+        l["routes"]["a-b"] = json!([[1, 2], [3, -1e9]]);
+        cases.push((l, "'a-b'"));
+        for key in ["unit", "doubleGap"] {
+            for bad in [json!(-1), json!(1001)] {
+                let mut l = layout();
+                l[key] = bad;
+                cases.push((l, key));
+            }
+        }
+        for (l, needle) in cases {
+            let err = validate_layout(&map(), &l).unwrap_err();
+            assert!(err.contains(needle), "{needle}: {err}");
+        }
+
+        let mut l = layout();
+        l["unit"] = json!(0);
+        l["doubleGap"] = json!(1000);
+        l["cities"]["a"]["x"] = json!(-100_000);
+        assert_eq!(validate_layout(&map(), &l), Ok(()));
     }
 
     #[test]

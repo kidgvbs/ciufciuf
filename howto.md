@@ -32,6 +32,7 @@ cargo build --release
 | `--client-dist` | `../client/dist` | File statici del client |
 | `--resume <file>` | | Riprende una partita da un save |
 | `--allow-client-seed` | spento | Permette `seed` in `POST /api/games` (test, partite riproducibili) |
+| `--deleted-saves-retention-days <N>` | 30 | Giorni dopo i quali all'avvio cancella i `*.deleted-*.bak`; `0` = mai |
 
 Valori sbagliati o mancanti = errore e uscita ≠ 0. `--help` elenca tutto.
 Log: `RUST_LOG=info` (o `debug`) per vedere di più.
@@ -72,8 +73,8 @@ Cose da ricordare:
 | File | Contenuto |
 |---|---|
 | `<id>.json` | Save di una partita **in corso**: seed, log delle azioni, per ogni giocatore solo l'hash SHA-256 del token |
-| `<id>.resume-<timestamp>.bak` | Copia del save a ogni resume. Mai ruotati: li cancello a mano |
-| `<id>.deleted-<timestamp>.bak` | Save eliminato dalla TV. Per recuperarlo lo rinomino in `<id>.json` |
+| `<id>.resume-<timestamp>.bak` | Copia del save a ogni resume, senza duplicare se l'ultima è identica. Ne restano al massimo 5 per partita (i più vecchi vengono cancellati) |
+| `<id>.deleted-<timestamp>.bak` | Save eliminato dalla TV. Per recuperarlo lo rinomino in `<id>.json`. All'avvio il server cancella quelli più vecchi di `--deleted-saves-retention-days` (30 giorni) |
 | `profiles.json` | Profili (max 200). Se illeggibile viene spostato in `profiles.json.corrupt-<unix>`, mai sovrascritto |
 | `results.jsonl` | Una riga per partita conclusa (nome, totale, vincitore). Una partita compare una volta sola |
 

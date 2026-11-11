@@ -205,7 +205,7 @@ struct CreateGameResponse {
     max_players: u32,
 }
 
-const MAX_GAME_NAME_CHARS: usize = 40;
+pub(crate) const MAX_GAME_NAME_CHARS: usize = 40;
 
 const DEFAULT_GAME_NAME: &str = "Partita";
 

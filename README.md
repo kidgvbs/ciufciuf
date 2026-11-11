@@ -51,7 +51,7 @@ Limiti e durate:
 
 - **Nomi:** giocatori e partite sono normalizzati in NFKC (massimo 24 caratteri) e le sequenze di spazi diventano uno spazio solo. Sono rifiutati con `INVALID_NAME` i caratteri di controllo, invisibili o "vuoti" (zero-width, bidi, Hangul filler, braille blank, variation selector), i segni combinanti iniziali o più di 2 di fila e le parole che mescolano alfabeti (quindi anche "Ωmega", "서울Seoul" e il persiano con ZWNJ). Gli emoji sono ammessi: `U+FE0F` solo dopo un emoji e `U+200D` solo tra due emoji ("Anna ❤️", sequenze di famiglia), altrove sono rifiutati. Sono rifiutati anche i keycap (`#️⃣`) e le bandiere con tag (🏴 dell'Inghilterra). Due nomi con lo stesso aspetto hanno la stessa chiave (skeleton confusabile UTS #39, minuscolo) e il secondo riceve `NAME_TAKEN`: oltre a "А" cirillica e "A" latina, sono lo stesso nome anche "Tim"/"Tirn", "Leo"/"Le0" e "Player1"/"Playerl", e in classifica finiscono in una riga sola.
 - **Seed:** il seed di ogni partita è di 64 bit da un generatore crittografico e finisce solo nel save, mai nelle API o nei messaggi WebSocket. `POST /api/games` con un `seed` risponde `400 SEED_NOT_ALLOWED`, salvo che il server sia avviato con `--allow-client-seed` (test e partite riproducibili: con il seed si ricostruiscono le mani di tutti).
-- **Lobby inattiva:** una lobby non avviata senza join, start o connessioni di giocatori per 30 minuti sparisce; senza giocatori bastano 5 minuti, anche con spettatori collegati.
+- **Lobby inattiva:** una lobby non avviata senza join, start o connessioni di giocatori per 30 minuti sparisce; senza giocatori bastano 5 minuti, anche con spettatori collegati. Vale anche per una partita ripresa da un save finché nessun giocatore è rientrato.
 - **Partita abbandonata:** una partita avviata senza connessioni per 6 ore sparisce dall'elenco, ma il suo save resta su disco e si può riprendere dalla TV ("Partite salvate") o con `--resume`.
 - **Partite attive:** al massimo 20, e le partite concluse non contano; oltre, la creazione risponde `429 TOO_MANY_GAMES`. Al massimo 8 spettatori WebSocket per partita. L'host chiude una partita con `DELETE /api/games/<id>` e `{"hostToken"}` (204, oppure 401): un save su disco resta dov'è.
 - **WebSocket:** messaggi oltre 16 KiB chiudono la connessione; un client che non legge viene scollegato e, riconnettendosi, riceve lo stato aggiornato. Il server manda un ping ogni 15 secondi e scollega chi tace per 45; la scrittura su un socket che non assorbe dati scade dopo 10 secondi. Ogni giocatore ha al massimo 4 connessioni: la quinta chiude la più vecchia.
@@ -67,6 +67,7 @@ Limiti e durate:
 | `--client-dist` | `../client/dist` | Il default vale solo se si parte da una sottocartella: dalla radice va passato `./client/dist` |
 | `--resume <file>` | | Ripristina una partita salvata |
 | `--allow-client-seed` | spento | Ammette il seed scelto dal client in `POST /api/games` |
+| `--deleted-saves-retention-days <N>` | 30 | Giorni di conservazione dei `*.deleted-*.bak` prima della rimozione all'avvio; `0` la disattiva |
 
 `--help` elenca le opzioni; un valore non valido, un valore mancante o un'opzione sconosciuta fanno terminare il server con un errore. Su SIGINT/SIGTERM il server smette di accettare creazioni, join e WebSocket (503), ferma le partite, attende le scritture in coda e chiude entro 15 secondi; un secondo segnale esce subito (codice 130) e i save in coda potrebbero non essere su disco.
 
@@ -91,7 +92,7 @@ curl -X POST http://localhost:8080/api/games/<id>/reassign -H 'content-type: app
 curl -X POST http://localhost:8080/api/games/<id>/start -H 'content-type: application/json' -d '{"hostToken":"<token>"}'
 ```
 
-A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>.bak`. I backup non vengono mai ruotati né sovrascritti, e si possono cancellare a mano quando non servono più.
+A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>.bak`, senza mai sovrascrivere un backup esistente. Se il backup più recente è già identico al save non ne viene creato un altro, e per ogni partita ne restano al massimo 5 (i più vecchi sono eliminati). I `saves/<id>.deleted-<timestamp>.bak` più vecchi di `--deleted-saves-retention-days` giorni (30 di default, calcolati dal timestamp nel nome; `0` disattiva la rimozione) sono eliminati all'avvio del server.
 
 ## Da sapere
 
@@ -161,7 +162,7 @@ bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server 
 
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
-1. Rotazione dei backup `.bak`; elenco dei ruleset dal server (oggi `rulesets.ts` è statico nel client)
+1. Elenco dei ruleset dal server (oggi `rulesets.ts` è statico nel client)
 2. Pulizia motore (colori e rotte gemelle risolti al caricamento) e polish TV/telefono
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR (USA ed Europe).

@@ -373,3 +373,70 @@ async fn concurrent_delete_and_resume_never_both_win() {
         }
     }
 }
+
+/// Un symlink `{uuid}.json` non è elencato né riprendibile, anche se punta a un save valido.
+#[cfg(unix)]
+#[tokio::test]
+async fn list_saves_skips_symlinks() {
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Reale").await;
+    let linked = clone_save(&server, &g.game_id, |_| {});
+
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("save.json");
+    std::fs::copy(save_path(&server, &linked), &target).unwrap();
+    std::fs::remove_file(save_path(&server, &linked)).unwrap();
+    std::os::unix::fs::symlink(&target, save_path(&server, &linked)).unwrap();
+
+    assert_eq!(
+        listed_ids(&listed_saves(&server).await),
+        [g.game_id.as_str()]
+    );
+    let res = resume(&server, &linked).await;
+    assert_error(&res, 404, "SAVE_NOT_FOUND");
+}
+
+/// Un save oltre 16 MiB non è elencato e il resume lo rifiuta senza leggerlo.
+#[tokio::test]
+async fn list_saves_skips_oversized_files() {
+    use std::io::Write;
+
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Normale").await;
+    let big = clone_save(&server, &g.game_id, |_| {});
+    // Spazi finali: il JSON resta valido, quindi solo la dimensione lo esclude.
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(save_path(&server, &big))
+        .unwrap();
+    file.write_all(&vec![b' '; 16 * 1024 * 1024 + 1]).unwrap();
+    drop(file);
+
+    assert_eq!(
+        listed_ids(&listed_saves(&server).await),
+        [g.game_id.as_str()]
+    );
+    let res = resume(&server, &big).await;
+    assert_error(&res, 409, "SAVE_NOT_RESUMABLE");
+    assert!(save_path(&server, &big).exists());
+}
+
+/// Nome partita e nomi dei giocatori di un save manomesso sono troncati nell'elenco.
+#[tokio::test]
+async fn list_saves_truncates_long_names() {
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Normale").await;
+    clone_save(&server, &g.game_id, |s| {
+        s["gameName"] = "é".repeat(100).into();
+        s["players"][0]["name"] = "ü".repeat(60).into();
+    });
+
+    let saves = listed_saves(&server).await;
+    let long = saves
+        .iter()
+        .find(|s| s["gameId"] != g.game_id.as_str())
+        .expect("save clonato elencato");
+    assert_eq!(long["name"], "é".repeat(40));
+    assert_eq!(long["players"][0], "ü".repeat(24));
+    assert_eq!(long["players"][1], "Bob");
+}

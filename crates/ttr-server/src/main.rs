@@ -10,11 +10,14 @@ use clap::Parser;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
-use ttr_server::save::archive_completed_saves;
+use ttr_server::save::{archive_completed_saves, prune_deleted_saves};
 use ttr_server::{AppState, build_router, resume_game, shutdown_sessions};
 
 /// Attesa massima per le scritture in coda alla chiusura.
 const SHUTDOWN_FLUSH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Secondi in un giorno, per `--deleted-saves-retention-days`.
+const SECS_PER_DAY: u64 = 24 * 60 * 60;
 
 /// Tempo massimo tra il primo segnale e l'uscita del server, connessioni
 /// ancora aperte comprese.
@@ -52,6 +55,11 @@ struct Args {
     /// partite riproducibili: con il seed si ricostruiscono le mani).
     #[arg(long)]
     allow_client_seed: bool,
+
+    /// Giorni di conservazione dei save eliminati (`*.deleted-*.bak`) prima della
+    /// rimozione all'avvio; 0 disattiva la rimozione.
+    #[arg(long, value_name = "N", default_value_t = 30)]
+    deleted_saves_retention_days: u64,
 }
 
 /// Completa all'arrivo di SIGINT o SIGTERM.
@@ -130,6 +138,17 @@ async fn main() {
     let archived = archive_completed_saves(&state);
     if archived > 0 {
         info!("{archived} save conclusi archiviati in classifica all'avvio");
+    }
+
+    if args.deleted_saves_retention_days > 0 {
+        let retention = Duration::from_secs(
+            args.deleted_saves_retention_days
+                .saturating_mul(SECS_PER_DAY),
+        );
+        let pruned = prune_deleted_saves(&args.saves_dir, retention);
+        if pruned > 0 {
+            info!("{pruned} save eliminati scaduti rimossi all'avvio");
+        }
     }
 
     let router = build_router(state.clone(), args.client_dist);

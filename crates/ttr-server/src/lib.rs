@@ -234,7 +234,27 @@ fn prepare_resume(
 ) -> Result<PreparedResume, ResumeError> {
     use ResumeError::NotResumable;
 
-    if !save_path.is_file() {
+    if expected_id.is_some() {
+        // REST: il file arriva dalla cartella dei save, quindi niente symlink né file enormi.
+        match save::check_save_file(save_path) {
+            Ok(save::SaveFileCheck::Ok) => {}
+            Ok(save::SaveFileCheck::NotRegular) => return Err(ResumeError::NotFound),
+            Ok(save::SaveFileCheck::TooLarge(size)) => {
+                tracing::warn!(path = %save_path.display(), size, "save troppo grande: resume rifiutato");
+                return Err(NotResumable(
+                    "il save supera la dimensione massima".to_string(),
+                ));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Err(ResumeError::NotFound);
+            }
+            Err(e) => {
+                return Err(ResumeError::Unreadable(format!(
+                    "lettura {save_path:?}: {e}"
+                )));
+            }
+        }
+    } else if !save_path.is_file() {
         return Err(ResumeError::NotFound);
     }
     let save = save::read_save(save_path).map_err(ResumeError::Unreadable)?;

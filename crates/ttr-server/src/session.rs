@@ -47,7 +47,8 @@ pub(crate) const MAX_PLAYER_NAME_CHARS: usize = 24;
 pub struct SessionLimits {
     /// Vita massima di una lobby inattiva.
     pub lobby_idle_ttl: Duration,
-    /// Vita massima di una lobby senza giocatori.
+    /// Vita massima di una lobby senza giocatori, compresa una ripresa da save finché
+    /// nessuno rientra.
     pub empty_lobby_ttl: Duration,
     /// Vita massima di una partita avviata senza connessioni.
     pub abandoned_ttl: Duration,
@@ -406,7 +407,7 @@ impl GameSession {
             return Some(t + self.limits.game_over_linger);
         }
         if !self.started {
-            let ttl = if self.players.is_empty() && self.saved_roster.is_empty() {
+            let ttl = if self.players.is_empty() {
                 self.limits.empty_lobby_ttl.min(self.limits.lobby_idle_ttl)
             } else {
                 self.limits.lobby_idle_ttl
@@ -1484,5 +1485,33 @@ mod tests {
         assert!(!task.is_finished());
         elapse(Duration::from_millis(200)).await;
         assert!(task.is_finished());
+    }
+
+    #[test]
+    fn resumed_lobby_without_players_uses_empty_ttl() {
+        let mut session = lobby_session();
+        session.limits = ttl_limits();
+        session.saved_roster.insert(
+            "anna".into(),
+            SavedEntry {
+                id: "p1".into(),
+                engine_index: 0,
+                color: PlayerColor::Red,
+                name: "Anna".into(),
+                token_hash: None,
+            },
+        );
+        assert_eq!(
+            session.deadline(),
+            Some(session.last_activity + Duration::from_secs(1))
+        );
+
+        let entry = session.saved_roster["anna"].clone();
+        session.add_resumed_player(entry, "tok".into());
+        assert_eq!(
+            session.deadline(),
+            Some(session.last_activity + Duration::from_secs(10)),
+            "con un giocatore rientrato vale il TTL della lobby inattiva"
+        );
     }
 }
