@@ -161,10 +161,17 @@ export interface StoredIdentity {
   name?: string;
 }
 
-/** Salva l'identità sotto la chiave della sua partita e la ricorda come ultima usata. */
-export function saveIdentity(identity: StoredIdentity, now: number = Date.now()): void {
+/**
+ * Salva l'identità sotto la chiave della sua partita; con `remember` (default) la ricorda anche
+ * come ultima usata, cioè la partita a cui ci si riconnette in automatico.
+ */
+export function saveIdentity(
+  identity: StoredIdentity,
+  now: number = Date.now(),
+  remember: boolean = true,
+): void {
   writeStorage(IDENTITY_PREFIX + identity.gameId, JSON.stringify({ ...identity, savedAt: now }));
-  writeStorage(LAST_IDENTITY_KEY, identity.gameId);
+  if (remember) writeStorage(LAST_IDENTITY_KEY, identity.gameId);
 }
 
 /**

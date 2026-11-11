@@ -101,8 +101,8 @@
     }
   });
 
-  // La richiesta non viene mai abortita: se è lenta lo diciamo; "Annulla" la abbandona e il suo
-  // esito tardivo viene ignorato. Altrimenti, se riesce, si prosegue.
+  // La richiesta non viene mai abortita: se è lenta lo diciamo; "Annulla" la abbandona e la UI
+  // ignora l'esito tardivo (l'identità di un join riuscito resta salvata). Altrimenti si prosegue.
   function cancelJoin() {
     joinFlow?.cancel();
     joinFlow = null;

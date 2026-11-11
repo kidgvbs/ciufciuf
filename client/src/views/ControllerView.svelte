@@ -19,6 +19,7 @@
     savePlayerName,
   } from '../lib/lobby';
   import { gameMap } from '../lib/game-map.svelte.ts';
+  import { joinWithSavedIdentity } from '../lib/join-flow';
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
   import { currentHostEnv } from '../lib/server-host';
   import { parseRejoinHash } from '../lib/rejoin';
@@ -180,7 +181,8 @@
 
   // ── Join ───────────────────────────────────────────────────────
   // Al resume il server richiede il token originale: lo inviamo se abbiamo un'identità
-  // salvata per la stessa partita.
+  // salvata per la stessa partita. Un join riuscito dopo "Annulla" viene salvato senza
+  // cambiare vista (vedi `joinWithSavedIdentity`).
   async function onJoin(
     name: string,
     gid: string,
@@ -188,10 +190,16 @@
     isCancelled: () => boolean,
   ) {
     notice = '';
-    const saved = loadIdentity(gid);
-    const result = await lobby.joinGame(gid, name, color, saved?.token);
-    // "Annulla" premuto durante un join lento: l'esito tardivo viene ignorato.
-    if (isCancelled()) return;
+    const result = await joinWithSavedIdentity({
+      gameId: gid,
+      host,
+      name,
+      isCancelled,
+      post: (savedToken) => lobby.joinGame(gid, name, color, savedToken),
+      loadIdentity,
+      saveIdentity,
+    });
+    if (!result) return;
     gameId = gid;
     playerId = result.playerId;
     token = result.token;

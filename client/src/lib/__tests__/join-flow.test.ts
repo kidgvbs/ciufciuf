@@ -3,7 +3,9 @@ import {
   createJoinFlow,
   JOIN_TIMEOUT_MS,
   NAME_ALREADY_JOINED_MESSAGE,
+  joinWithSavedIdentity,
 } from '../join-flow';
+import { LobbyError, type StoredIdentity } from '../lobby';
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -137,5 +139,92 @@ describe('createJoinFlow', () => {
     expect(await flow.run()).toBe(false);
     expect(registeredNames).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith('Nome già in uso');
+  });
+});
+
+describe('joinWithSavedIdentity', () => {
+  it('late_success_after_cancel_saves_identity', async () => {
+    const store = new Map<string, StoredIdentity>();
+    const remembered: boolean[] = [];
+    const loadIdentity = (gameId: string) => store.get(gameId) ?? null;
+    const saveIdentity = (identity: StoredIdentity, _now: number, remember: boolean) => {
+      store.set(identity.gameId, identity);
+      remembered.push(remember);
+    };
+    const tokens: (string | undefined)[] = [];
+    let applied = 0;
+    const onError = vi.fn();
+
+    // Primo tentativo: la POST riesce solo dopo "Annulla".
+    const flow = createJoinFlow({
+      attempt: async (isCancelled) => {
+        const result = await joinWithSavedIdentity({
+          gameId: 'g1',
+          host: 'http://h:1',
+          name: 'Anna',
+          isCancelled,
+          post: (token) => {
+            tokens.push(token);
+            return new Promise((resolve) =>
+              setTimeout(() => resolve({ playerId: 'p1', token: 'tok1' }), JOIN_TIMEOUT_MS + 5_000),
+            );
+          },
+          loadIdentity,
+          saveIdentity,
+        });
+        if (result) applied++;
+      },
+      registeredNames: async () => [],
+      name: 'Anna',
+      onSlow: vi.fn(),
+      onError,
+    });
+    const first = flow.run();
+    await vi.advanceTimersByTimeAsync(JOIN_TIMEOUT_MS);
+    flow.cancel();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await first).toBe(false);
+    expect(applied).toBe(0);
+    expect(onError).not.toHaveBeenCalled();
+    expect(store.get('g1')).toMatchObject({
+      playerId: 'p1',
+      token: 'tok1',
+      gameId: 'g1',
+      host: 'http://h:1',
+      name: 'Anna',
+    });
+    // Non diventa l'ultima partita: niente riconnessione automatica.
+    expect(remembered).toEqual([false]);
+
+    // Secondo tentativo con lo stesso nome (maiuscole/spazi diversi): il server risponde
+    // NAME_TAKEN, si riusa il token salvato.
+    const second = await joinWithSavedIdentity({
+      gameId: 'g1',
+      host: 'http://h:1',
+      name: 'anna ',
+      isCancelled: () => false,
+      post: async (token) => {
+        tokens.push(token);
+        throw new LobbyError(409, 'Nome già in uso', 'NAME_TAKEN');
+      },
+      loadIdentity,
+      saveIdentity,
+    });
+    expect(tokens).toEqual([undefined, 'tok1']);
+    expect(second).toEqual({ playerId: 'p1', token: 'tok1' });
+
+    // Un nome diverso non riusa l'identità salvata.
+    const other = joinWithSavedIdentity({
+      gameId: 'g1',
+      host: 'http://h:1',
+      name: 'Bruno',
+      isCancelled: () => false,
+      post: async () => {
+        throw new LobbyError(409, 'Nome già in uso', 'NAME_TAKEN');
+      },
+      loadIdentity,
+      saveIdentity,
+    });
+    await expect(other).rejects.toBeInstanceOf(LobbyError);
   });
 });
