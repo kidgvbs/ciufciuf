@@ -70,6 +70,18 @@ async fn spa_fallback_serves_index() {
         .expect("GET /api/lan");
     assert_eq!(resp.status(), 200, "GET /api/lan deve tornare 200");
 
+    // Un percorso `/api` sconosciuto non cade nel fallback SPA.
+    let resp = client
+        .get(format!("{}/api/nope", server.base_url))
+        .send()
+        .await
+        .expect("GET /api/nope");
+    assert_eq!(resp.status(), 404, "GET /api/nope deve tornare 404");
+    assert!(
+        !resp.text().await.expect("body /api/nope").contains(marker),
+        "GET /api/nope non serve index.html"
+    );
+
     let _ = std::fs::remove_dir_all(&dist);
 }
 

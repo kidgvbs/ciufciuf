@@ -548,6 +548,36 @@ async fn ruleset_map_endpoint_serves_the_map_document() {
     assert_eq!(body["error"], "RULESET_NOT_FOUND");
 }
 
+/// I percorsi `/api` sconosciuti (anche con slash finale) rispondono 404 JSON, non l'HTML della SPA.
+#[tokio::test]
+async fn unknown_api_route_is_json_404() {
+    let server = TestServer::start().await;
+    for path in [
+        "/api/nope",
+        "/api/rulesets/usa_v2/map/",
+        "/api/rulesets/%2e%2e/map",
+        "/api",
+        "/api/",
+    ] {
+        let resp = reqwest::get(format!("{}{}", server.base_url, path))
+            .await
+            .unwrap_or_else(|e| panic!("GET {path}: {e}"));
+        assert_eq!(resp.status(), 404, "{path}");
+        let content_type = resp
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            content_type.starts_with("application/json"),
+            "{path}: {content_type}"
+        );
+        let body: serde_json::Value = resp.json().await.expect("corpo JSON");
+        assert_eq!(body["error"], "NOT_FOUND", "{path}: {body}");
+    }
+}
+
 // ── Seed ─────────────────────────────────────────────────────────────
 
 /// Il seed di default viene da un CSPRNG: due partite nello stesso secondo

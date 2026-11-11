@@ -124,6 +124,7 @@ Note:
 - `color` è uno tra `Red`, `Blue`, `Green`, `Yellow`, `Black`; se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
 - `seed` senza `--allow-client-seed` → `400 SEED_NOT_ALLOWED`. Il seed di default è a 64 bit da un CSPRNG, finisce solo nel save e mai nelle API: con il seed si ricostruiscono le mani di tutti.
 - `DELETE` senza body → `401 UNAUTHORIZED`; body malformato → `400`.
+- Un percorso `/api/*` inesistente (anche con lo slash finale) → `404 {"error":"NOT_FOUND","detail":"Endpoint inesistente."}`, mai la pagina della SPA.
 - Su `join` in modalità resume `token` è obbligatorio.
 
 ### Codici d'errore
@@ -132,6 +133,7 @@ Note:
 |---|---|---|
 | `GAME_NOT_FOUND` | 404 | id inesistente o partita già chiusa |
 | `RULESET_NOT_FOUND` | 404 | ruleset inesistente |
+| `NOT_FOUND` | 404 | endpoint `/api/*` inesistente |
 | `GAME_FULL`, `GAME_STARTED`, `ROSTER_INCOMPLETE`, `COLOR_TAKEN`, `NAME_TAKEN`, `NAME_NOT_IN_SAVE` | 409 | conflitti di lobby |
 | `UNAUTHORIZED`, `RESUME_TOKEN_MISMATCH` | 401 | `hostToken` o token sbagliato |
 | `INVALID_NAME`, `BAD_REQUEST`, `MIN_PLAYERS`, `SEED_NOT_ALLOWED` | 400 | input non valido, meno di 2 giocatori allo start |

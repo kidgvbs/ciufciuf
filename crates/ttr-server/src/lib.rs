@@ -53,7 +53,7 @@ pub(crate) fn spawn_session(
 /// Se `client_dist` esiste come directory, vi serve i file statici del client
 /// con fallback SPA a `index.html` per le rotte `/` e `/controller`.
 pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
-    use axum::routing::{get, post};
+    use axum::routing::{any, get, post};
 
     let api_router = Router::new()
         .route("/api/lan", get(lobby::lan_info))
@@ -72,7 +72,11 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
         .route("/api/rulesets/{id}/map", get(lobby::ruleset_map))
         .route("/api/standings", get(lobby::standings))
         .route("/api/profiles", get(lobby::list_profiles))
-        .route("/ws/{game_id}", get(ws::ws_handler));
+        .route("/ws/{game_id}", get(ws::ws_handler))
+        // I percorsi `/api` senza endpoint rispondono 404 JSON invece di cadere nel fallback SPA.
+        .route("/api", any(lobby::api_not_found))
+        .route("/api/", any(lobby::api_not_found))
+        .route("/api/{*rest}", any(lobby::api_not_found));
 
     // Statici del client con fallback SPA.
     if client_dist.exists() {

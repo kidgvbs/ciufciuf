@@ -287,6 +287,10 @@ export class LobbyError extends Error {
 
 // ── Client REST ──────────────────────────────────────────────────────
 
+/** Tempo massimo per caricare la mappa. */
+export const MAP_FETCH_TIMEOUT_MS = 10_000;
+export const MAP_TIMEOUT_MESSAGE = 'Timeout caricamento mappa';
+
 export class LobbyClient {
   private baseUrl: string;
 
@@ -299,6 +303,7 @@ export class LobbyClient {
     method: string,
     path: string,
     body?: unknown,
+    signal?: AbortSignal,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const init: RequestInit = {
@@ -308,6 +313,7 @@ export class LobbyClient {
     if (body !== undefined) {
       init.body = JSON.stringify(body);
     }
+    if (signal) init.signal = signal;
     const resp = await fetch(url, init);
     if (!resp.ok) {
       let code: string | null = null;
@@ -328,6 +334,9 @@ export class LobbyClient {
       throw new LobbyError(resp.status, message, code);
     }
     if (resp.status === 204) return undefined as T;
+    if (!/^application\/(?:[\w.+-]+\+)?json\b/i.test(resp.headers.get('content-type') ?? '')) {
+      throw new LobbyError(resp.status, 'Risposta inattesa dal server');
+    }
     return resp.json() as Promise<T>;
   }
 
@@ -351,9 +360,28 @@ export class LobbyClient {
     return data.profiles;
   }
 
-  // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader)
+  // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader).
+  // Chiude con un errore leggibile se il server non risponde entro `MAP_FETCH_TIMEOUT_MS`.
   async getRulesetMap(rulesetId: string): Promise<unknown> {
-    return this.request<unknown>('GET', `/api/rulesets/${encodeURIComponent(rulesetId)}/map`);
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, MAP_FETCH_TIMEOUT_MS);
+    try {
+      return await this.request<unknown>(
+        'GET',
+        `/api/rulesets/${encodeURIComponent(rulesetId)}/map`,
+        undefined,
+        controller.signal,
+      );
+    } catch (e) {
+      if (timedOut) throw new Error(MAP_TIMEOUT_MESSAGE);
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   // POST /api/games

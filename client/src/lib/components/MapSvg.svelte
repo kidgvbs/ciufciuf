@@ -1,6 +1,7 @@
 <script lang="ts">
   // Mappa della partita: carica i dati dal server (store `gameMap`) e mostra `MapBoard`
   // quando sono pronti; nel frattempo mostra "Caricamento…" o l'errore con "Riprova".
+  // Un errore di rendering di `MapBoard` mostra "Mappa non disponibile" con "Riprova".
 
   import { gameMap } from '../game-map.svelte.ts';
   import MapBoard from './MapBoard.svelte';
@@ -18,7 +19,21 @@
 
 {#if data}
   {#key data}
-    <MapBoard {...props} mapData={data} />
+    <svelte:boundary>
+      <MapBoard {...props} mapData={data} />
+      {#snippet failed(_error, reset)}
+        <div class="map-status" role="alert">
+          <p>Mappa non disponibile</p>
+          <button
+            class="btn"
+            onclick={() => {
+              reset();
+              gameMap.retry();
+            }}>Riprova</button
+          >
+        </div>
+      {/snippet}
+    </svelte:boundary>
   {/key}
 {:else}
   <div class="map-status" role="status">

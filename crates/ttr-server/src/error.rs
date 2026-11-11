@@ -12,6 +12,8 @@ pub enum LobbyError {
     GameNotFound,
     #[error("Ruleset non trovato.")]
     RulesetNotFound,
+    #[error("Endpoint inesistente.")]
+    EndpointNotFound,
     #[error("L'attore della partita è terminato.")]
     GameActorGone,
     #[error("La partita è al completo.")]
@@ -53,6 +55,7 @@ impl LobbyError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::GameNotFound | Self::GameActorGone => "GAME_NOT_FOUND",
+            Self::EndpointNotFound => "NOT_FOUND",
             Self::RulesetNotFound => "RULESET_NOT_FOUND",
             Self::GameFull => "GAME_FULL",
             Self::GameStarted => "GAME_STARTED",
@@ -75,9 +78,10 @@ impl LobbyError {
     /// Status HTTP associato.
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::GameNotFound | Self::GameActorGone | Self::RulesetNotFound => {
-                StatusCode::NOT_FOUND
-            }
+            Self::GameNotFound
+            | Self::GameActorGone
+            | Self::RulesetNotFound
+            | Self::EndpointNotFound => StatusCode::NOT_FOUND,
             Self::GameFull
             | Self::GameStarted
             | Self::RosterIncomplete

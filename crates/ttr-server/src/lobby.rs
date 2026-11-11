@@ -47,6 +47,11 @@ fn error_response(e: LobbyError) -> axum::response::Response {
     (status, Json(ErrorResponse::from(e))).into_response()
 }
 
+/// Risposta 404 JSON per ogni percorso `/api` senza endpoint.
+pub async fn api_not_found() -> axum::response::Response {
+    error_response(LobbyError::EndpointNotFound)
+}
+
 // ── /api/rulesets/{id}/map ─────────────────────────────────────────
 
 /// GET /api/rulesets/{id}/map — il documento JSON della mappa del ruleset
