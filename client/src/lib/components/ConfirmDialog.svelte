@@ -1,6 +1,8 @@
 <script lang="ts">
   // Dialog di conferma modale (sostituisce `window.confirm`).
 
+  import { createOverlayDismiss } from '../overlay-dismiss';
+
   let { title, message, confirmLabel = 'Conferma', cancelLabel = 'Annulla', onConfirm, onCancel }: {
     title: string;
     message: string;
@@ -9,6 +11,8 @@
     onConfirm: () => void;
     onCancel: () => void;
   } = $props();
+
+  const overlay = createOverlayDismiss(() => onCancel());
 
   const FOCUSABLE = 'button:not([disabled])';
 
@@ -46,7 +50,12 @@
   }
 </script>
 
-<div class="overlay" role="presentation" onclick={onCancel}>
+<div
+  class="overlay"
+  role="presentation"
+  onpointerdown={overlay.onpointerdown}
+  onclick={overlay.onclick}
+>
   <div
     class="dialog"
     role="alertdialog"

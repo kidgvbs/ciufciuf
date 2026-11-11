@@ -122,7 +122,7 @@ describe('loadRulesetMap', () => {
 
   it('un layout malformato è rifiutato', async () => {
     serve({ layout: { body: { ...LAYOUT, width: 'largo' } } });
-    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('layout non valida');
+    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('Layout della mappa non valido');
   });
 });
 
@@ -173,6 +173,31 @@ describe('isMapLayout', () => {
     expect(isMapLayout({ ...LAYOUT, routes: { r1: [[1, 2], [3, 'x']] } })).toBe(false);
     expect(isMapLayout({ ...LAYOUT, font: { family: 'x' } })).toBe(false);
     expect(isMapLayout({ ...LAYOUT, doubleGap: 'cinque' })).toBe(false);
+  });
+
+  it('layout_with_huge_values_is_rejected', () => {
+    const huge = 100_001;
+    expect(isMapLayout({ ...LAYOUT, width: huge })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, height: 1e308 })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, width: 100_000, height: 100_000 })).toBe(true);
+    expect(isMapLayout({ ...LAYOUT, cities: { a: { x: huge, y: 0 } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, cities: { a: { x: 0, y: -huge } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, cities: { a: { x: -100_000, y: 100_000 } } })).toBe(true);
+    expect(isMapLayout({ ...LAYOUT, cities: { a: { x: Infinity, y: 0 } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, labels: { a: { dx: huge, dy: 0, anchor: 'middle' } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, labels: { a: { dx: 0, dy: -huge, anchor: 'middle' } } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, routes: { r1: [[0, 0], [huge, 0]] } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, routes: { r1: [[0, 0], [0, 1], [0, -huge]] } })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, unit: 1001 })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, unit: -1 })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, doubleGap: 1001 })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, doubleGap: -1 })).toBe(false);
+    expect(isMapLayout({ ...LAYOUT, unit: 0, doubleGap: 1000 })).toBe(true);
+  });
+
+  it('un layout con valori enormi dal server dà «Layout della mappa non valido»', async () => {
+    serve({ layout: { body: { ...LAYOUT, width: 1e9 } } });
+    await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('Layout della mappa non valido');
   });
 });
 
@@ -380,7 +405,7 @@ describe('robustezza del caricamento', () => {
     await expect(loadRulesetMap('http://h', 'usa_v2')).rejects.toThrow('non valida');
   });
 
-  it('cache_is_cleared_on_reset', async () => {
+  it('home_remount_reuses_cached_map', async () => {
     serve();
     const tracker = createMapTracker(() => {});
     await loadRulesetMap('http://h', 'usa_v2');
@@ -388,9 +413,9 @@ describe('robustezza del caricamento', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     tracker.reset();
     await loadRulesetMap('http://h', 'usa_v2');
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     tracker.track(async () => bundle);
     await loadRulesetMap('http://h', 'usa_v2');
-    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 });

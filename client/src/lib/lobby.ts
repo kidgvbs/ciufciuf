@@ -317,6 +317,10 @@ export class LobbyError extends Error {
 export const MAP_FETCH_TIMEOUT_MS = 10_000;
 export const MAP_TIMEOUT_MESSAGE = 'Timeout caricamento mappa';
 
+/** Tempo massimo per elencare, riprendere o eliminare un salvataggio. */
+export const SAVES_FETCH_TIMEOUT_MS = 15_000;
+export const SAVES_TIMEOUT_MESSAGE = 'Il server non risponde';
+
 export class LobbyClient {
   private baseUrl: string;
 
@@ -386,19 +390,24 @@ export class LobbyClient {
     return data.profiles;
   }
 
-  // GET di una risorsa di mappa; chiude con un errore leggibile se il server non risponde entro
-  // `MAP_FETCH_TIMEOUT_MS`.
-  private async getWithMapTimeout(path: string): Promise<unknown> {
+  // Richiesta che si interrompe, con un `LobbyError` leggibile, se il server non risponde entro
+  // `timeoutMs`.
+  private async requestWithTimeout<T>(
+    method: string,
+    path: string,
+    timeoutMs: number,
+    timeoutMessage: string,
+  ): Promise<T> {
     const controller = new AbortController();
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, MAP_FETCH_TIMEOUT_MS);
+    }, timeoutMs);
     try {
-      return await this.request<unknown>('GET', path, undefined, controller.signal);
+      return await this.request<T>(method, path, undefined, controller.signal);
     } catch (e) {
-      if (timedOut) throw new Error(MAP_TIMEOUT_MESSAGE);
+      if (timedOut) throw new LobbyError(0, timeoutMessage);
       throw e;
     } finally {
       clearTimeout(timer);
@@ -407,13 +416,23 @@ export class LobbyClient {
 
   // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader).
   async getRulesetMap(rulesetId: string): Promise<unknown> {
-    return this.getWithMapTimeout(`/api/rulesets/${encodeURIComponent(rulesetId)}/map`);
+    return this.requestWithTimeout<unknown>(
+      'GET',
+      `/api/rulesets/${encodeURIComponent(rulesetId)}/map`,
+      MAP_FETCH_TIMEOUT_MS,
+      MAP_TIMEOUT_MESSAGE,
+    );
   }
 
   // GET /api/rulesets/{id}/layout — layout schematico della mappa del ruleset (forma non validata:
   // vedi map-loader).
   async getRulesetLayout(rulesetId: string): Promise<unknown> {
-    return this.getWithMapTimeout(`/api/rulesets/${encodeURIComponent(rulesetId)}/layout`);
+    return this.requestWithTimeout<unknown>(
+      'GET',
+      `/api/rulesets/${encodeURIComponent(rulesetId)}/layout`,
+      MAP_FETCH_TIMEOUT_MS,
+      MAP_TIMEOUT_MESSAGE,
+    );
   }
 
   // POST /api/games
@@ -473,17 +492,32 @@ export class LobbyClient {
 
   // GET /api/saves — partite salvate riprendibili (non già in lobby), dalla più recente
   async listSaves(): Promise<SavedGameItem[]> {
-    const data = await this.request<{ saves: SavedGameItem[] }>('GET', '/api/saves');
+    const data = await this.requestWithTimeout<{ saves: SavedGameItem[] }>(
+      'GET',
+      '/api/saves',
+      SAVES_FETCH_TIMEOUT_MS,
+      SAVES_TIMEOUT_MESSAGE,
+    );
     return data.saves;
   }
 
   // POST /api/saves/{id}/resume — riporta in lobby un salvataggio e rilascia l'`hostToken`
   async resumeSave(gameId: string): Promise<CreatedGame> {
-    return this.request<CreatedGame>('POST', `/api/saves/${encodeURIComponent(gameId)}/resume`);
+    return this.requestWithTimeout<CreatedGame>(
+      'POST',
+      `/api/saves/${encodeURIComponent(gameId)}/resume`,
+      SAVES_FETCH_TIMEOUT_MS,
+      SAVES_TIMEOUT_MESSAGE,
+    );
   }
 
   // DELETE /api/saves/{id} — elimina un salvataggio non attivo (il file resta come backup)
   async deleteSave(gameId: string): Promise<void> {
-    return this.request<void>('DELETE', `/api/saves/${encodeURIComponent(gameId)}`);
+    return this.requestWithTimeout<void>(
+      'DELETE',
+      `/api/saves/${encodeURIComponent(gameId)}`,
+      SAVES_FETCH_TIMEOUT_MS,
+      SAVES_TIMEOUT_MESSAGE,
+    );
   }
 }

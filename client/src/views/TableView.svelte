@@ -2,7 +2,7 @@
   // Table view (TV, browser HDMI): mappa condivisa + lobby + game over.
   // Connessione spettatore senza playerId.
 
-  import { onMount, untrack } from 'svelte';
+  import { onDestroy, onMount, tick, untrack } from 'svelte';
   import { publicStore, connectionStore, applySnapshot, resetStores } from '../lib/stores.svelte.ts';
   import {
     LobbyClient,
@@ -19,6 +19,7 @@
     type Standings,
   } from '../lib/lobby';
   import { gameMap } from '../lib/game-map.svelte.ts';
+  import { adoptGame } from '../lib/adopt-game';
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
   import { currentHostEnv } from '../lib/server-host';
   import { buildRejoinUrl } from '../lib/rejoin';
@@ -71,6 +72,13 @@
   // Salvataggio di cui si chiede conferma di eliminazione e id di quello in corso di eliminazione.
   let confirmingDelete = $state<SavedGameItem | null>(null);
   let deletingSave = $state<string>('');
+  // Titolo "Partite salvate": riceve il focus dopo un'eliminazione riuscita.
+  let savedHeading = $state<HTMLHeadingElement | null>();
+  // Titolo "Nuova partita": riceve il focus se l'ultimo salvataggio è stato eliminato.
+  let newGameHeading = $state<HTMLHeadingElement | null>();
+  // Falso dopo lo smontaggio: una risposta tardiva non deve aprire una WebSocket.
+  let alive = true;
+  onDestroy(() => { alive = false; });
   // Riassegnazione in partita avviata: nome in attesa di conferma (stacca il telefono attuale).
   let confirmingReassign = $state<string | null>(null);
   const saveBusy = $derived(resumingSave !== '' || deletingSave !== '');
@@ -142,8 +150,6 @@
     resumingSave = save.gameId;
     try {
       const resumed = await lobby.resumeSave(save.gameId);
-      // L'intestazione della lobby mostra il nome del salvataggio, non quello digitato per una partita nuova.
-      gameNameInput = save.name;
       await adoptHostedGame(resumed);
     } catch (e) {
       console.error('Ripresa fallita:', e);
@@ -151,8 +157,9 @@
       // si aggiorna, poi si mostra l'errore, così non viene coperto.
       await refreshGames();
       notice = `Ripresa di ${save.name} fallita: ${describe(e)}`;
+    } finally {
+      resumingSave = '';
     }
-    resumingSave = '';
   }
 
   // Conferma del dialog: elimina il salvataggio scelto e ricarica l'elenco.
@@ -164,23 +171,33 @@
     try {
       await lobby.deleteSave(save.gameId);
       await refreshGames();
+      // Il bottone premuto non esiste più: il focus passa al titolo dell'elenco.
+      await tick();
+      (savedHeading?.isConnected ? savedHeading : newGameHeading)?.focus();
     } catch (e) {
       console.error('Eliminazione fallita:', e);
       // Come per la ripresa: prima si aggiorna l'elenco, poi si mostra l'errore.
       await refreshGames();
       notice = `Eliminazione di ${save.name} fallita: ${describe(e)}`;
+    } finally {
+      deletingSave = '';
     }
-    deletingSave = '';
   }
 
   // La TV diventa host della partita appena creata o ripresa.
   async function adoptHostedGame(result: CreatedGame) {
-    gameId = result.gameId; hostToken = result.hostToken;
-    // Ricorda l'ultima partita: una TV ricaricata si riaggancia da sola
-    // (hostToken serve a riprendere il bottone Start dopo un reload in lobby).
-    saveLastGame({ gameId: result.gameId, hostToken: result.hostToken });
-    updateUrlGame(result.gameId);
-    await refreshLobby(); connectSpectator();
+    await adoptGame({
+      isAlive: () => alive,
+      adopt: () => {
+        gameId = result.gameId; hostToken = result.hostToken;
+        // Ricorda l'ultima partita: una TV ricaricata si riaggancia da sola
+        // (hostToken serve a riprendere il bottone Start dopo un reload in lobby).
+        saveLastGame({ gameId: result.gameId, hostToken: result.hostToken });
+        updateUrlGame(result.gameId);
+      },
+      refreshLobby,
+      connect: connectSpectator,
+    });
   }
 
   async function refreshLobby() {
@@ -309,7 +326,7 @@
   }
 
   function connectSpectator() {
-    if (!gameId) return;
+    if (!alive || !gameId) return;
     if (connection) connection.close();
     connection = createGameConnection({
       host, gameId,
@@ -481,7 +498,7 @@
         <div class="lobby-right">
           {#if !gameId}
             <div class="create-game">
-              <h2>Nuova partita</h2>
+              <h2 tabindex="-1" bind:this={newGameHeading}>Nuova partita</h2>
               <div class="map-cards">
                 {#each RULESETS as rs}
                   <MapCard
@@ -517,7 +534,7 @@
             {/if}
             {#if savedGames.length > 0}
               <div class="existing-games saved-games">
-                <h2>Partite salvate</h2>
+                <h2 tabindex="-1" bind:this={savedHeading}>Partite salvate</h2>
                 {#each savedGames as s (s.gameId)}
                   <div class="game-row">
                     <div class="game-row-info">

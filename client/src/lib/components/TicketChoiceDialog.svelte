@@ -6,6 +6,7 @@
   import { gameMap } from '../game-map.svelte.ts';
   import { offeredTicketPins, ticketPinColor } from '../map-utils';
   import MapSvg from './MapSvg.svelte';
+  import { createOverlayDismiss } from '../overlay-dismiss';
   import TicketCard from './TicketCard.svelte';
 
   const mapData = $derived(gameMap.state.data);
@@ -22,6 +23,8 @@
     onConfirm: (keepIds: string[]) => void;
     onCancel: () => void;
   } = $props();
+
+  const overlay = createOverlayDismiss(() => onCancel());
 
   let selected = $state<Set<string>>(new Set());
 
@@ -51,7 +54,29 @@
     const previous = document.activeElement;
     const first = dialogEl?.querySelector<HTMLElement>('.ticket-item') ?? dialogEl?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? dialogEl)?.focus();
+
+    // Se il focus finisce su `body` (clic su un'area non focalizzabile) torna nel dialog.
+    const reclaimFocus = () => {
+      if (!dialogEl || (document.activeElement && document.activeElement !== document.body)) return;
+      (dialogEl.querySelector<HTMLElement>(FOCUSABLE) ?? dialogEl).focus();
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onFocusOut = () => {
+      clearTimeout(timer);
+      timer = setTimeout(reclaimFocus, 0);
+    };
+    // Con il focus su `body` l'Escape non raggiunge il dialog: lo gestisce questo listener.
+    const onDocumentKeydown = (e: KeyboardEvent) => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      if (e.key === 'Escape') onCancel();
+      else reclaimFocus();
+    };
+    document.addEventListener('focusout', onFocusOut);
+    document.addEventListener('keydown', onDocumentKeydown, true);
     return () => {
+      clearTimeout(timer);
+      document.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('keydown', onDocumentKeydown, true);
       if (previous instanceof HTMLElement) previous.focus();
     };
   });
@@ -86,7 +111,8 @@
 <div
   class="dialog-overlay"
   role="presentation"
-  onclick={(e: MouseEvent) => { if (e.target === e.currentTarget) onCancel(); }}
+  onpointerdown={overlay.onpointerdown}
+  onclick={overlay.onclick}
   onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); }}
 >
   <div

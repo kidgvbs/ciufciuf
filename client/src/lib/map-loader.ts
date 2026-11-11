@@ -57,37 +57,53 @@ function isRecordOf(v: unknown, check: (x: unknown) => boolean): v is Record<str
 
 const LABEL_ANCHORS: readonly unknown[] = ['start', 'middle', 'end'];
 
+// Limiti del layout, gli stessi che applica il server.
+const LAYOUT_MAX_SIZE = 100_000;
+const LAYOUT_MAX_COORD = 100_000;
+const LAYOUT_MAX_SCALE = 1000;
+
+function isCoord(v: unknown): v is number {
+  return isNumber(v) && Math.abs(v) <= LAYOUT_MAX_COORD;
+}
+
+function isSize(v: unknown): v is number {
+  return isNumber(v) && v > 0 && v <= LAYOUT_MAX_SIZE;
+}
+
+function isScale(v: unknown): v is number {
+  return isNumber(v) && v >= 0 && v <= LAYOUT_MAX_SCALE;
+}
+
 /**
- * `true` se `v` ha la forma di `MapLayout`: `width`/`height` positivi, città `{x, y}`, etichette
- * `{dx, dy, anchor}`, rotte con 2 o 3 punti `[x, y]`; `font`, `doubleGap` e `unit` opzionali ma tipizzati.
+ * `true` se `v` ha la forma di `MapLayout` entro i limiti del server: `width`/`height` in (0, 100000],
+ * città `{x, y}`, etichette `{dx, dy, anchor}` e rotte con 2 o 3 punti `[x, y]` con coordinate finite
+ * e |v| ≤ 100000; `font`, `doubleGap` e `unit` opzionali ma tipizzati (`doubleGap` e `unit` in [0, 1000]).
  */
 export function isMapLayout(v: unknown): v is MapLayout {
   if (!isRecord(v)) return false;
   const { width, height, cities, labels, routes, font, doubleGap, unit } = v;
   return (
-    isNumber(width) &&
-    width > 0 &&
-    isNumber(height) &&
-    height > 0 &&
-    isRecordOf(cities, (p) => isRecord(p) && isNumber(p.x) && isNumber(p.y)) &&
+    isSize(width) &&
+    isSize(height) &&
+    isRecordOf(cities, (p) => isRecord(p) && isCoord(p.x) && isCoord(p.y)) &&
     isRecordOf(
       labels,
-      (l) => isRecord(l) && isNumber(l.dx) && isNumber(l.dy) && LABEL_ANCHORS.includes(l.anchor),
+      (l) => isRecord(l) && isCoord(l.dx) && isCoord(l.dy) && LABEL_ANCHORS.includes(l.anchor),
     ) &&
     isRecordOf(
       routes,
       (pts) =>
         Array.isArray(pts) &&
         (pts.length === 2 || pts.length === 3) &&
-        pts.every((p) => Array.isArray(p) && p.length === 2 && p.every(isNumber)),
+        pts.every((p) => Array.isArray(p) && p.length === 2 && p.every(isCoord)),
     ) &&
     (font === undefined ||
       (isRecord(font) &&
         typeof font.family === 'string' &&
         isNumber(font.weight) &&
         isNumber(font.size))) &&
-    (doubleGap === undefined || isNumber(doubleGap)) &&
-    (unit === undefined || isNumber(unit))
+    (doubleGap === undefined || isScale(doubleGap)) &&
+    (unit === undefined || isScale(unit))
   );
 }
 
@@ -118,7 +134,7 @@ export function loadRulesetMap(host: string, rulesetId: string): Promise<Ruleset
     ([map, layout]): RulesetMap => {
       if (!isMapData(map)) throw new Error('Risposta mappa non valida');
       if (layout === null) return { map, layout: null };
-      if (!isMapLayout(layout)) throw new Error('Risposta layout non valida');
+      if (!isMapLayout(layout)) throw new Error('Layout della mappa non valido');
       if (!layoutCoversMap(map, layout)) throw new Error('Layout della mappa incompleto');
       return { map, layout };
     },
@@ -130,7 +146,7 @@ export function loadRulesetMap(host: string, rulesetId: string): Promise<Ruleset
   return pending;
 }
 
-/** Svuota la cache delle mappe: lo fanno `track` e `reset` del tracker a ogni cambio di partita. */
+/** Svuota la cache delle mappe: la svuota `track` del tracker a ogni nuova partita; `reset` la conserva. */
 export function clearMapCache(): void {
   mapCache.clear();
 }
@@ -152,7 +168,7 @@ export interface MapTracker {
   track(source: () => Promise<RulesetMap>): void;
   /** Ripete l'ultimo `track` (dopo un errore). */
   retry(): void;
-  /** Svuota la cache, torna a `idle` e ignora ogni caricamento in corso. */
+  /** Torna a `idle` e ignora ogni caricamento in corso; la cache resta, così un rimontaggio non rifà la fetch. */
   reset(): void;
 }
 
@@ -194,7 +210,6 @@ export function createMapTracker(onChange: (state: MapState) => void): MapTracke
       if (lastSource) track(lastSource);
     },
     reset() {
-      clearMapCache();
       clearTimeout(timer);
       generation++;
       lastSource = null;

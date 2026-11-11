@@ -7,6 +7,7 @@ import {
   saveLastGame,
   loadLastGame,
   clearLastGame,
+  SAVES_FETCH_TIMEOUT_MS,
 } from '../lobby';
 
 // Stub minimale di localStorage (environment node).
@@ -151,6 +152,56 @@ describe('LobbyClient', () => {
     expect((err as LobbyError).status).toBe(409);
     expect((err as LobbyError).code).toBe('GAME_ALREADY_ACTIVE');
     expect((err as LobbyError).message).toBe('La partita è già attiva.');
+  });
+
+  // fetch che non risponde mai e rifiuta con AbortError quando la richiesta viene interrotta.
+  function hangingFetch() {
+    const signals: Array<AbortSignal | undefined> = [];
+    vi.stubGlobal('fetch', (_url: string, init: RequestInit) => {
+      signals.push(init.signal ?? undefined);
+      return new Promise<Response>((_resolve, reject) => {
+        init.signal?.addEventListener('abort', () =>
+          reject(new DOMException('The operation was aborted.', 'AbortError')),
+        );
+      });
+    });
+    return signals;
+  }
+
+  it('resume_request_times_out', async () => {
+    vi.useFakeTimers();
+    try {
+      const signals = hangingFetch();
+      const outcome = new LobbyClient('http://h:1').resumeSave('g').catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(SAVES_FETCH_TIMEOUT_MS - 1);
+      expect(signals[0]?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const err = await outcome;
+      expect(err).toBeInstanceOf(LobbyError);
+      expect((err as LobbyError).message).toBe('Il server non risponde');
+      expect(signals[0]?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('listSaves e deleteSave scadono con lo stesso messaggio', async () => {
+    vi.useFakeTimers();
+    try {
+      const signals = hangingFetch();
+      const client = new LobbyClient('http://h:1');
+      const outcomes = [client.listSaves(), client.deleteSave('g')].map((p) =>
+        p.catch((e: unknown) => (e as Error).message),
+      );
+      await vi.advanceTimersByTimeAsync(SAVES_FETCH_TIMEOUT_MS);
+      await expect(Promise.all(outcomes)).resolves.toEqual([
+        'Il server non risponde',
+        'Il server non risponde',
+      ]);
+      expect(signals.every((s) => s?.aborted)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('un errore del server diventa LobbyError con codice e testo italiano', async () => {
