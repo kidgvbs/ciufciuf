@@ -204,17 +204,18 @@ export function ticketPinColor(index: number): string {
 }
 
 /**
- * Coppie città da evidenziare per i biglietti offerti, nello stesso ordine.
- * Un biglietto senza descrittore dà una coppia vuota (la mappa la salta) così
- * gli indici, e quindi i colori, restano allineati alle card.
+ * Coppie città da evidenziare per i biglietti offerti, nello stesso ordine: solo quelli in
+ * `shown` (i selezionati). Gli altri, e quelli senza descrittore, danno una coppia vuota che
+ * la mappa salta, così gli indici, e quindi i colori, restano allineati alle card.
  */
 export function offeredTicketPins(
   offered: ReadonlyArray<{ id: string }>,
   tickets: ReadonlyArray<{ id: string; from: string; to: string }>,
+  shown: ReadonlySet<string>,
 ): Array<{ from: string; to: string }> {
   const byId = new Map(tickets.map((t) => [t.id, t]));
   return offered.map((o) => {
-    const t = byId.get(o.id);
+    const t = shown.has(o.id) ? byId.get(o.id) : undefined;
     return { from: t?.from ?? '', to: t?.to ?? '' };
   });
 }

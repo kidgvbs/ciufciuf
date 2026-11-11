@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Dialog scelta biglietti (initial draft o pescata mid-game). Mostra la mappa con i
-  // biglietti offerti tracciati (colore per indice, uguale al marcatore sulla card).
+  // Dialog scelta biglietti (initial draft o pescata mid-game). Come in partita, un biglietto
+  // selezionato appare sulla mappa con la linea tratteggiata del suo colore; deselezionato, sparisce.
 
   import type { TicketInfo } from '../proto';
   import { gameMap } from '../game-map.svelte.ts';
@@ -23,9 +23,9 @@
     onCancel: () => void;
   } = $props();
 
-  const pins = $derived(offeredTicketPins(offeredTickets, mapData?.tickets ?? []));
-
   let selected = $state<Set<string>>(new Set());
+
+  const pins = $derived(offeredTicketPins(offeredTickets, mapData?.tickets ?? [], selected));
 
   function toggle(id: string) {
     const next = new Set(selected);
@@ -107,7 +107,7 @@
       </p>
     </div>
 
-    <!-- Mappa con tutti i biglietti offerti (anche i non selezionati): niente onRouteTap, solo pan/zoom. -->
+    <!-- Mappa con i soli biglietti selezionati: niente onRouteTap, solo pan/zoom. -->
     <div class="dialog-map">
       <MapSvg compact highlightTickets={pins} />
     </div>
@@ -126,7 +126,7 @@
             to={desc ? cityName(desc.to) : ''}
             points={t.points}
             selected={selected.has(t.id)}
-            color={desc ? ticketPinColor(i) : undefined}
+            color={desc && selected.has(t.id) ? ticketPinColor(i) : undefined}
           />
         </button>
       {/each}
