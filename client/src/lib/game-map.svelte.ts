@@ -4,13 +4,22 @@ import { createMapTracker, loadRulesetMap, type MapState } from './map-loader';
 
 class GameMapStore {
   state = $state.raw<MapState>({ status: 'idle', data: null, layout: null, error: '' });
+  /** Id del ruleset della partita agganciata ('' finché non risolto). */
+  rulesetId = $state<string>('');
+  private seq = 0;
   private tracker = createMapTracker((s) => {
     this.state = s;
   });
 
   /** Carica la mappa della partita; `resolveRulesetId` ottiene l'id del ruleset (es. da GET /api/games/{id}). */
   track(host: string, resolveRulesetId: () => Promise<string>): void {
-    this.tracker.track(async () => loadRulesetMap(host, await resolveRulesetId()));
+    const mine = ++this.seq;
+    this.rulesetId = '';
+    this.tracker.track(async () => {
+      const id = await resolveRulesetId();
+      if (mine === this.seq) this.rulesetId = id;
+      return loadRulesetMap(host, id);
+    });
   }
 
   retry(): void {
@@ -18,6 +27,8 @@ class GameMapStore {
   }
 
   reset(): void {
+    this.seq++;
+    this.rulesetId = '';
     this.tracker.reset();
   }
 }

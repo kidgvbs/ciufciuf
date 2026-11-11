@@ -20,4 +20,9 @@ describe('catalogo ruleset', () => {
   it('usa_v2 (unico ruleset server in data/rulesets) è presente', () => {
     expect(RULESETS.some((r) => r.id === 'usa_v2')).toBe(true);
   });
+
+  it('europe è creabile e usa_v2 resta il default', () => {
+    expect(RULESETS.find((r) => r.id === 'europe')?.available).toBe(true);
+    expect(DEFAULT_RULESET_ID).toBe('usa_v2');
+  });
 });

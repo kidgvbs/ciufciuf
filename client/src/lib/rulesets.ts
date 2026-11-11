@@ -15,6 +15,8 @@ export interface RulesetInfo {
   blurb: string;
   /** true = selezionabile e creabile; false = card bloccata "In arrivo". */
   available: boolean;
+  /** Nome del bonus per il percorso più lungo (varia per mappa). */
+  bonusLabel: string;
 }
 
 export const RULESETS: RulesetInfo[] = [
@@ -23,14 +25,23 @@ export const RULESETS: RulesetInfo[] = [
     name: 'USA',
     blurb: 'La mappa classica transcontinentale — 36 città, 100 rotte',
     available: true,
+    bonusLabel: 'Longest Path',
   },
   {
     id: 'europe',
     name: 'Europe',
-    blurb: 'Tunnel, traghetti e stazioni',
-    available: false,
+    blurb: 'Il vecchio continente — 47 città, 101 rotte, con tunnel, traghetti e stazioni',
+    available: true,
+    bonusLabel: 'European Express',
   },
 ];
 
 /** Ruleset selezionato di default nel form di creazione. */
 export const DEFAULT_RULESET_ID = 'usa_v2';
+
+const DEFAULT_BONUS_LABEL = 'Longest Path';
+
+/** Nome del bonus percorso più lungo per `rulesetId`; 'Longest Path' se il ruleset è sconosciuto o assente. */
+export function bonusLabel(rulesetId: string | null | undefined): string {
+  return RULESETS.find((r) => r.id === rulesetId)?.bonusLabel ?? DEFAULT_BONUS_LABEL;
+}

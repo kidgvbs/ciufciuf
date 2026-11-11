@@ -39,6 +39,9 @@
     onRouteTap,
     compact = false,
     highlightTickets = [],
+    selectableCityIds = [],
+    selectedCityId = null,
+    onCityTap,
   }: {
     /** Mappa già caricata; il wrapper `MapSvg` rimonta il componente se cambia. */
     mapData: MapDataType;
@@ -52,6 +55,12 @@
         tra le due città, uno per biglietto, con colore ciascuno.
         Solo controller — la TV non li riceve mai. */
     highlightTickets?: Array<{ from: string; to: string }>;
+    /** Europe: città selezionabili (es. dove costruire una stazione): anello pulsante + area di tap. */
+    selectableCityIds?: string[];
+    /** Città scelta (anello pieno). */
+    selectedCityId?: string | null;
+    /** Tap/click su una città selezionabile. */
+    onCityTap?: (cityId: string) => void;
   } = $props();
   // Id unici per istanza: nel dialog biglietti due mappe coesistono (quella di sfondo
   // può essere `display:none`, e i gradienti lì dentro non vengono risolti).
@@ -66,6 +75,8 @@
 
   const interactive = $derived(onRouteTap !== undefined);
   const highlightSet = $derived(new Set(highlightRouteIds));
+  const selectableCitySet = $derived(new Set(selectableCityIds));
+  const cityInteractive = $derived(onCityTap !== undefined && selectableCityIds.length > 0);
 
   // Nel compact gli stroke pensati per il full sembrano il doppio
   // sul telefono → fattore di scala solo visivo. Geometria invariata.
@@ -350,6 +361,7 @@
   // gesto è rimasto un tap (niente click: il pointer capture sul container
   // lo dirotterebbe).
   let tapRouteId: string | null = null;
+  let tapCityId: string | null = null;
 
   function svgRect(): PZ.RectLike | null {
     return svgEl ? svgEl.getBoundingClientRect() : null;
@@ -358,8 +370,9 @@
   function onDown(e: PointerEvent) {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (gesture.active === 0) {
-      const el = (e.target as Element | null)?.closest?.('[data-route-id]');
-      tapRouteId = el?.getAttribute('data-route-id') ?? null;
+      const target = e.target as Element | null;
+      tapCityId = target?.closest?.('[data-city-id]')?.getAttribute('data-city-id') ?? null;
+      tapRouteId = target?.closest?.('[data-route-id]')?.getAttribute('data-route-id') ?? null;
     }
     gesture.down(e.pointerId, e.clientX, e.clientY);
     containerEl?.setPointerCapture(e.pointerId);
@@ -376,11 +389,16 @@
     gesture.up(e.pointerId);
     if (gesture.active > 0) return;
     dragging = false;
-    if (e.type === 'pointerup' && gesture.isTap && tapRouteId) {
-      const id = tapRouteId;
-      tapRouteId = null;
-      if (interactive && !claimedMap.has(id)) onRouteTap?.(id);
+    if (e.type === 'pointerup' && gesture.isTap) {
+      const cityId = tapCityId;
+      const routeId = tapRouteId;
+      if (cityId) {
+        onCityTap?.(cityId);
+      } else if (routeId && interactive && !claimedMap.has(routeId)) {
+        onRouteTap?.(routeId);
+      }
     }
+    tapCityId = null;
     tapRouteId = null;
   }
   function onWheel(e: WheelEvent) {
@@ -454,6 +472,19 @@
   // Ombra proiettata (luce da nord-ovest), in unità viewBox
   const SHADOW_DX = 1.6;
   const SHADOW_DY = 2.4;
+
+  // Stazioni (Europe): segnaposto a casetta nel colore del giocatore, in alto a sinistra del
+  // pallino (le stelle dei biglietti stanno in alto a destra). Disegno nostro.
+  const STATION_R = $derived(compact ? 5.5 : 7);
+  function stationPath(r: number): string {
+    return `M ${-r} ${r} L ${-r} ${-r * 0.1} L 0 ${-r * 1.1} L ${r} ${-r * 0.1} L ${r} ${r} Z`;
+  }
+  const stationMarks = $derived(
+    publicStore.stations.flatMap((s) => {
+      const pos = cityPositions.get(s.city_id);
+      return pos ? [{ cityId: s.city_id, x: pos.x, y: pos.y, color: playerColor(s.player_id) }] : [];
+    }),
+  );
 </script>
 
 <div
@@ -483,6 +514,11 @@
         <stop offset="0.6" stop-color="#f3e8cc" />
         <stop offset="1" stop-color="#cdb98f" />
       </radialGradient>
+      <!-- Tunnel: tratteggio diagonale sui tasselli (coordinate locali del tassello) -->
+      <pattern id="{uid}-tunnel-hatch" width="5" height="5" patternUnits="userSpaceOnUse"
+        patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="5" stroke="#2a1d0c" stroke-width="1.6" stroke-opacity="0.55" />
+      </pattern>
     </defs>
 
     <g transform="translate({pz.panX}, {pz.panY}) scale({pz.zoom})">
@@ -551,12 +587,37 @@
             {/each}
           {:else}
             {@const fill = slotFill(g.route)}
-            {#each g.slots as s}
+            {@const tunnel = g.route.tunnel === true}
+            {@const ferries = g.route.ferries ?? 0}
+            {#each g.slots as s, i}
               <g transform="translate({s.x} {s.y}) rotate({s.deg})">
                 <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
                   fill={fill} stroke="#4a3920" stroke-width={1.2 * swFactor} stroke-opacity="0.85" />
                 <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
                   fill="url(#{uid}-slot-shade)" opacity="0.8" />
+                {#if tunnel}
+                  <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
+                    fill="url(#{uid}-tunnel-hatch)" class="tunnel-hatch" />
+                  <rect x={-g.slotL / 2 + 1.2 * swFactor} y={-g.sw / 2 + 1.2 * swFactor}
+                    width={g.slotL - 2.4 * swFactor} height={g.sw - 2.4 * swFactor} rx={g.sw * 0.16}
+                    fill="none" stroke="#2a1d0c" stroke-width={1.5 * swFactor}
+                    stroke-dasharray="{4 * swFactor} {2.5 * swFactor}" class="tunnel-outline" />
+                {/if}
+                {#if i < ferries}
+                  <!-- Traghetto: locomotiva (disegno nostro) sui primi slot, sempre dritta -->
+                  {@const k = Math.min((g.slotL - 3 * swFactor) / 48, (g.sw * 0.82) / 22)}
+                  <g transform="rotate({s.deg > 90 || s.deg <= -90 ? 180 : 0}) scale({k}) translate(-24 -11)"
+                    class="ferry-glyph">
+                    <rect x="2" y="8" width="41" height="7" rx="2.6" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.6" />
+                    <rect x="5.5" y="2.5" width="6" height="5.5" rx="1.4" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.2" />
+                    <circle cx="16" cy="8" r="3" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.2" />
+                    <rect x="3" y="15" width="39" height="2.4" rx="1.2" fill="#2a1d0c" />
+                    <circle cx="9" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                    <circle cx="19" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                    <circle cx="29" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                    <circle cx="39" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                  </g>
+                {/if}
               </g>
             {/each}
           {/if}
@@ -573,6 +634,19 @@
                 stroke-width={g.sw + 14}
                 stroke-linecap="round" stroke-linejoin="round"
                 pointer-events="stroke" />
+            {/if}
+          {/each}
+        </g>
+      {/if}
+
+      <!-- 5b. Aree di tap delle città selezionabili (sopra quelle delle rotte) -->
+      {#if cityInteractive}
+        <g class="layer-hit">
+          {#each mapData.cities as city (city.id)}
+            {@const pos = cityPositions.get(city.id)}
+            {#if pos && selectableCitySet.has(city.id)}
+              <circle cx={pos.x} cy={pos.y} r={cityDotR + 10} data-city-id={city.id}
+                class="city-tappable" fill="#000" fill-opacity="0" pointer-events="all" />
             {/if}
           {/each}
         </g>
@@ -603,6 +677,29 @@
               <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
             {/if}
           {/if}
+        {/each}
+      </g>
+
+      <!-- 7b. Città selezionabili (anello) e stazioni costruite (segnaposto nel colore del giocatore) -->
+      <g class="layer-stations" aria-hidden="true" pointer-events="none">
+        {#each mapData.cities as city (city.id)}
+          {@const pos = cityPositions.get(city.id)}
+          {#if pos && selectableCitySet.has(city.id)}
+            {@const picked = city.id === selectedCityId}
+            <circle cx={pos.x} cy={pos.y} r={cityDotR + 5} fill="none"
+              stroke={picked ? '#d35400' : '#e8a83e'} stroke-width={(picked ? 3.5 : 2.5) * swFactor}
+              class={picked ? 'city-ring picked' : 'city-ring'} />
+          {/if}
+        {/each}
+        {#each stationMarks as st (st.cityId)}
+          <g transform="translate({st.x - cityDotR - STATION_R * 0.9} {st.y - cityDotR - STATION_R * 0.9})">
+            <path d={stationPath(STATION_R)} transform="translate({SHADOW_DX * 0.6} {SHADOW_DY * 0.6})"
+              fill="#2a1d0c" opacity="0.35" />
+            <path d={stationPath(STATION_R)} fill={st.color} stroke="#fdf7e6"
+              stroke-width={1.8 * swFactor} stroke-linejoin="round" />
+            <rect x={-STATION_R * 0.22} y={STATION_R * 0.1} width={STATION_R * 0.44} height={STATION_R * 0.9}
+              fill="#fdf7e6" opacity="0.85" />
+          </g>
         {/each}
       </g>
 
@@ -798,5 +895,11 @@
       opacity: 0;
       transform: scale(1.6);
     }
+  }
+  .tunnel-hatch, .tunnel-outline, .ferry-glyph { pointer-events: none; }
+  .city-tappable { cursor: pointer; }
+  .city-ring { opacity: 0.9; }
+  @media (prefers-reduced-motion: no-preference) {
+    .city-ring:not(.picked) { animation: glow-pulse 1.2s ease-in-out infinite alternate; }
   }
 </style>

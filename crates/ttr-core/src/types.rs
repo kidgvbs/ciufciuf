@@ -32,6 +32,12 @@ pub struct Route {
     pub len: u32,
     pub color: String, // "Gray" or a card color in PascalCase ("Red", "Blue", ...)
     pub double: bool,
+    /// Tunnel (Europe): dopo il pagamento si rivelano carte che possono costare extra.
+    #[serde(default)]
+    pub tunnel: bool,
+    /// Traghetto (Europe): locomotive obbligatorie nel pagamento.
+    #[serde(default)]
+    pub ferries: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -68,6 +74,27 @@ pub struct Ruleset {
     pub double_route_min_players: u32,
     #[serde(rename = "finalRoundIncludesTrigger")]
     pub final_round_includes_trigger: bool,
+    /// Stazioni (Europe); assenti sulle mappe senza stazioni.
+    #[serde(default)]
+    pub stations: Option<StationsConfig>,
+    /// Tunnel (Europe); obbligatorio se la mappa ha rotte tunnel.
+    #[serde(default)]
+    pub tunnels: Option<TunnelsConfig>,
+}
+
+/// Stazioni per giocatore: `costs[i]` è il costo in carte della stazione `i`-esima.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StationsConfig {
+    pub count: u32,
+    pub costs: Vec<u32>,
+    #[serde(rename = "unbuiltPoints")]
+    pub unbuilt_points: u32,
+}
+
+/// Regole dei tunnel: carte rivelate dal mazzo a ogni tentativo.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TunnelsConfig {
+    pub revealed: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +164,8 @@ pub struct PlayerState {
     pub score: i32,
     /// Se il giocatore ha già scelto in INITIAL_DRAFT.
     pub initial_draft_done: bool,
+    /// Città con una stazione del giocatore, in ordine di costruzione.
+    pub stations: Vec<CityId>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -158,6 +187,22 @@ pub struct ClaimedRouteRecord {
 pub struct ClaimedRouteInfo {
     pub route_id: String,
     pub claimed_by: usize, // player index
+}
+
+/// Tentativo di tunnel in attesa della decisione del giocatore di turno.
+///
+/// Le carte giocate e quelle rivelate restano fuori da mano e scarti finché
+/// il tunnel è pendente.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingTunnel {
+    pub route_id: RouteId,
+    /// Carte giocate per la rotta, nell'ordine in cui sono uscite dalla mano.
+    pub played: Vec<CardColor>,
+    pub revealed: Vec<CardColor>,
+    /// Colore delle carte non locomotiva giocate; `Locomotive` se sono tutte locomotive.
+    pub color: CardColor,
+    /// Rivelate del colore del tunnel o locomotive.
+    pub extra: u32,
 }
 
 // ── Identificatori ───────────────────────────────────────────────────
@@ -271,6 +316,8 @@ mod tests {
             len: 1,
             color: GRAY_ROUTE_COLOR.into(),
             double: true,
+            tunnel: false,
+            ferries: 0,
         }
     }
 

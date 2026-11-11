@@ -33,6 +33,10 @@ struct ReplayAction {
     route_id: Option<String>,
     #[serde(default)]
     cards_discarded: Option<Vec<String>>,
+    #[serde(default)]
+    city_id: Option<String>,
+    #[serde(default)]
+    pay: Option<bool>,
 }
 
 /// Stampa un errore d'uso ed esce con codice 2.
@@ -244,21 +248,31 @@ fn parse_replay_action(ra: &ReplayAction, engine: &Engine) -> Result<Action, Str
                 source: DrawSource::FaceUp { index: idx },
             })
         }
-        "CLAIM_ROUTE" => {
-            let cards: Result<Vec<_>, String> = ra
-                .cards_discarded
-                .iter()
-                .flatten()
-                .map(|s| parse_card_color(s))
-                .collect();
-            Ok(Action::ClaimRoute {
-                player_index: pi,
-                route_id: ra.route_id.clone().unwrap_or_default(),
-                cards_discarded: cards?,
-            })
-        }
+        "CLAIM_ROUTE" => Ok(Action::ClaimRoute {
+            player_index: pi,
+            route_id: ra.route_id.clone().unwrap_or_default(),
+            cards_discarded: replay_cards(ra)?,
+        }),
+        "BUILD_STATION" => Ok(Action::BuildStation {
+            player_index: pi,
+            city_id: ra.city_id.clone().unwrap_or_default(),
+            cards_discarded: replay_cards(ra)?,
+        }),
+        "TUNNEL_DECISION" => Ok(Action::TunnelDecision {
+            player_index: pi,
+            pay: ra.pay.unwrap_or(false),
+            cards_discarded: replay_cards(ra)?,
+        }),
         other => Err(format!("Azione sconosciuta: {other}")),
     }
+}
+
+fn replay_cards(ra: &ReplayAction) -> Result<Vec<ttr_proto::CardColor>, String> {
+    ra.cards_discarded
+        .iter()
+        .flatten()
+        .map(|s| parse_card_color(s))
+        .collect()
 }
 
 fn parse_card_color(s: &str) -> Result<ttr_proto::CardColor, String> {
@@ -394,9 +408,50 @@ fn run_interactive(engine: &mut Engine) {
                     }
                 }
             }
+            "station" | "st" => {
+                if parts.len() < 3 {
+                    Err(ttr_core::EngineError::InvalidPayload {
+                        reason: "usa: station <city_id> <colori...>".into(),
+                    })
+                } else {
+                    let city_id = parts[1].to_string();
+                    let cards: Result<Vec<ttr_proto::CardColor>, String> =
+                        parts[2..].iter().map(|s| parse_card_color(s)).collect();
+                    match cards {
+                        Ok(cards_discarded) => engine.apply(Action::BuildStation {
+                            player_index: engine.current_player(),
+                            city_id,
+                            cards_discarded,
+                        }),
+                        Err(reason) => Err(ttr_core::EngineError::InvalidPayload { reason }),
+                    }
+                }
+            }
+            "tunnel" | "tn" => match parts.get(1).copied() {
+                Some("decline") => engine.apply(Action::TunnelDecision {
+                    player_index: engine.current_player(),
+                    pay: false,
+                    cards_discarded: vec![],
+                }),
+                Some("pay") => {
+                    let cards: Result<Vec<ttr_proto::CardColor>, String> =
+                        parts[2..].iter().map(|s| parse_card_color(s)).collect();
+                    match cards {
+                        Ok(cards_discarded) => engine.apply(Action::TunnelDecision {
+                            player_index: engine.current_player(),
+                            pay: true,
+                            cards_discarded,
+                        }),
+                        Err(reason) => Err(ttr_core::EngineError::InvalidPayload { reason }),
+                    }
+                }
+                _ => Err(ttr_core::EngineError::InvalidPayload {
+                    reason: "usa: tunnel pay <colori...> | tunnel decline".into(),
+                }),
+            },
             _ => {
                 println!(
-                    "Comandi: state, legal [p], draw deck|faceup [n]|tickets, keep <ids>, initkeep <p> <ids>, claim <rid> <colori>, q"
+                    "Comandi: state, legal [p], draw deck|faceup [n]|tickets, keep <ids>, initkeep <p> <ids>, claim <rid> <colori>, station <city> <colori>, tunnel pay <colori>|decline, q"
                 );
                 Ok(vec![])
             }

@@ -21,6 +21,10 @@ export interface RouteData {
   len: number;
   color: string; // "Red" | "Gray" | ... come da JSON
   double: boolean;
+  /** Europe: tunnel (carte extra dopo la rivelazione). Assente = false (mappa USA). */
+  tunnel?: boolean;
+  /** Europe: numero di locomotive obbligatorie (traghetto). Assente = 0. */
+  ferries?: number;
 }
 
 export interface MapData {

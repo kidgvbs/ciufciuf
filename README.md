@@ -7,7 +7,7 @@ Gioco in stile *Ticket to Ride* per la **LAN di casa**: la TV mostra la mappa co
 
 ## Stato
 
-Giocabile dall'inizio alla fine sulla mappa **USA** (`usa_v2`), da 2 a 5 giocatori, con **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Motore, server e client sono completi per questo primo traguardo. La mappa Europe e il bot non ci sono ancora.
+Giocabile dall'inizio alla fine sulle mappe **USA** (`usa_v2`) ed **Europe** (`europe`: tunnel, traghetti, stazioni, European Express, regolamento 2026), da 2 a 5 giocatori, con **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Il bot non c'è ancora.
 
 Per orientarsi nel dettaglio:
 
@@ -153,15 +153,15 @@ bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server 
 - **`hostToken` della TV:** vive in `sessionStorage`, quindi chiudere la scheda della TV prima dell'avvio fa perdere il controllo della partita. La TV offre "Crea una nuova partita" e la lobby vecchia scade da sola. Se un join lento annullato riesce in ritardo, il telefono salva comunque l'identità senza cambiare schermata, e riprovando con lo stesso nome riprende quel giocatore. Solo se la risposta non arriva mai il nuovo tentativo riceve `NAME_TAKEN` e l'host deve riassegnarlo.
 - **Aggiornamento delle dipendenze:** Renovate (`renovate.json`) apre PR raggruppate. `rand`, `rand_chacha` e `rand_core` sono esclusi dal bot, perché determinano lo shuffle e quindi il replay di ogni save: si aggiornano solo a mano, insieme a `RULES_VERSION`.
 - **Major del client:** `vite`, `vitest`, `svelte` e `typescript` richiedono modifiche alla configurazione, quindi le major si approvano dalla Dependency Dashboard di Renovate.
-- **Dati di mappa e ruleset:** `ttr-validate` e l'avvio del server rifiutano dati incoerenti (id duplicati, città inesistenti, rotte doppie non appaiate, biglietti con partenza uguale all'arrivo, ecc.) e le mappe troppo dense per il calcolo esatto del percorso più lungo (numero ciclomatico stimato oltre 14; la USA stima 13). Il percorso più lungo è una ricerca esatta (branch and bound) con un budget di sicurezza: se lo esaurisce il server logga un `warn!` e il risultato di quel giocatore può non essere esatto. Le rotte con partenza uguale all'arrivo sono rifiutate.
+- **Dati di mappa e ruleset:** `ttr-validate` e l'avvio del server rifiutano dati incoerenti (id duplicati, città inesistenti, rotte doppie non appaiate, biglietti con partenza uguale all'arrivo, traghetti con più locomotive della lunghezza, rotte insieme tunnel e traghetto, tunnel senza `tunnels` nel ruleset, costi delle stazioni incoerenti, ecc.) e le mappe troppo dense per il calcolo esatto del percorso più lungo (numero ciclomatico stimato oltre 14; la USA stima 13, la Europe 12). Il percorso più lungo è una ricerca esatta (branch and bound) con un budget di sicurezza: se lo esaurisce il server logga un `warn!` e il risultato di quel giocatore può non essere esatto. Le rotte con partenza uguale all'arrivo sono rifiutate. Fonti dei dati: `docs/data-sources-usa.md`, `docs/data-sources-europe.md`.
 - **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
-- **Layout della mappa:** il disegno schematico di ogni mappa sta in `data/layouts/<mapId>.json` e il client lo scarica da `GET /api/rulesets/{id}/layout`, insieme alla mappa. All'avvio il server rifiuta un layout che non copre tutte le città (posizione ed etichetta) e tutte le rotte (2 o 3 punti); una mappa senza layout è ammessa: biglietti e nomi delle città funzionano, e al posto del disegno compare «Layout della mappa non disponibile». `cd client && bun tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `data/layouts/usa.json`: va rilanciato se cambiano geometria delle rotte o regole delle etichette.
+- **Layout della mappa:** il disegno schematico di ogni mappa sta in `data/layouts/<mapId>.json` e il client lo scarica da `GET /api/rulesets/{id}/layout`, insieme alla mappa. All'avvio il server rifiuta un layout che non copre tutte le città (posizione ed etichetta) e tutte le rotte (2 o 3 punti); una mappa senza layout è ammessa: biglietti e nomi delle città funzionano, e al posto del disegno compare «Layout della mappa non disponibile». `cd client && bun tools/gen-schematic-layout.mjs [--map usa|europe]` (deterministico, alcuni minuti) rigenera `data/layouts/<mappa>.json`: va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
 ## Prossimi fix
 
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
-1. TV: riquadro con le ultime mosse
+1. **Fase 4.1** (bug e polish Europe): tunnel a costo 0 non visibili (riquadro "ultime mosse" in TV), scelta della città della stazione con la mappa fuori schermo, «Colore: GREEN» non tradotto, etichetta «Paris» sul binario, bot E2E che non pagano mai un tunnel, costo dell'assegnazione stazioni
 2. Rotazione dei backup `.bak`; elenco dei ruleset dal server (oggi `rulesets.ts` è statico nel client)
 
-Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.
+Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR (USA ed Europe).

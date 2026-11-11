@@ -25,7 +25,8 @@
   import { parseRejoinHash } from '../lib/rejoin';
   import { createActionGate } from '../lib/action-gate';
   import { notConnectedError, fatalMessage } from '../lib/errors';
-  import { rankedScores, winnerNames } from '../lib/scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel } from '../lib/scores';
+  import { bonusLabel } from '../lib/rulesets';
   import type { Snapshot, PublicState, PrivateState, ErrorPayload, InboundAction, PlayerColor } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import JoinScreen from '../lib/components/JoinScreen.svelte';
@@ -371,13 +372,20 @@
                 Rotte {fs.routePoints} · Biglietti +{fs.ticketCompleted}
                 {#if fs.ticketFailed < 0} · {fs.ticketFailed}{/if}
                 {#if fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
+                {#if fs.stationPoints > 0} · 🏠 +{fs.stationPoints}{/if}
               </div>
+              {#if fs.borrowedRoutes.length > 0}
+                <div class="score-detail">
+                  Rotte in prestito:
+                  {fs.borrowedRoutes.map((b) => borrowedRouteLabel(b, gameMap.state.data)).join(', ')}
+                </div>
+              {/if}
             </div>
           {/each}
         </div>
         {#if publicStore.longestPathPlayerIds}
           <div class="longest-banner">
-            🏆 Longest Path:
+            🏆 {bonusLabel(gameMap.rulesetId)}:
             {publicStore.longestPathPlayerIds
               .map(
                 (pid) =>

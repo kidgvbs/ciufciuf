@@ -24,6 +24,7 @@ mod engine;
 mod engine_claim;
 mod engine_deck;
 mod engine_draw;
+mod engine_station;
 mod engine_tickets;
 pub mod error;
 pub mod event;
@@ -37,7 +38,7 @@ pub use action::{Action, DrawSource};
 pub use engine::{ActionRecord, Engine};
 pub use error::{EngineError, EngineInitError, GamePhase};
 pub use event::GameEvent;
-pub use legal::LegalMoves;
+pub use legal::{LegalMoves, TunnelMoves};
 pub use types::{MapData, RouteColor, Ruleset};
 
 /// Versione delle regole del motore, registrata nei save.

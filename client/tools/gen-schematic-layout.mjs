@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
-// gen-schematic-layout.mjs — Generatore deterministico del layout schematico USA.
+// gen-schematic-layout.mjs — Generatore deterministico del layout schematico (USA, Europe).
 //
-// Input:  data/maps/usa.json                  (città + rotte, la "mappa")
-// Output: data/layouts/usa.json               (servito da GET /api/rulesets/{id}/layout)
+// Input:  data/maps/<map>.json                (città + rotte, la "mappa")
+// Output: data/layouts/<map>.json             (servito da GET /api/rulesets/{id}/layout)
 //
 // Il file generato va committato. Questo script va rieseguito SOLO quando
-// cambia data/maps/usa.json (nuove città/rotte): il layout è deterministico (nessuna
+// cambia data/maps/<map>.json (nuove città/rotte): il layout è deterministico (nessuna
 // fonte di casualità), quindi rigenerare produce sempre lo stesso JSON.
 //
 // Fase 3f+8v3 — cluster escape: label-label via city-shift + font fallback 14.5 se necessario.
@@ -62,7 +62,10 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  bun client/tools/gen-schematic-layout.mjs [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe] [--svg OUT.svg]
+//   --map ID       (default usa) mappa: input data/maps/<ID>.json, output data/layouts/<ID>.json.
+//                  Le regolazioni manuali (LABEL_OVERRIDES, F2 shifts, pre-bend Phoenix) sono
+//                  per-mappa (MAP_TUNING): applicate SOLO alla mappa a cui appartengono.
 //   --svg OUT.svg  (opzionale) scrive un preview SVG per ispezione visiva.
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -77,11 +80,55 @@ import {
 } from 'd3-force';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const USA_PATH = join(__dirname, '..', '..', 'data', 'maps', 'usa.json');
-const OUT_PATH = join(__dirname, '..', '..', 'data', 'layouts', 'usa.json');
+const argVal = (flag) => { const i = process.argv.indexOf(flag); return i !== -1 ? process.argv[i + 1] : undefined; };
+const MAP_ID = argVal('--map') ?? 'usa';
+const MAP_PATH = join(__dirname, '..', '..', 'data', 'maps', `${MAP_ID}.json`);
+const OUT_PATH = join(__dirname, '..', '..', 'data', 'layouts', `${MAP_ID}.json`);
+
+// Bounding box geografico (lat/lon) usato per le posizioni iniziali della sim.
+// USA = stessa bbox di map-utils.projectCity (non toccare: il layout è byte-identico).
+const MAP_BOUNDS = {
+  usa: { latMin: 25, latMax: 52, lonMin: -124, lonMax: -70 },
+  europe: { latMin: 35, latMax: 61, lonMin: -11, lonMax: 43 },
+};
+if (!MAP_BOUNDS[MAP_ID]) { console.error(`--map sconosciuta: ${MAP_ID} (valide: ${Object.keys(MAP_BOUNDS).join(', ')})`); process.exit(2); }
+const BOUNDS = MAP_BOUNDS[MAP_ID];
+
+// Regolazioni manuali per-mappa (il piazzamento automatico sceglie per punteggio, non per
+// gusto). Stanno qui (non nel JSON) perché una rigenerazione le cancellerebbe, e valgono
+// SOLO per la mappa che le dichiara: nessun id di una mappa può influenzare l'altra.
+//   labelOverrides: id città → { anchor, dir } (vedi resolveOverride)
+//   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (≤8px)
+const MAP_TUNING = {
+  usa: {
+    labelOverrides: {
+      // Phoenix sopra il pallino (l'utente: "c'è spazio"): anchor middle, salendo.
+      phoenix: { anchor: 'middle', dir: 'up' },
+      // 3f+11: Omaha — il piazzamento automatico la metteva in basso-destra,
+      // col centro più vicino al pallino di Kansas City (37.5px) che al suo
+      // (61px): "Omaha è più vicina al pallino di kansas city che al suo".
+      // Su, in alto a destra del proprio dot: anchor start, salendo.
+      omaha: { anchor: 'start', dir: 'up' },
+      // Saint Louis: l'automatico la spingeva a 32px verso Nashville (ownership).
+      saint_louis: { anchor: 'middle', dir: 'up' },
+    },
+    f2Shifts: [
+      // saint_louis → sud: apre il gap al hub Pittsburgh (pittsburgh→StL più sud)
+      ['saint_louis', 0, 5, 'Pittsburgh hub: chicago↔pittsburgh vs pittsburgh↔saint_louis'],
+      // chicago shift rimosso: non migliorava Saint Louis hub (0.4px invariato) e causava label regression
+    ],
+  },
+  europe: {
+    // Mappa più fitta (cluster Paris/Bruxelles/Frankfurt con 3 doppie): più px per carta.
+    unit: 40,
+    labelOverrides: {},
+    f2Shifts: [],
+  },
+};
+const TUNING = MAP_TUNING[MAP_ID];
 
 // ── Costanti ──────────────────────────────────────────────────────────
-const UNIT = 34;            // px per carta (rotta len-1 ≈ 34px disegnate)
+const UNIT = TUNING.unit ?? 34; // px per carta (rotta len-1 ≈ UNIT px disegnate)
 const DOT_R = 8;            // pallino full (compact = 6 → più spazio)
 // Metriche REALI del font del runtime (Barlow Semi Condensed 600) via opentype.js.
 // Validazione a 16px = caso peggiore tra TV (15.5) e phone (16).
@@ -317,21 +364,21 @@ function distPointCurve(px, py, curve) {
 }
 
 // ── 0. Caricamento ─────────────────────────────────────────────────────
-const usa = JSON.parse(readFileSync(USA_PATH, 'utf8'));
+const mapData = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
-// Proiezione geografica → canvas di lavoro (stessa bbox di map-utils.projectCity).
+// Proiezione geografica → canvas di lavoro (stessa bbox di map-utils.projectCity per USA).
 const proj = (c) => ({
-  x: WORK_PAD + ((c.lon - -124) / (-70 - -124)) * (WORK_W - 2 * WORK_PAD),
-  y: WORK_PAD + ((52 - c.lat) / (52 - 25)) * (WORK_H - 2 * WORK_PAD),
+  x: WORK_PAD + ((c.lon - BOUNDS.lonMin) / (BOUNDS.lonMax - BOUNDS.lonMin)) * (WORK_W - 2 * WORK_PAD),
+  y: WORK_PAD + ((BOUNDS.latMax - c.lat) / (BOUNDS.latMax - BOUNDS.latMin)) * (WORK_H - 2 * WORK_PAD),
 });
 
-const cityIds = usa.cities.map((c) => c.id);
+const cityIds = mapData.cities.map((c) => c.id);
 const idIndex = new Map(cityIds.map((id, i) => [id, i]));
-const names = new Map(usa.cities.map((c) => [c.id, c.name]));
+const names = new Map(mapData.cities.map((c) => [c.id, c.name]));
 
 // Edge = coppia di città non orientata (le doppie collassano in UN edge).
 const pairRoutes = new Map();
-for (const r of usa.routes) {
+for (const r of mapData.routes) {
   const key = [r.from, r.to].sort().join('|');
   const list = pairRoutes.get(key) || [];
   list.push(r);
@@ -359,7 +406,7 @@ for (const [key, routes] of pairRoutes) {
 }
 
 // ── 1. d3-force (deterministico) ──────────────────────────────────────
-const nodes = usa.cities.map((c) => {
+const nodes = mapData.cities.map((c) => {
   const p = proj(c);
   return { id: c.id, x: p.x, y: p.y };
 });
@@ -996,17 +1043,8 @@ const FALLBACK_MAX_DIST = MAX_LABEL_DIST; // cap duro 32px
 // (se nessuno è pulito, vince il piazzamento automatico — la validazione
 // resta sovrana). Aggiunti qui (non nel JSON) perché una rigenerazione li
 // cancellerebbe.
-const LABEL_OVERRIDES = {
-  // Phoenix sopra il pallino (l'utente: "c'è spazio"): anchor middle, salendo.
-  phoenix: { anchor: 'middle', dir: 'up' },
-  // 3f+11: Omaha — il piazzamento automatico la metteva in basso-destra,
-  // col centro più vicino al pallino di Kansas City (37.5px) che al suo
-  // (61px): "Omaha è più vicina al pallino di kansas city che al suo".
-  // Su, in alto a destra del proprio dot: anchor start, salendo.
-  omaha: { anchor: 'start', dir: 'up' },
-  // Saint Louis: l'automatico la spingeva a 32px verso Nashville (ownership).
-  saint_louis: { anchor: 'middle', dir: 'up' },
-};
+// Le voci stanno in MAP_TUNING[map].labelOverrides (in testa al file).
+const LABEL_OVERRIDES = TUNING.labelOverrides;
 
 // RResolve un override: candidati nella direzione voluta, ordinati per
 // distanza; primo con conflitti 0 vince. Se nessuno è pulito, restituisce
@@ -1145,7 +1183,7 @@ function labelCoreHitCurve(e, box) {
 
 const degree = new Map(cityIds.map((id) => [id, 0]));
 for (const e of edges) { degree.set(cityIds[e.a], degree.get(cityIds[e.a]) + 1); degree.set(cityIds[e.b], degree.get(cityIds[e.b]) + 1); }
-const order = usa.cities.map((c) => c.id).sort((x, y) => {
+const order = mapData.cities.map((c) => c.id).sort((x, y) => {
   const dx = degree.get(x), dy = degree.get(y);
   if (dx !== dy) return dy - dx;
   const lx = (names.get(x) || '').length, ly = (names.get(y) || '').length;
@@ -2156,12 +2194,8 @@ if (clusterApplied) {
 let f2ShiftsApplied = 0;
 const f2ShiftDetail = [];
 
-// Shifts pianificati: [cityId, dx, dy, motivazione]
-const f2PlannedShifts = [
-  // saint_louis → sud: apre il gap al hub Pittsburgh (pittsburgh→StL più sud)
-  ['saint_louis', 0, 5, 'Pittsburgh hub: chicago↔pittsburgh vs pittsburgh↔saint_louis'],
-  // chicago shift rimosso: non migliorava Saint Louis hub (0.4px invariato) e causava label regression
-];
+// Shifts pianificati: [cityId, dx, dy, motivazione] — da MAP_TUNING[map].f2Shifts.
+const f2PlannedShifts = TUNING.f2Shifts;
 
 for (const [cityId, dx, dy, reason] of f2PlannedShifts) {
   const ci = idIndex.get(cityId);
@@ -2645,7 +2679,7 @@ for (let ci = 0; ci < cityIds.length; ci++) {
 
 // ── Report ─────────────────────────────────────────────────────────────
 const total = labelLabel + labelRouteCore + labelDot + routeRoute;
-console.log(`rotte: ${usa.routes.length} (coppie: ${edges.length}) | UNIT=${UNIT}px | canvas ${W}x${H}`);
+console.log(`rotte: ${mapData.routes.length} (coppie: ${edges.length}) | UNIT=${UNIT}px | canvas ${W}x${H}`);
 console.log(`scarto medio |disegno−target|: ${errMean.toFixed(1)}px (max ${errMax.toFixed(1)}px, worst ratio ${errWorstRatio.toFixed(2)}× su ${errWorstKey}) su target ${UNIT}–${6 * UNIT}px`);
 console.log(`  violazioni ratio (>1.6× o <0.8×): ${lengthRatioViolations.length} (gate: ≤1.7× per rotte ≥5 carte, ≤1.6× altrimenti)`);
 for (const v of lengthRatioViolations) console.log(`  RATIO ${v}`);
@@ -2799,7 +2833,7 @@ function previewSvg() {
   for (const e of edges) {
     for (const pts of tracksOf(e)) {
       const p = pts.map((q) => q.map((v) => v.toFixed(1)).join(',')).join(' ');
-      const col = COLOR[usa.routes.find((r) => r.id === e.routeIds[0]).color] || '#888';
+      const col = COLOR[mapData.routes.find((r) => r.id === e.routeIds[0]).color] || '#888';
       s += `<polyline points="${p}" fill="none" stroke="${col}" stroke-width="${swOf(e.len)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>\n`;
     }
   }

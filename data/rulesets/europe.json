@@ -1,0 +1,64 @@
+{
+  "map": "europe",
+  "players": {
+    "min": 2,
+    "max": 5
+  },
+  "trainsPerPlayer": 45,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "long",
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "long",
+        "count": 1
+      },
+      {
+        "deck": "regular",
+        "count": 3
+      }
+    ],
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 3,
+    "keepMin": 1
+  },
+  "setupDiscards": "removed",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "6": 15,
+    "8": 21
+  },
+  "bonuses": [
+    {
+      "type": "longest_path",
+      "label": "European Express",
+      "points": 10
+    }
+  ],
+  "stations": {
+    "count": 3,
+    "costs": [
+      1,
+      2,
+      3
+    ],
+    "unbuiltPoints": 4
+  },
+  "tunnels": {
+    "revealed": 3
+  },
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

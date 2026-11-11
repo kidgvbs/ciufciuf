@@ -26,9 +26,9 @@
   import { qrDataUrl } from '../lib/qr';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
-  import { rankedScores, winnerNames } from '../lib/scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations } from '../lib/scores';
   import { formatSavedAt } from '../lib/saves';
-  import { RULESETS, DEFAULT_RULESET_ID } from '../lib/rulesets';
+  import { RULESETS, DEFAULT_RULESET_ID, bonusLabel } from '../lib/rulesets';
   import MapSvg from '../lib/components/MapSvg.svelte';
   import MapCard from '../lib/components/MapCard.svelte';
   import TrainCard from '../lib/components/TrainCard.svelte';
@@ -36,6 +36,7 @@
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import DeckCard from '../lib/components/DeckCard.svelte';
   import type { CardColor } from '../lib/proto';
+  import TunnelCards from '../lib/components/TunnelCards.svelte';
 
   // Il server è sempre quello che serve la pagina (in dev lo raggiunge il proxy di Vite).
   let host = $state<string>(currentHostEnv().origin);
@@ -77,6 +78,19 @@
   const isGameOver = $derived(gameState === 'GAME_OVER');
   const isInGame = $derived(!isLobby && !isGameOver && publicStore.gameId !== '');
   const isDisconnected = $derived(connection !== null && !connectionStore.connected);
+  // Europe: stazioni residue nel segnapunti solo se la partita le prevede.
+  const hasStations = $derived(rulesetHasStations(publicStore.playersSummary, publicStore.stations));
+  // Europe: in TUNNEL_RESOLUTION le carte rivelate sono pubbliche; la TV le mostra a tutti.
+  const tunnelReveal = $derived(gameState === 'TUNNEL_RESOLUTION' ? publicStore.tunnelReveal : null);
+  const tunnelRoute = $derived(
+    tunnelReveal ? (gameMap.state.data?.routes.find((r) => r.id === tunnelReveal.route_id) ?? null) : null,
+  );
+  const tunnelPlayer = $derived(
+    publicStore.playersSummary.find((p) => p.player_id === publicStore.currentTurnPlayerId) ?? null,
+  );
+  function mapCityName(id: string): string {
+    return gameMap.state.data?.cities.find((c) => c.id === id)?.name ?? id;
+  }
 
   function describe(e: unknown): string {
     return e instanceof Error ? e.message : String(e);
@@ -595,7 +609,7 @@
         {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
         {#if winners}<div class="winner-line">🥇 Vince {winners}!</div>{/if}
         <table>
-          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th><th>Bonus</th><th>Totale</th></tr></thead>
+          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th><th>Bonus</th>{#if hasStations}<th>Stazioni</th>{/if}<th>Totale</th></tr></thead>
           <tbody>
             {#each rankedScores(publicStore.finalScores) as fs}
               {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
@@ -604,13 +618,29 @@
                 <td>{fs.routePoints}</td><td>+{fs.ticketCompleted}</td>
                 <td>{fs.ticketFailed < 0 ? fs.ticketFailed : '0'}</td>
                 <td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>
+                {#if hasStations}<td>{fs.stationPoints > 0 ? `+${fs.stationPoints}` : '0'}</td>{/if}
                 <td class="total">{fs.total}</td>
               </tr>
             {/each}
           </tbody>
         </table>
+        {#if publicStore.finalScores.some((fs) => fs.borrowedRoutes.length > 0)}
+          <div class="borrowed-routes">
+            <h3>Rotte in prestito (stazioni)</h3>
+            {#each rankedScores(publicStore.finalScores) as fs}
+              {#if fs.borrowedRoutes.length > 0}
+                {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
+                <div class="borrowed-row">
+                  <span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span>
+                  <strong>{p?.name ?? fs.playerId}</strong>:
+                  {fs.borrowedRoutes.map((b) => borrowedRouteLabel(b, gameMap.state.data)).join(', ')}
+                </div>
+              {/if}
+            {/each}
+          </div>
+        {/if}
         {#if publicStore.longestPathPlayerIds}
-          <div class="longest-path">🏆 Longest Path: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
+          <div class="longest-path">🏆 {bonusLabel(gameMap.rulesetId)}: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
         {/if}
       {/if}
       <!-- Via d'uscita dalla schermata di fine partita
@@ -635,7 +665,7 @@
               {#if isCurrentPlayer(p.player_id)}<span class="turn-tag">turno</span>{/if}
             </div>
             <div class="score-line"><span class="score-num">{p.score}</span><span class="score-label">punti</span></div>
-            <div class="player-stats"><span>🚂 {p.trains_remaining}</span><span>🃏 {p.cards_hand_count}</span><span>🎫 {p.tickets_count}</span></div>
+            <div class="player-stats"><span>🚂 {p.trains_remaining}</span>{#if hasStations}<span title="Stazioni rimaste">🏠 {p.stations_remaining}</span>{/if}<span>🃏 {p.cards_hand_count}</span><span>🎫 {p.tickets_count}</span></div>
           </div>
         {/each}
         <!-- QR di rientro: qualcuno è caduto, il telefono ritrova la partita
@@ -676,6 +706,18 @@
         {/if}
       </div>
       <MapSvg />
+      {#if tunnelReveal}
+        <div class="tunnel-banner" role="status" aria-live="polite">
+          <h2>
+            🚇 Tunnel{tunnelRoute ? `: ${mapCityName(tunnelRoute.from)} → ${mapCityName(tunnelRoute.to)}` : ''}
+          </h2>
+          <p class="tunnel-who">
+            {tunnelPlayer?.name ?? '…'} decide se pagare {tunnelReveal.extra_cost}
+            {tunnelReveal.extra_cost === 1 ? 'carta extra' : 'carte extra'}
+          </p>
+          <TunnelCards reveal={tunnelReveal} />
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -869,4 +911,16 @@
   .missing-row { display:flex; align-items:center; gap:0.8rem; margin:0.4rem 0; }
   .missing-qr { width:120px; height:120px; border-radius:6px; background:#fff; }
   .missing-hint { color:var(--chrome-muted); font-size:0.85rem; }
+
+  /* Tunnel (Europe): carte rivelate in primo piano sopra la mappa */
+  .tunnel-banner {
+    position:fixed; left:calc(280px + (100vw - 280px) / 2); bottom:1.5rem; transform:translateX(-50%);
+    z-index:40; min-width:320px; max-width:calc(100vw - 340px);
+    background: var(--chrome-bg-1); border:2px solid var(--gold); border-radius:14px;
+    padding:0.8rem 1.4rem 1rem; text-align:center; box-shadow: var(--shadow-board);
+  }
+  .tunnel-banner h2 { margin:0 0 0.2rem; font-size:1.5rem; }
+  .tunnel-who { margin:0 0 0.4rem; color:var(--chrome-muted); font-size:1.1rem; }
+  .borrowed-routes { margin-top:1rem; font-size:1.05rem; color:var(--chrome-muted); }
+  .borrowed-row { margin:0.3rem 0; }
 </style>

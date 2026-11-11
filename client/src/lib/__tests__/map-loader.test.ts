@@ -133,6 +133,24 @@ describe('isMapData', () => {
     expect(isMapData({ ...MAP, cities: [{ name: 'x' }] })).toBe(false);
     expect(isMapData(null)).toBe(false);
   });
+
+  const withRoute = (patch: Record<string, unknown>) => ({
+    ...MAP,
+    routes: [{ ...MAP.routes[0], ...patch }],
+  });
+
+  it('accetta tunnel e ferries opzionali (assenti sulla mappa USA)', () => {
+    expect(isMapData(withRoute({ tunnel: true, ferries: 0 }))).toBe(true);
+    expect(isMapData(withRoute({ tunnel: false, ferries: 2 }))).toBe(true);
+    expect(isMapData(withRoute({ ferries: 2 }))).toBe(true);
+  });
+
+  it('rifiuta tunnel non booleano e ferries non interi, negativi o oltre la lunghezza', () => {
+    expect(isMapData(withRoute({ tunnel: 'sì' }))).toBe(false);
+    for (const ferries of [-1, 1.5, 3, '1', null]) {
+      expect(isMapData(withRoute({ ferries })), `ferries=${String(ferries)}`).toBe(false);
+    }
+  });
 });
 
 describe('isMapLayout', () => {

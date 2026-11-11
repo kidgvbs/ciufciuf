@@ -133,6 +133,7 @@ Fonte: PDF ufficiali Days of Wonder (EN e IT disponibili, v. §13). BGA come rif
   - Ogni stazione **non costruita** vale **+4** a fine partita (max +12).
 - **Punteggio rotte (Europe)**: tabella **per-mappa** (nel descriptor, v. §4.1 `routePoints`) — lunghezze 1/2/3/4/6/8 → **1/2/4/7/15/21** (in Europe **non esistono rotte da 5**; la tabella USA è diversa).
 - **Bonus: European Express** +10 al percorso continuo più lungo (stesse regole del Longest Path USA, parità inclusa). In Europe **non** esiste il Globetrotter.
+- **Aggiornamento Fase 4 (11/11/2026)**: riferimento = regolamento Europe **2026** (DO7202N). Spareggio: totale → biglietti completati → European Express, senza "meno stazioni usate" del 2015 (**D29**). Tunnel: la rivelazione non crea mai un mazzo nuovo (**D30**); costo extra 0 → rotta presa subito, costo > 0 → sempre `TUNNEL_RESOLUTION` (**D31**). Assegnazione stazioni: massimo di biglietti completati − falliti, parità all'ordine canonico (**D32**). D28 resta invariata con le stazioni (**D33**). Dettagli: `docs/packages/fase4-europe.md`.
 
 ### 3.3 Checklist edge case del motore
 

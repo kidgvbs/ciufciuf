@@ -24,6 +24,8 @@ fn route(id: &str, from: &str, to: &str, len: u32, color: &str, double: bool) ->
         len,
         color: color.into(),
         double,
+        tunnel: false,
+        ferries: 0,
     }
 }
 
@@ -129,6 +131,8 @@ fn mini_ruleset() -> Ruleset {
         }],
         double_route_min_players: 4,
         final_round_includes_trigger: true,
+        stations: None,
+        tunnels: None,
     }
 }
 

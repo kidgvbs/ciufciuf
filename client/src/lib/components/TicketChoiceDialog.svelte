@@ -125,6 +125,7 @@
             from={desc ? cityName(desc.from) : t.id}
             to={desc ? cityName(desc.to) : ''}
             points={t.points}
+            long={desc?.deck === 'long'}
             selected={selected.has(t.id)}
             color={desc && selected.has(t.id) ? ticketPinColor(i) : undefined}
           />

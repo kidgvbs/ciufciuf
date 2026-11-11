@@ -4,7 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::types::{ClaimedRouteInfo, Route, RouteId, TicketDef, points_to_score};
+use crate::types::{CityId, ClaimedRouteInfo, Route, RouteId, TicketDef, points_to_score};
 
 // ── Union-Find per giocatore ─────────────────────────────────────────
 
@@ -126,6 +126,127 @@ impl PlayerConnectivity {
     /// Clona una copia (per calcoli offline).
     pub fn clone_uf(&self, player_index: usize) -> Option<UnionFind> {
         self.ufs.get(player_index).map(|uf| uf.deep_clone())
+    }
+}
+
+impl PlayerConnectivity {
+    /// Union-Find del giocatore, per valutare i biglietti.
+    pub(crate) fn uf_mut(&mut self, player_index: usize) -> Option<&mut UnionFind> {
+        self.ufs.get_mut(player_index)
+    }
+}
+
+// ── Stazioni e biglietti (D32) ───────────────────────────────────────
+
+/// Rotta avversaria incidente alla città di una stazione.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StationOption {
+    pub route_id: RouteId,
+    /// L'estremo della rotta opposto alla città della stazione.
+    pub other_city: CityId,
+}
+
+/// Una stazione con le rotte avversarie che può prendere in prestito, per id crescente.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StationCandidates {
+    pub city: CityId,
+    pub options: Vec<StationOption>,
+}
+
+/// Esito dei biglietti di un giocatore con la migliore assegnazione delle stazioni.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketEvaluation {
+    /// Un esito per biglietto, nell'ordine di `tickets`.
+    pub completed: Vec<bool>,
+    /// Somma dei punti dei biglietti completati.
+    pub completed_points: i32,
+    /// Somma negata dei punti dei biglietti falliti (≤ 0).
+    pub failed_points: i32,
+    pub completed_count: u32,
+    /// Rotte prese in prestito dall'assegnazione scelta: (città stazione, rotta).
+    pub borrowed: Vec<(CityId, RouteId)>,
+}
+
+impl TicketEvaluation {
+    fn net(&self) -> i32 {
+        self.completed_points.saturating_add(self.failed_points)
+    }
+}
+
+fn score_tickets(uf: &mut UnionFind, tickets: &[(&str, &str, u32)]) -> TicketEvaluation {
+    let mut eval = TicketEvaluation {
+        completed: Vec::with_capacity(tickets.len()),
+        completed_points: 0,
+        failed_points: 0,
+        completed_count: 0,
+        borrowed: Vec::new(),
+    };
+    for &(from, to, points) in tickets {
+        let done = uf.connected(from, to);
+        eval.completed.push(done);
+        if done {
+            eval.completed_points = eval
+                .completed_points
+                .saturating_add(points_to_score(points));
+            eval.completed_count += 1;
+        } else {
+            eval.failed_points = eval.failed_points.saturating_sub(points_to_score(points));
+        }
+    }
+    eval
+}
+
+/// Valuta i biglietti `(da, a, punti)` con la connettività propria `own` e, per ogni
+/// stazione, la scelta di non usarne nessuna o di prendere in prestito una delle sue
+/// rotte avversarie. Vince l'assegnazione che massimizza punti completati meno punti
+/// falliti; a parità la prima in ordine canonico (stazioni in ordine di costruzione,
+/// per ciascuna prima "nessuna rotta", poi le rotte per id crescente).
+pub fn evaluate_tickets(
+    own: &mut UnionFind,
+    tickets: &[(&str, &str, u32)],
+    stations: &[StationCandidates],
+) -> TicketEvaluation {
+    if stations.is_empty() {
+        return score_tickets(own, tickets);
+    }
+    let mut best: Option<TicketEvaluation> = None;
+    let mut picks: Vec<Option<usize>> = Vec::with_capacity(stations.len());
+    search_stations(own, tickets, stations, &mut picks, &mut best);
+    best.expect("la ricerca visita almeno l'assegnazione vuota")
+}
+
+fn search_stations(
+    uf: &mut UnionFind,
+    tickets: &[(&str, &str, u32)],
+    stations: &[StationCandidates],
+    picks: &mut Vec<Option<usize>>,
+    best: &mut Option<TicketEvaluation>,
+) {
+    let depth = picks.len();
+    if depth == stations.len() {
+        let mut eval = score_tickets(uf, tickets);
+        if best.as_ref().is_none_or(|b| eval.net() > b.net()) {
+            eval.borrowed = picks
+                .iter()
+                .zip(stations)
+                .filter_map(|(pick, st)| {
+                    pick.map(|k| (st.city.clone(), st.options[k].route_id.clone()))
+                })
+                .collect();
+            *best = Some(eval);
+        }
+        return;
+    }
+    let station = &stations[depth];
+    picks.push(None);
+    search_stations(uf, tickets, stations, picks, best);
+    picks.pop();
+    for (k, option) in station.options.iter().enumerate() {
+        let mut next = uf.deep_clone();
+        next.union(&station.city, &option.other_city);
+        picks.push(Some(k));
+        search_stations(&mut next, tickets, stations, picks, best);
+        picks.pop();
     }
 }
 
@@ -540,12 +661,15 @@ pub struct PlayerScore {
     pub longest_path: u32,
     /// False when the longest path search hit its budget: `longest_path` is a lower bound.
     pub longest_path_exact: bool,
+    /// Rotte avversarie prese in prestito dalle stazioni: (città, rotta).
+    pub borrowed_routes: Vec<(CityId, RouteId)>,
 }
 
 /// Calcola il punteggio finale per tutti i giocatori.
 ///
 /// - Somma punti rotte (già accumulati in `player.score`)
-/// - Biglietti: ±valore in base alla connettività Union-Find
+/// - Biglietti: ±valore in base alla connettività Union-Find, con la migliore
+///   assegnazione delle stazioni (D32, `stations` per giocatore)
 /// - Longest Continuous Path: +bonus a chi ha il percorso più lungo
 ///   (parità → bonus a tutti i pari merito)
 pub fn compute_final_scores(
@@ -553,6 +677,7 @@ pub fn compute_final_scores(
     routes_map: &BTreeMap<RouteId, Route>,
     tickets: &[TicketDef],
     player_tickets: &[BTreeMap<String, bool>], // ticket_id → kept
+    stations: &[Vec<StationCandidates>],       // per giocatore, in ordine di costruzione
     connectivity: &mut PlayerConnectivity,
     bonus_points: u32,
 ) -> (Vec<PlayerScore>, Vec<usize>, u32) {
@@ -565,6 +690,7 @@ pub fn compute_final_scores(
             failed_tickets: 0,
             longest_path: 0,
             longest_path_exact: true,
+            borrowed_routes: Vec::new(),
         })
         .collect();
 
@@ -595,21 +721,23 @@ pub fn compute_final_scores(
 
     // Calcola biglietti
     for (pi, pt) in player_tickets.iter().enumerate() {
-        for tid in pt.keys() {
-            if let Some(ticket) = tickets.iter().find(|t| &t.id == tid) {
-                let completed = connectivity.ticket_completed(pi, &ticket.from, &ticket.to);
-                if completed {
-                    scores[pi].completed_tickets = scores[pi]
-                        .completed_tickets
-                        .saturating_add(points_to_score(ticket.points));
-                    scores[pi].completed_count += 1;
-                } else {
-                    scores[pi].failed_tickets = scores[pi]
-                        .failed_tickets
-                        .saturating_sub(points_to_score(ticket.points));
-                }
-            }
-        }
+        let defs: Vec<&TicketDef> = pt
+            .keys()
+            .filter_map(|tid| tickets.iter().find(|t| &t.id == tid))
+            .collect();
+        let list: Vec<(&str, &str, u32)> = defs
+            .iter()
+            .map(|t| (t.from.as_str(), t.to.as_str(), t.points))
+            .collect();
+        let own_stations = stations.get(pi).map_or(&[][..], Vec::as_slice);
+        let eval = match connectivity.uf_mut(pi) {
+            Some(uf) => evaluate_tickets(uf, &list, own_stations),
+            None => evaluate_tickets(&mut UnionFind::new(), &list, own_stations),
+        };
+        scores[pi].completed_tickets = eval.completed_points;
+        scores[pi].failed_tickets = eval.failed_points;
+        scores[pi].completed_count = eval.completed_count;
+        scores[pi].borrowed_routes = eval.borrowed;
     }
 
     (scores, bonus_winners, bonus_points)
@@ -629,6 +757,8 @@ mod tests {
             len,
             color: "Gray".to_string(),
             double: false,
+            tunnel: false,
+            ferries: 0,
         }
     }
 
@@ -1052,5 +1182,61 @@ mod tests {
         let claimed = [make_cri("a_b_1"), make_cri("a_b_1"), make_cri("ghost_1")];
         assert_eq!(longest(&claimed, &routes), 3);
         assert_eq!(longest(&[], &routes), 0);
+    }
+
+    fn candidates(city: &str, options: &[(&str, &str)]) -> StationCandidates {
+        StationCandidates {
+            city: city.into(),
+            options: options
+                .iter()
+                .map(|(route_id, other)| StationOption {
+                    route_id: (*route_id).into(),
+                    other_city: (*other).into(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn station_assignment_picks_the_first_maximum_in_canonical_order() {
+        let mut own = UnionFind::new();
+        own.union("a", "m");
+        let station = candidates("s", &[("r1", "z"), ("r2", "m"), ("r3", "m")]);
+
+        // A–S si completa solo con una rotta verso M: la prima in ordine di id.
+        let eval = evaluate_tickets(
+            &mut own.deep_clone(),
+            &[("a", "s", 8)],
+            std::slice::from_ref(&station),
+        );
+        assert_eq!(eval.completed, [true]);
+        assert_eq!(eval.borrowed, [("s".to_string(), "r2".to_string())]);
+
+        // Già completo senza stazione: "nessuna rotta" vince a parità.
+        let eval = evaluate_tickets(
+            &mut own.deep_clone(),
+            &[("a", "m", 8)],
+            std::slice::from_ref(&station),
+        );
+        assert_eq!(eval.completed, [true]);
+        assert!(eval.borrowed.is_empty());
+
+        // Con più biglietti vince il netto migliore, non il numero di completati.
+        let tickets = [("a", "s", 3), ("s", "z", 5)];
+        let eval = evaluate_tickets(&mut own.deep_clone(), &tickets, &[station]);
+        assert_eq!(eval.completed, [false, true]);
+        assert_eq!(eval.borrowed, [("s".to_string(), "r1".to_string())]);
+        assert_eq!((eval.completed_points, eval.failed_points), (5, -3));
+    }
+
+    #[test]
+    fn each_station_borrows_at_most_one_route() {
+        let mut own = UnionFind::new();
+        own.union("a", "m");
+        let station = candidates("s", &[("r1", "a"), ("r2", "b")]);
+        // S–A e S–B richiedono due rotte diverse: una stazione ne prende una sola.
+        let eval = evaluate_tickets(&mut own, &[("s", "a", 4), ("s", "b", 5)], &[station]);
+        assert_eq!(eval.completed, [false, true]);
+        assert_eq!(eval.borrowed, [("s".to_string(), "r2".to_string())]);
     }
 }

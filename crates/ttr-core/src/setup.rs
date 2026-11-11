@@ -144,6 +144,23 @@ impl Ruleset {
             if route.double {
                 check_double_route(route, &routes)?;
             }
+            if route.ferries > route.len {
+                return Err(EngineInitError::RouteFerriesExceedLength {
+                    route_id: route.id.clone(),
+                    ferries: route.ferries,
+                    len: route.len,
+                });
+            }
+            if route.tunnel && route.ferries > 0 {
+                return Err(EngineInitError::RouteTunnelAndFerry {
+                    route_id: route.id.clone(),
+                });
+            }
+            if route.tunnel && self.tunnels.as_ref().is_none_or(|t| t.revealed == 0) {
+                return Err(EngineInitError::TunnelsConfigMissing {
+                    route_id: route.id.clone(),
+                });
+            }
         }
 
         for ticket in &map.tickets {
@@ -160,6 +177,18 @@ impl Ruleset {
                     ticket_id: ticket.id.clone(),
                     city_id: ticket.from.clone(),
                 });
+            }
+        }
+
+        if let Some(stations) = &self.stations {
+            if stations.costs.len() != stations.count as usize {
+                return Err(EngineInitError::StationCostsMismatch {
+                    count: stations.count,
+                    costs: stations.costs.len(),
+                });
+            }
+            if let Some(index) = stations.costs.iter().position(|&c| c == 0) {
+                return Err(EngineInitError::StationCostZero { index });
             }
         }
         Ok(())

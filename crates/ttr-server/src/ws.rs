@@ -273,6 +273,8 @@ fn extract_client_seq(inbound: &ttr_proto::InboundAction) -> Option<u64> {
         ttr_proto::InboundAction::DrawTickets(p) => p.client_seq,
         ttr_proto::InboundAction::ChooseTickets(p) => p.client_seq,
         ttr_proto::InboundAction::ClaimRoute(p) => p.client_seq,
+        ttr_proto::InboundAction::BuildStation(p) => p.client_seq,
+        ttr_proto::InboundAction::TunnelDecision(p) => p.client_seq,
         ttr_proto::InboundAction::RequestSnapshot(p) => p.client_seq,
     }
 }

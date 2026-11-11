@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, HashSet};
 
 use ttr_core::error::{EngineError, GamePhase};
 use ttr_proto::{
-    CardColor, ClaimedRoute, ErrorReason, FinalScoreInfo, GameState, LegalMoves, PlayerSummary,
-    TicketInfo,
+    BorrowedRoute, CardColor, ClaimedRoute, ErrorReason, FinalScoreInfo, GameState, LegalMoves,
+    PlayerSummary, StationPlacement, TicketInfo, TunnelDecisionMoves, TunnelReveal,
 };
 
 use crate::session::{GameSession, SessionPlayer};
@@ -86,6 +86,36 @@ pub(crate) fn build_public_state(
 
     let players_summary = build_players_summary(session, connected_player_ids);
 
+    let tunnel_reveal = session
+        .engine
+        .as_ref()
+        .and_then(|e| e.pending_tunnel())
+        .map(|pending| TunnelReveal {
+            route_id: pending.route_id.clone(),
+            cards: pending.revealed.clone(),
+            color: pending.color,
+            extra_cost: pending.extra,
+        });
+
+    // `station_placements` è già in ordine di id città.
+    let stations: Vec<StationPlacement> = session
+        .engine
+        .as_ref()
+        .map(|e| {
+            e.station_placements()
+                .into_iter()
+                .filter_map(|(city_id, owner)| {
+                    session
+                        .player_id_for_index(owner)
+                        .map(|player_id| StationPlacement {
+                            city_id: city_id.clone(),
+                            player_id: player_id.to_string(),
+                        })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     ttr_proto::PublicState {
         game_id: session.game_id.clone(),
         protocol_version: 1,
@@ -97,8 +127,8 @@ pub(crate) fn build_public_state(
         deck_size,
         claimed_routes,
         players_summary,
-        tunnel_reveal: None,
-        stations: vec![],
+        tunnel_reveal,
+        stations,
         final_scores: session.final_scores.clone(),
         longest_path_player_ids: session.longest_path_player_ids.clone(),
     }
@@ -109,6 +139,7 @@ fn game_phase_to_game_state(phase: GamePhase) -> GameState {
         GamePhase::InitialDraft => GameState::InitialDraft,
         GamePhase::PlayerTurn => GameState::PlayerTurn,
         GamePhase::SecondCardDraw => GameState::SecondCardDraw,
+        GamePhase::TunnelResolution => GameState::TunnelResolution,
         GamePhase::TicketChoice => GameState::TicketChoice,
         GamePhase::LastRound => GameState::LastRound,
         GamePhase::GameOver => GameState::GameOver,
@@ -138,7 +169,11 @@ fn build_players_summary(
         .collect();
     ordered.sort_by_key(|(ei, _, _)| *ei);
 
-    let max_trains: u32 = 45; // USA default
+    // Senza motore (pre-start) il ruleset non è noto: default 45 treni.
+    let max_trains: u32 = session
+        .engine
+        .as_ref()
+        .map_or(45, |engine| engine.trains_per_player());
 
     ordered
         .into_iter()
@@ -161,7 +196,10 @@ fn build_players_summary(
                 name: p.name.clone(),
                 color: p.color,
                 trains_remaining: trains,
-                stations_remaining: 0,
+                stations_remaining: session
+                    .engine
+                    .as_ref()
+                    .map_or(0, |engine| engine.stations_remaining(engine_idx)),
                 score,
                 cards_hand_count: hand_count,
                 tickets_count,
@@ -214,6 +252,14 @@ pub(crate) fn build_private_state(
             draw_face_up: lm.draw_face_up,
             can_draw_deck: lm.can_draw_deck,
             can_draw_tickets: lm.can_draw_tickets,
+            station_cities: lm.station_cities,
+            station_cost: lm.station_cost,
+            tunnel: lm.tunnel.map(|t| TunnelDecisionMoves {
+                route_id: t.route_id,
+                extra_cost: t.extra_cost,
+                color: t.color,
+                can_pay: t.can_pay,
+            }),
         }
     };
 
@@ -312,8 +358,17 @@ pub(crate) fn build_final_scores(
                 ticket_completed: fs.ticket_completed,
                 ticket_failed: fs.ticket_failed,
                 longest_path_bonus: fs.longest_path_bonus,
+                station_points: fs.station_points,
                 total: fs.total,
                 winner: fs.winner,
+                borrowed_routes: fs
+                    .borrowed_routes
+                    .iter()
+                    .map(|(city_id, route_id)| BorrowedRoute {
+                        city_id: city_id.clone(),
+                        route_id: route_id.clone(),
+                    })
+                    .collect(),
             }
         })
         .collect()
@@ -329,7 +384,9 @@ pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
         EngineError::RouteBlockedDouble { .. } | EngineError::SamePlayerDouble { .. } => {
             ErrorReason::RouteBlockedDoubleVariant
         }
-        EngineError::InsufficientCards { .. } => ErrorReason::InsufficientCards,
+        EngineError::InsufficientCards { .. }
+        | EngineError::InsufficientStationCards { .. }
+        | EngineError::InsufficientTunnelCards { .. } => ErrorReason::InsufficientCards,
         EngineError::TicketChoiceBelowMin { .. }
         | EngineError::TicketChoiceTooMany { .. }
         | EngineError::TicketNotOffered { .. } => ErrorReason::TicketChoiceOutOfRange,
@@ -340,6 +397,9 @@ pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
         | EngineError::PlayerNotFound { .. }
         | EngineError::RouteNotFound { .. }
         | EngineError::InvalidRouteColor { .. }
+        | EngineError::CityNotFound { .. }
+        | EngineError::StationCityOccupied { .. }
+        | EngineError::NoStationsLeft
         | EngineError::InvalidPayload { .. }
         | EngineError::DraftNotComplete => ErrorReason::InvalidAction,
         // Errori futuri del motore: azione rifiutata senza una ragione dedicata.
@@ -358,6 +418,11 @@ pub(crate) fn error_action_ref(err: &EngineError) -> Option<String> {
         EngineError::InsufficientCards { route_id, .. } => {
             Some(format!("CLAIM_ROUTE {}", route_id))
         }
+        EngineError::InsufficientStationCards { .. } => Some("BUILD_STATION".into()),
+        EngineError::InsufficientTunnelCards { .. } => Some("TUNNEL_DECISION".into()),
+        EngineError::CityNotFound { .. }
+        | EngineError::StationCityOccupied { .. }
+        | EngineError::NoStationsLeft => Some("BUILD_STATION".into()),
         EngineError::FaceUpIndexOutOfRange { index, .. } => {
             Some(format!("DRAW_TRAIN_CARD faceUp[{}]", index))
         }
@@ -427,6 +492,17 @@ mod tests {
             }),
             ErrorReason::InsufficientCards
         );
+        assert_eq!(
+            engine_error_to_reason(&EngineError::InsufficientStationCards { needed: 2 }),
+            ErrorReason::InsufficientCards
+        );
+        assert_eq!(
+            engine_error_to_reason(&EngineError::InsufficientTunnelCards {
+                route_id: "r1".into(),
+                needed: 1
+            }),
+            ErrorReason::InsufficientCards
+        );
 
         // TicketChoiceOutOfRange (BelowMin + TooMany + NotOffered)
         assert_eq!(
@@ -482,6 +558,19 @@ mod tests {
                 "InvalidPayload",
             ),
             (EngineError::DraftNotComplete, "DraftNotComplete"),
+            (
+                EngineError::CityNotFound {
+                    city_id: "atlantis".into(),
+                },
+                "CityNotFound",
+            ),
+            (
+                EngineError::StationCityOccupied {
+                    city_id: "paris".into(),
+                },
+                "StationCityOccupied",
+            ),
+            (EngineError::NoStationsLeft, "NoStationsLeft"),
         ] {
             assert_eq!(
                 engine_error_to_reason(&err),

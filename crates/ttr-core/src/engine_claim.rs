@@ -5,12 +5,13 @@ use std::collections::BTreeMap;
 use ttr_proto::CardColor;
 
 use crate::engine::Engine;
+use crate::engine_deck::reveal_from_deck;
 use crate::error::{EngineError, GamePhase};
 use crate::event::{FinalScore, GameEvent};
-use crate::scoring::compute_final_scores;
+use crate::scoring::{UnionFind, compute_final_scores, evaluate_tickets};
 use crate::types::{
-    ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, RouteColor,
-    find_sister_route, points_to_score,
+    ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
+    RouteColor, find_sister_route, points_to_score,
 };
 
 impl Engine {
@@ -37,7 +38,8 @@ impl Engine {
             .get(route_id)
             .ok_or_else(|| EngineError::RouteNotFound {
                 route_id: route_id.to_string(),
-            })?;
+            })?
+            .clone();
 
         if self.claimed_routes.contains_key(route_id) {
             return Err(EngineError::RouteAlreadyClaimed {
@@ -122,15 +124,43 @@ impl Engine {
             }
         }
 
+        // I traghetti richiedono almeno `ferries` locomotive tra le carte tolte.
+        let locos_removed = removed
+            .iter()
+            .filter(|c| **c == CardColor::Locomotive)
+            .count();
+        if locos_removed < route.ferries as usize {
+            return Err(insufficient_cards());
+        }
+
         if self.players[player_index].trains_remaining < len {
             return Err(insufficient_cards());
         }
 
         // --- Tutto valido: esegui il claim ---
 
+        if route.tunnel {
+            return Ok(self.start_tunnel(player_index, &route, hand, removed));
+        }
+
         self.players[player_index].hand = hand;
         self.train_discards.extend_from_slice(&removed);
 
+        let mut events = Vec::new();
+        self.complete_claim(player_index, &route, removed, &mut events);
+        Ok(events)
+    }
+
+    /// Completa una rotta pagata: punti, treni, connettività, biglietti,
+    /// `RouteClaimed` e avanzamento del turno. Le carte sono già state scartate.
+    fn complete_claim(
+        &mut self,
+        player_index: usize,
+        route: &Route,
+        cards_used: Vec<CardColor>,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let len = route.len;
         let points = self
             .ruleset
             .route_points
@@ -142,7 +172,7 @@ impl Engine {
         player.trains_remaining -= len;
         player.score = player.score.saturating_add(points_to_score(points));
         player.claimed_routes.insert(
-            route_id.to_string(),
+            route.id.clone(),
             ClaimedRouteRecord {
                 points,
                 train_count: len,
@@ -150,9 +180,9 @@ impl Engine {
         );
 
         self.claimed_routes.insert(
-            route_id.to_string(),
+            route.id.clone(),
             ClaimedRouteInfo {
-                route_id: route_id.to_string(),
+                route_id: route.id.clone(),
                 claimed_by: player_index,
             },
         );
@@ -160,17 +190,169 @@ impl Engine {
         self.connectivity
             .add_route(player_index, &route.from, &route.to);
         self.update_ticket_completion(player_index);
+        // Una rotta avversaria nuova può completare i biglietti di chi ha stazioni.
+        for other in 0..self.players.len() {
+            if other != player_index && !self.players[other].stations.is_empty() {
+                self.update_ticket_completion(other);
+            }
+        }
 
-        let mut events = vec![GameEvent::RouteClaimed {
-            route_id: route_id.to_string(),
+        events.push(GameEvent::RouteClaimed {
+            route_id: route.id.clone(),
             player_index,
-            cards_used: removed,
+            cards_used,
             points,
             trains_placed: len,
-        }];
+        });
 
-        self.advance_turn(&mut events);
+        self.advance_turn(events);
+    }
 
+    /// Rivela le carte di un tunnel (D30) dopo che il pagamento base è stato validato.
+    /// Con costo extra 0 la rotta è reclamata subito (D31), altrimenti si attende la
+    /// decisione del giocatore.
+    fn start_tunnel(
+        &mut self,
+        player_index: usize,
+        route: &Route,
+        hand: Vec<CardColor>,
+        played: Vec<CardColor>,
+    ) -> Vec<GameEvent> {
+        self.players[player_index].hand = hand;
+        let color = played
+            .iter()
+            .copied()
+            .find(|c| *c != CardColor::Locomotive)
+            .unwrap_or(CardColor::Locomotive);
+
+        let mut events = Vec::new();
+        let count = self.ruleset.tunnels.as_ref().map_or(0, |t| t.revealed);
+        let revealed = reveal_from_deck(
+            &mut self.draw_pile,
+            &mut self.train_discards,
+            &mut self.rng,
+            count,
+            &mut events,
+        );
+        let extra = u32::try_from(
+            revealed
+                .iter()
+                .filter(|c| **c == CardColor::Locomotive || **c == color)
+                .count(),
+        )
+        .unwrap_or(u32::MAX);
+        events.push(GameEvent::TunnelRevealed {
+            player_index,
+            route_id: route.id.clone(),
+            cards: revealed.clone(),
+            color,
+            extra_cost: extra,
+        });
+
+        if extra == 0 {
+            self.train_discards.extend_from_slice(&played);
+            self.train_discards.extend(revealed);
+            self.complete_claim(player_index, route, played, &mut events);
+        } else {
+            self.pending_tunnel = Some(PendingTunnel {
+                route_id: route.id.clone(),
+                played,
+                revealed,
+                color,
+                extra,
+            });
+            self.phase = GamePhase::TunnelResolution;
+        }
+        events
+    }
+
+    /// Decisione sul tunnel pendente: pagare le carte extra o rinunciare.
+    pub(crate) fn handle_tunnel_decision(
+        &mut self,
+        player_index: usize,
+        pay: bool,
+        cards_discarded: &[CardColor],
+    ) -> Result<Vec<GameEvent>, EngineError> {
+        if self.phase != GamePhase::TunnelResolution {
+            return Err(EngineError::WrongState { state: self.phase });
+        }
+        if player_index != self.current_player_index {
+            return Err(EngineError::NotYourTurn {
+                player_index,
+                current_player: self.current_player_index,
+            });
+        }
+        let Some(pending) = self.pending_tunnel.as_ref() else {
+            return Err(EngineError::WrongState { state: self.phase });
+        };
+
+        if !pay {
+            let Some(pending) = self.pending_tunnel.take() else {
+                return Err(EngineError::WrongState { state: self.phase });
+            };
+            self.players[player_index].hand.extend(pending.played);
+            self.train_discards.extend(pending.revealed);
+            let mut events = vec![GameEvent::TunnelDeclined {
+                player_index,
+                route_id: pending.route_id,
+            }];
+            self.advance_turn(&mut events);
+            return Ok(events);
+        }
+
+        let needed = pending.extra;
+        let insufficient = || EngineError::InsufficientTunnelCards {
+            route_id: pending.route_id.clone(),
+            needed,
+        };
+        if cards_discarded.len() != needed as usize {
+            return Err(insufficient());
+        }
+        let route = self
+            .routes_by_id
+            .get(&pending.route_id)
+            .ok_or_else(|| EngineError::RouteNotFound {
+                route_id: pending.route_id.clone(),
+            })?
+            .clone();
+
+        let mut hand = self.players[player_index].hand.clone();
+        let mut extra_cards: Vec<CardColor> = Vec::with_capacity(cards_discarded.len());
+        for card in cards_discarded {
+            let pos = hand
+                .iter()
+                .position(|c| c == card)
+                .or_else(|| hand.iter().position(|c| *c == CardColor::Locomotive))
+                .ok_or_else(insufficient)?;
+            extra_cards.push(hand.remove(pos));
+        }
+        if let Some(bad) = extra_cards
+            .iter()
+            .find(|c| **c != pending.color && **c != CardColor::Locomotive)
+        {
+            return Err(EngineError::InvalidPayload {
+                reason: format!(
+                    "carta {bad:?} non ammessa per il costo extra del tunnel ({:?})",
+                    pending.color
+                ),
+            });
+        }
+
+        // --- Tutto valido: paga e completa il claim ---
+
+        let Some(pending) = self.pending_tunnel.take() else {
+            return Err(EngineError::WrongState { state: self.phase });
+        };
+        self.players[player_index].hand = hand;
+        // Ordine di scarto deterministico: giocate, extra, rivelate.
+        self.train_discards.extend_from_slice(&pending.played);
+        self.train_discards.extend_from_slice(&extra_cards);
+        self.train_discards.extend(pending.revealed);
+        let mut cards_used = pending.played;
+        cards_used.extend(extra_cards);
+
+        let mut events = Vec::new();
+        self.complete_claim(player_index, &route, cards_used, &mut events);
         Ok(events)
     }
 
@@ -245,11 +427,16 @@ impl Engine {
             })
             .collect();
 
+        let stations: Vec<_> = (0..self.players.len())
+            .map(|pi| self.station_candidates(pi))
+            .collect();
+
         let (scores, winners, bonus) = compute_final_scores(
             &routes_per_player,
             &self.routes_by_id,
             &self.map.tickets,
             &player_tickets,
+            &stations,
             &mut self.connectivity,
             self.longest_path_bonus_points,
         );
@@ -272,11 +459,13 @@ impl Engine {
                 } else {
                     0
                 };
+                let station_points = self.unbuilt_station_points(i);
                 let total = p
                     .score
                     .saturating_add(s.completed_tickets)
                     .saturating_add(s.failed_tickets)
-                    .saturating_add(bonus_val);
+                    .saturating_add(bonus_val)
+                    .saturating_add(station_points);
                 FinalScore {
                     player_index: i,
                     route_points: p.score,
@@ -284,6 +473,8 @@ impl Engine {
                     ticket_failed: s.failed_tickets,
                     longest_path_bonus: bonus_val,
                     total,
+                    station_points,
+                    borrowed_routes: s.borrowed_routes.clone(),
                     winner: false,
                 }
             })
@@ -312,21 +503,29 @@ impl Engine {
         }]
     }
 
-    /// Aggiorna il completamento dei biglietti per un giocatore
-    /// basandosi sulla connettività corrente.
+    /// Aggiorna il completamento dei biglietti per un giocatore basandosi sulla
+    /// connettività corrente e sulla migliore assegnazione delle stazioni (D32).
     pub(crate) fn update_ticket_completion(&mut self, player_index: usize) {
-        let endpoints: Vec<(String, String, String)> = self.players[player_index]
+        let tickets: Vec<(String, String, String, u32)> = self.players[player_index]
             .tickets
             .keys()
             .filter_map(|tid| {
                 let t = self.tickets_by_id.get(tid)?;
-                Some((tid.clone(), t.from.clone(), t.to.clone()))
+                Some((tid.clone(), t.from.clone(), t.to.clone(), t.points))
             })
             .collect();
+        let list: Vec<(&str, &str, u32)> = tickets
+            .iter()
+            .map(|(_, from, to, points)| (from.as_str(), to.as_str(), *points))
+            .collect();
+        let stations = self.station_candidates(player_index);
+        let eval = match self.connectivity.uf_mut(player_index) {
+            Some(uf) => evaluate_tickets(uf, &list, &stations),
+            None => evaluate_tickets(&mut UnionFind::new(), &list, &stations),
+        };
 
-        for (tid, from, to) in endpoints {
-            let completed = self.connectivity.ticket_completed(player_index, &from, &to);
-            if let Some(ts) = self.players[player_index].tickets.get_mut(&tid) {
+        for ((tid, ..), completed) in tickets.iter().zip(eval.completed) {
+            if let Some(ts) = self.players[player_index].tickets.get_mut(tid) {
                 ts.completed = Some(completed);
             }
         }

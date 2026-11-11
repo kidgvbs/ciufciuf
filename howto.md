@@ -130,7 +130,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 
 Note:
 
-- `rulesetId` oggi è solo `usa_v2`.
+- `rulesetId`: `usa_v2` o `europe`.
 - `color` è uno tra `RED`, `BLUE`, `GREEN`, `YELLOW`, `BLACK` (maiuscolo; un valore diverso → `422` con testo semplice di axum, non JSON); se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
 - `seed` senza `--allow-client-seed` → `400 SEED_NOT_ALLOWED`. Il seed di default è a 64 bit da un CSPRNG, finisce solo nel save e mai nelle API: con il seed si ricostruiscono le mani di tutti.
 - `DELETE` senza body → `401 UNAUTHORIZED`; body malformato → `400`.
@@ -203,11 +203,14 @@ Azioni dal client (`actionType`, ogni payload ha `player_id` e `client_seq?` opz
 {"actionType":"CHOOSE_TICKETS","player_id":"…","keep":["id_biglietto","…"]}
 {"actionType":"CLAIM_ROUTE","player_id":"…","route_id":"a_b_1","cards_discarded":["RED","RED","LOCOMOTIVE"]}
 {"actionType":"REQUEST_SNAPSHOT","player_id":"…"}
+{"actionType":"BUILD_STATION","player_id":"…","city_id":"paris","cards_discarded":["RED","LOCOMOTIVE"]}
+{"actionType":"TUNNEL_DECISION","player_id":"…","pay":true,"cards_discarded":["BLACK"]}
 ```
 
 - Il client non conosce le regole: le mosse legali arrivano nel `PRIVATE_STATE`. Il pagamento di `CLAIM_ROUTE` è un suggerimento; il motore usa una locomotiva se manca una carta del colore.
 - Un `client_seq` ≤ all'ultimo già visto è un duplicato: viene scartato e il server rimanda l'ultimo `PRIVATE_STATE`. Il client lo omette per `REQUEST_SNAPSHOT`.
-- Stati (`GameState`): `WAITING_FOR_PLAYERS`, `INITIAL_DRAFT`, `PLAYER_TURN`, `SECOND_CARD_DRAW`, `TICKET_CHOICE`, `LAST_ROUND`, `GAME_OVER` (più `TUNNEL_RESOLUTION` riservato a Europe).
+- Stati (`GameState`): `WAITING_FOR_PLAYERS`, `INITIAL_DRAFT`, `PLAYER_TURN`, `SECOND_CARD_DRAW`, `TICKET_CHOICE`, `LAST_ROUND`, `TUNNEL_RESOLUTION` (Europe), `GAME_OVER`.
+- Europe: `BUILD_STATION` è l'azione del turno, con `legalMoves.station_cost` carte di un colore (locomotive jolly) su una città di `legalMoves.station_cities`. Un `CLAIM_ROUTE` su un tunnel rivela fino a 3 carte (`PUBLIC_STATE.tunnel_reveal`): con costo extra 0 la rotta è presa subito, altrimenti si entra in `TUNNEL_RESOLUTION` e il giocatore risponde con `TUNNEL_DECISION` (`pay: false` = carte giocate di nuovo in mano, turno finito; `legalMoves.tunnel.can_pay` dice se la mano basta). I traghetti richiedono `ferries` locomotive nel pagamento.
 - I tipi veri sono in `crates/ttr-proto` e, generati, in `crates/ttr-proto/bindings` e `client/src/lib/proto`.
 
 Reconnect del client (`client/src/lib/ws.ts`): backoff da 0,5 a 30 s con jitter, che si azzera solo dopo 10 s di connessione stabile; al ritorno in primo piano (o evento `online`) chiede uno snapshot e, se non arriva nulla in 3 s, ricrea il socket (anche se è fermo in `CONNECTING` oltre 5 s). Gli `ERROR` fatali mostrano il messaggio e fermano i tentativi.

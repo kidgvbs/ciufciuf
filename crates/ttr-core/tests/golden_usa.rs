@@ -131,7 +131,9 @@ fn golden_hash(seed: u64, players: usize) -> u64 {
         }
         let action = next_action(&eng, step, keep_initial, keep_draw);
         let events = eng.apply(action).expect("azione scriptata rifiutata");
-        feed(&format!("{events:?}"));
+        // I campi Europe di `FinalScore` sono sempre vuoti sulla USA: non entrano nell'hash,
+        // che resta quello catturato prima della loro introduzione.
+        feed(&format!("{events:?}").replace(", station_points: 0, borrowed_routes: []", ""));
     }
     feed(&eng.action_log().len().to_string());
     hash

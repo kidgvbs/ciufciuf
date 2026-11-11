@@ -21,12 +21,23 @@ pub fn data_dir() -> PathBuf {
 }
 
 /// Carica la mappa USA da `data/maps/usa.json`.
+#[allow(dead_code)]
 pub fn usa_map() -> MapData {
     let path = data_dir().join("maps/usa.json");
     let json = std::fs::read_to_string(&path).unwrap_or_else(|e| {
         panic!("impossibile leggere {:?}: {}", path, e);
     });
     serde_json::from_str(&json).expect("parsing usa.json")
+}
+
+/// Carica la mappa Europe da `data/maps/europe.json`.
+#[allow(dead_code)]
+pub fn europe_map() -> MapData {
+    let path = data_dir().join("maps/europe.json");
+    let json = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!("impossibile leggere {:?}: {}", path, e);
+    });
+    serde_json::from_str(&json).expect("parsing europe.json")
 }
 
 /// Directory temporanea unica per i save (evita collisioni tra test).
@@ -179,9 +190,20 @@ pub async fn create_game(base: &str, name: &str) -> CreatedGame {
 
 /// Crea una partita via REST con un seed RNG opzionale (determinismo test).
 pub async fn create_game_with_seed(base: &str, name: &str, seed: Option<u64>) -> CreatedGame {
+    create_game_for_ruleset(base, "usa_v2", name, seed).await
+}
+
+/// Crea una partita via REST sul ruleset indicato, con un seed RNG opzionale.
+#[allow(dead_code)]
+pub async fn create_game_for_ruleset(
+    base: &str,
+    ruleset_id: &str,
+    name: &str,
+    seed: Option<u64>,
+) -> CreatedGame {
     let client = reqwest::Client::new();
     let mut body = serde_json::json!({
-        "rulesetId": "usa_v2",
+        "rulesetId": ruleset_id,
         "name": name,
     });
     if let Some(s) = seed {
@@ -385,6 +407,9 @@ impl Default for PlayerView {
                 draw_face_up: Vec::new(),
                 can_draw_deck: false,
                 can_draw_tickets: false,
+                station_cities: Vec::new(),
+                station_cost: 0,
+                tunnel: None,
             },
             public: None,
             last_error: None,
@@ -620,6 +645,14 @@ pub fn load_usa_ruleset() -> ttr_core::Ruleset {
     let path = data_dir().join("rulesets").join("usa_v2.json");
     let json = std::fs::read_to_string(&path).expect("lettura usa_v2.json");
     serde_json::from_str(&json).expect("parsing usa_v2.json")
+}
+
+/// Carica il ruleset Europe da `data/rulesets/europe.json`.
+#[allow(dead_code)]
+pub fn load_europe_ruleset() -> ttr_core::Ruleset {
+    let path = data_dir().join("rulesets").join("europe.json");
+    let json = std::fs::read_to_string(&path).expect("lettura europe.json");
+    serde_json::from_str(&json).expect("parsing europe.json")
 }
 
 // ── Sotto-moduli ────────────────────────────────────────────────────

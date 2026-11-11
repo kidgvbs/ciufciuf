@@ -13,8 +13,8 @@ use crate::event::GameEvent;
 use crate::rng::SeededRng;
 use crate::scoring::PlayerConnectivity;
 use crate::types::{
-    ClaimedRouteInfo, FACE_UP_COUNT, INITIAL_HAND_SIZE, LONGEST_PATH_BONUS_TYPE, MapData,
-    PlayerState, Route, RouteId, Ruleset, TicketDef, TicketId,
+    CityId, ClaimedRouteInfo, FACE_UP_COUNT, INITIAL_HAND_SIZE, LONGEST_PATH_BONUS_TYPE, MapData,
+    PendingTunnel, PlayerState, Route, RouteId, Ruleset, TicketDef, TicketId,
 };
 
 /// Il motore di CiufCiuf!
@@ -39,6 +39,8 @@ pub struct Engine {
     // Global state
     pub(crate) claimed_routes: BTreeMap<RouteId, ClaimedRouteInfo>,
     pub(crate) connectivity: PlayerConnectivity,
+    /// Città con una stazione → indice del giocatore proprietario.
+    pub(crate) station_owners: BTreeMap<CityId, usize>,
 
     // Turn / round
     pub(crate) last_round: bool,
@@ -47,6 +49,8 @@ pub struct Engine {
     // Pending state
     pub(crate) pending_initial_tickets: Vec<Vec<TicketId>>,
     pub(crate) pending_tickets: Vec<TicketId>,
+    /// Tunnel rivelato in attesa della decisione (fase `TunnelResolution`).
+    pub(crate) pending_tunnel: Option<PendingTunnel>,
 
     // Indexes
     pub(crate) routes_by_id: BTreeMap<RouteId, Route>,
@@ -219,6 +223,7 @@ impl Engine {
                 claimed_routes: BTreeMap::new(),
                 score: 0,
                 initial_draft_done: false,
+                stations: Vec::new(),
             })
             .collect();
 
@@ -248,10 +253,12 @@ impl Engine {
             ticket_discards: Vec::new(),
             claimed_routes: BTreeMap::new(),
             connectivity: PlayerConnectivity::new(num_players),
+            station_owners: BTreeMap::new(),
             last_round: false,
             last_round_trigger_player: None,
             pending_initial_tickets: pending_initial,
             pending_tickets: Vec::new(),
+            pending_tunnel: None,
             routes_by_id,
             tickets_by_id,
             longest_path_bonus_points,
@@ -281,6 +288,16 @@ impl Engine {
                 route_id,
                 cards_discarded,
             } => self.handle_claim_route(*player_index, route_id, cards_discarded)?,
+            Action::BuildStation {
+                player_index,
+                city_id,
+                cards_discarded,
+            } => self.handle_build_station(*player_index, city_id, cards_discarded)?,
+            Action::TunnelDecision {
+                player_index,
+                pay,
+                cards_discarded,
+            } => self.handle_tunnel_decision(*player_index, *pay, cards_discarded)?,
         };
 
         self.action_log.push(ActionRecord {
@@ -383,6 +400,38 @@ impl Engine {
         self.routes_by_id.get(route_id)
     }
 
+    /// Tunnel in attesa della decisione del giocatore di turno.
+    #[must_use]
+    pub fn pending_tunnel(&self) -> Option<&PendingTunnel> {
+        self.pending_tunnel.as_ref()
+    }
+
+    /// Stazioni costruite `(città, indice giocatore)`, in ordine di id città.
+    #[must_use]
+    pub fn station_placements(&self) -> Vec<(&CityId, usize)> {
+        self.station_owners
+            .iter()
+            .map(|(city, &owner)| (city, owner))
+            .collect()
+    }
+
+    /// Stazioni ancora da costruire per un giocatore (0 se il ruleset non le prevede).
+    #[must_use]
+    pub fn stations_remaining(&self, index: usize) -> u32 {
+        let total = self.ruleset.stations.as_ref().map_or(0, |s| s.count);
+        let built = self
+            .players
+            .get(index)
+            .map_or(0, |p| u32::try_from(p.stations.len()).unwrap_or(u32::MAX));
+        total.saturating_sub(built)
+    }
+
+    /// Treni iniziali di ogni giocatore (`trainsPerPlayer` del ruleset).
+    #[must_use]
+    pub fn trains_per_player(&self) -> u32 {
+        self.ruleset.trains_per_player
+    }
+
     // ── Test helpers (modificano o espongono lo stato interno) ───────
 
     /// Imposta una carta scoperta.
@@ -428,6 +477,50 @@ impl Engine {
         }
     }
 
+    /// Sostituisce i biglietti di un giocatore con quelli indicati e ne ricalcola il
+    /// completamento.
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn set_player_tickets(&mut self, index: usize, ticket_ids: &[&str]) {
+        let tickets = ticket_ids
+            .iter()
+            .filter_map(|id| self.tickets_by_id.get(*id))
+            .map(|t| {
+                (
+                    t.id.clone(),
+                    crate::types::TicketStatus {
+                        ticket_id: t.id.clone(),
+                        points: t.points,
+                        completed: None,
+                    },
+                )
+            })
+            .collect();
+        if let Some(p) = self.players.get_mut(index) {
+            p.tickets = tickets;
+            self.update_ticket_completion(index);
+        }
+    }
+
+    /// Scarti dei treni, dal più vecchio al più recente.
+    #[cfg(any(test, feature = "test-helpers"))]
+    #[must_use]
+    pub fn discard_cards(&self) -> &[CardColor] {
+        &self.train_discards
+    }
+
+    /// Rimpiazza il mazzo coperto, dal fondo alla cima.
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn set_draw_pile(&mut self, cards: Vec<CardColor>) {
+        self.draw_pile = cards;
+    }
+
+    /// Imposta la fase e il giocatore di turno (per costruire scenari di test).
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn set_phase_for_test(&mut self, phase: GamePhase, current_player: usize) {
+        self.phase = phase;
+        self.current_player_index = current_player;
+    }
+
     /// Mazzo biglietti di pesca, dalla cima in fondo.
     #[cfg(any(test, feature = "test-helpers"))]
     #[must_use]
@@ -467,6 +560,8 @@ struct SerializableState {
     players: Vec<SerializablePlayer>,
     face_up: Vec<Option<CardColor>>,
     claimed_routes: Vec<ClaimedRouteInfo>,
+    stations: Vec<(CityId, usize)>,
+    pending_tunnel: Option<PendingTunnel>,
     last_round: bool,
     last_round_trigger_player: Option<usize>,
     draw_pile_len: usize,
@@ -482,6 +577,7 @@ struct SerializablePlayer {
     tickets_count: usize,
     trains_remaining: u32,
     score: i32,
+    stations: Vec<CityId>,
 }
 
 impl From<&Engine> for SerializableState {
@@ -501,11 +597,18 @@ impl From<&Engine> for SerializableState {
                         tickets_count: p.tickets.len(),
                         trains_remaining: p.trains_remaining,
                         score: p.score,
+                        stations: p.stations.clone(),
                     }
                 })
                 .collect(),
             face_up: e.face_up.clone(),
             claimed_routes: e.claimed_routes.values().cloned().collect(),
+            stations: e
+                .station_owners
+                .iter()
+                .map(|(city, &owner)| (city.clone(), owner))
+                .collect(),
+            pending_tunnel: e.pending_tunnel.clone(),
             last_round: e.last_round,
             last_round_trigger_player: e.last_round_trigger_player,
             draw_pile_len: e.draw_pile.len(),

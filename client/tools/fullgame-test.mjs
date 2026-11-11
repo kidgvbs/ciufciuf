@@ -6,6 +6,7 @@
 //
 // Uso: bun client/tools/fullgame-test.mjs [base=http://localhost:18956]
 //   --spawn-server  avvia automaticamente ttr-server su :18956
+//   --ruleset <id>  ruleset da giocare (default usa_v2; `europe` aggiunge stazioni e tunnel)
 
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +26,9 @@ for (const a of process.argv) {
 }
 const WS_BASE = BASE.replace(/^http/, 'ws');
 const SEED = 42;
-const MAX_TURNS = 400;
+const MAX_TURNS = 600;
+const RULESET = process.argv.includes('--ruleset') ? process.argv[process.argv.indexOf('--ruleset') + 1] : 'usa_v2';
+const EUROPE = RULESET === 'europe';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const fail = (msg) => {
@@ -98,8 +101,9 @@ async function rest(method, path, body) {
 
 // ── Mappa rotte ─────────────────────────────────────────────────────────
 const routes = new Map();
-const usaPath = join(ROOT, 'data', 'maps', 'usa.json');
-for (const r of JSON.parse(readFileSync(usaPath, 'utf8')).routes) routes.set(r.id, r);
+const mapId = JSON.parse(readFileSync(join(ROOT, 'data', 'rulesets', `${RULESET}.json`), 'utf8')).map;
+const mapPath = join(ROOT, 'data', 'maps', `${mapId}.json`);
+for (const r of JSON.parse(readFileSync(mapPath, 'utf8')).routes) routes.set(r.id, r);
 const toCardColor = (c) => (c === 'Gray' ? null : c.toUpperCase());
 
 // ── Player handle ───────────────────────────────────────────────────────
@@ -152,26 +156,23 @@ function makePlayer(name, playerId, token, gameId) {
 // ── Bot helpers ─────────────────────────────────────────────────────────
 function countInHand(hand, color) { return hand.filter((h) => h === color).length; }
 
+// Le rotte traghetto (`ferries`) richiedono almeno quelle locomotive nel pagamento.
+const COLORS = ['RED', 'ORANGE', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE', 'BLACK', 'WHITE'];
+
 function canPay(route, hand) {
   const locos = countInHand(hand, 'LOCOMOTIVE');
+  if (locos < (route.ferries || 0)) return false;
   const rc = toCardColor(route.color);
   if (rc) return countInHand(hand, rc) + locos >= route.len;
-  const bestN = ['RED','ORANGE','YELLOW','GREEN','BLUE','PURPLE','BLACK','WHITE']
-    .reduce((max, c) => Math.max(max, countInHand(hand, c)), 0);
+  const bestN = COLORS.reduce((max, c) => Math.max(max, countInHand(hand, c)), 0);
   return bestN + locos >= route.len;
 }
 
 function buildPayment(route, hand) {
-  const locos = countInHand(hand, 'LOCOMOTIVE');
   const rc = toCardColor(route.color);
-  if (rc) {
-    const n = Math.min(countInHand(hand, rc), route.len);
-    return [...Array(n).fill(rc), ...Array(route.len - n).fill('LOCOMOTIVE')];
-  }
-  const best = ['RED','ORANGE','YELLOW','GREEN','BLUE','PURPLE','BLACK','WHITE']
-    .map((c) => ({ c, n: countInHand(hand, c) })).sort((a, b) => b.n - a.n)[0];
-  const n = Math.min(best.n, route.len);
-  return [...Array(n).fill(best.c), ...Array(route.len - n).fill('LOCOMOTIVE')];
+  const color = rc ?? COLORS.map((c) => ({ c, n: countInHand(hand, c) })).sort((a, b) => b.n - a.n)[0].c;
+  const n = Math.min(countInHand(hand, color), route.len - (route.ferries || 0));
+  return [...Array(n).fill(color), ...Array(route.len - n).fill('LOCOMOTIVE')];
 }
 
 // ── State helpers ───────────────────────────────────────────────────────
@@ -201,7 +202,7 @@ async function main() {
 
   // 1. Crea partita
   console.log('1. Creazione partita (seed=' + SEED + ')...');
-  const game = await rest('POST', '/api/games', { rulesetId: 'usa_v2', name: 'FullGameTest', seed: SEED });
+  const game = await rest('POST', '/api/games', { rulesetId: RULESET, name: 'FullGameTest', seed: SEED });
   const { gameId, hostToken } = game;
   console.log(`   gameId=${gameId}`);
 
@@ -239,6 +240,7 @@ async function main() {
   // ── Stats ─────────────────────────────────────────────────────────────
   let turns = 0;
   let claimsP1 = 0, claimsP2 = 0;
+  let stationsP1 = 0, stationsP2 = 0, tunnelsPaid = 0, tunnelsDeclined = 0;
   let drawsP1 = 0, drawsP2 = 0;
   let ticketDrawsP1 = 0, ticketDrawsP2 = 0;
   let lastRoundTriggered = false, lastRoundPlayer = null, lastRoundTriggerPlayer = null;
@@ -376,7 +378,34 @@ async function main() {
         continue;
       }
 
-      // ── 1. Try claim (longest payable, not in failedClaims for this player) ──
+      // ── 0. Stazione (Europe): ogni tanto, finché ne restano ──
+      if (EUROPE && (lm.station_cities || []).length > 0 && lm.station_cost > 0 && turns % 4 === 0) {
+        const city = lm.station_cities[turns % lm.station_cities.length];
+        const cost = lm.station_cost;
+        const best = COLORS.map((c) => ({ c, n: countInHand(hand, c) })).sort((a, b) => b.n - a.n)[0];
+        const n = Math.min(best.n, cost);
+        const payment = [...Array(n).fill(best.c), ...Array(cost - n).fill('LOCOMOTIVE')];
+        const stationsBefore = cur.public?.stations?.length || 0;
+        const errBefore = cur.errors.length;
+        console.log(`   [T${turns}] ${cur.name} BUILD_STATION ${city} (costo ${cost}) [${payment.join(',')}]`);
+        cur.send({ actionType: 'BUILD_STATION', city_id: city, cards_discarded: payment });
+        try {
+          await cur.wait((x) => (x.public?.stations?.length || 0) > stationsBefore || x.errors.length > errBefore, 8000);
+        } catch {}
+        if (cur.errors.length === errBefore) {
+          if (cur === p1) stationsP1++; else stationsP2++;
+          consecutiveFailures = 0;
+          try {
+            await cur.wait(() => {
+              const cp = latestPublic(cur, p1, p2);
+              return !cp || cp.current_turn_player_id !== cur.playerId || cp.state === 'GAME_OVER';
+            }, 10000);
+          } catch {}
+        }
+        turns++;
+        continue;
+      }
+
       const claimable = (lm.routes || [])
         .filter((rid) => !failedClaims.has(`${cur.playerId}:${rid}`))
         .map((rid) => routes.get(rid))
@@ -404,6 +433,7 @@ async function main() {
         let claimed = false;
         let claimError = null;
         let claimTimedOut = false;
+        let tunnelPending = false;
         const claimErrBefore = cur.errors.length;
         try {
           await cur.wait((x) => {
@@ -412,6 +442,11 @@ async function main() {
               (r) => r.route_id === route.id && r.claimed_by_player_id === cur.playerId
             )) {
               claimed = true;
+              return true;
+            }
+            // 1b) Tunnel rivelato: serve la decisione del giocatore
+            if (x.public?.state === 'TUNNEL_RESOLUTION' && x.public.tunnel_reveal?.route_id === route.id) {
+              tunnelPending = true;
               return true;
             }
             // 2) Server sent an ERROR
@@ -428,6 +463,13 @@ async function main() {
           }, 8000);
         } catch {
           claimTimedOut = true;
+        }
+
+        // Tunnel: la rotta resta in attesa della decisione (TUNNEL_RESOLUTION).
+        if (tunnelPending) {
+          console.log(`     → tunnel in attesa della decisione`);
+          turns++;
+          continue;
         }
 
         // Post-wait decision
@@ -620,6 +662,42 @@ async function main() {
       continue;
     }
 
+
+    // ── TUNNEL_RESOLUTION (Europe): paga se può, altrimenti rinuncia ──
+    if (curState === 'TUNNEL_RESOLUTION') {
+      const tunnel = cur.private?.legal_moves?.tunnel;
+      if (!tunnel) {
+        await sleep(200);
+        turns++;
+        continue;
+      }
+      assert(
+        cur.public.tunnel_reveal && cur.public.tunnel_reveal.route_id === tunnel.route_id,
+        'tunnel_reveal assente o diverso da legal_moves.tunnel',
+      );
+      const hand = cur.private.hand;
+      const errBefore = cur.errors.length;
+      let pay = tunnel.can_pay;
+      let cards = [];
+      if (pay) {
+        const same = hand.filter((c) => c === tunnel.color).slice(0, tunnel.extra_cost);
+        const locos = hand.filter((c) => c === 'LOCOMOTIVE' && tunnel.color !== 'LOCOMOTIVE');
+        cards = [...same, ...locos.slice(0, tunnel.extra_cost - same.length)];
+        if (cards.length !== tunnel.extra_cost) pay = false;
+      }
+      console.log(`   [T${turns}] ${cur.name} TUNNEL ${tunnel.route_id} extra=${tunnel.extra_cost} (${tunnel.color}) → ${pay ? 'PAGA' : 'RINUNCIA'}`);
+      cur.send({ actionType: 'TUNNEL_DECISION', pay, cards_discarded: pay ? cards : [] });
+      if (pay) tunnelsPaid++; else tunnelsDeclined++;
+      try {
+        await cur.wait((x) => {
+          const cp = latestPublic(cur, p1, p2);
+          return (cp && cp.state !== 'TUNNEL_RESOLUTION') || x.errors.length > errBefore;
+        }, 10000);
+      } catch {}
+      turns++;
+      continue;
+    }
+
     // Unknown / transitional state — wait
     await sleep(200);
     turns++;
@@ -678,7 +756,26 @@ async function main() {
     console.log('   Punteggi finali:');
     for (const fs of finalPub.final_scores) {
       const nm = byId[fs.playerId]?.name || fs.playerId || '?';
-      console.log(`     ${nm}: routes=${fs.routePoints} tickets=${fs.ticketCompleted}/${fs.ticketFailed} longest=${fs.longestPathBonus} → ${fs.total}`);
+      const borrowed = (fs.borrowedRoutes || []).map((b) => `${b.cityId}:${b.routeId}`).join(',') || '-';
+      console.log(`     ${nm}: routes=${fs.routePoints} tickets=${fs.ticketCompleted}/${fs.ticketFailed} longest=${fs.longestPathBonus} stations=${fs.stationPoints} borrowed=${borrowed} → ${fs.total}`);
+      assert(Number.isInteger(fs.stationPoints), `${nm}: stationPoints mancante nei punteggi finali`);
+      assert(Array.isArray(fs.borrowedRoutes), `${nm}: borrowedRoutes mancante nei punteggi finali`);
+      assert(
+        fs.total === fs.routePoints + fs.ticketCompleted + fs.ticketFailed + fs.longestPathBonus + fs.stationPoints,
+        `${nm}: totale incoerente`,
+      );
+      if (!EUROPE) assert(fs.stationPoints === 0 && fs.borrowedRoutes.length === 0, `${nm}: stazioni su una mappa senza stazioni`);
+    }
+  }
+
+  if (EUROPE) {
+    console.log(`   Stazioni costruite:  P1=${stationsP1}, P2=${stationsP2} (server: ${finalPub.stations?.length || 0})`);
+    console.log(`   Tunnel:              pagati=${tunnelsPaid}, rinunce=${tunnelsDeclined}`);
+    assert((finalPub.stations?.length || 0) === stationsP1 + stationsP2, 'stazioni del server diverse da quelle costruite');
+    assert(stationsP1 + stationsP2 > 0, 'nessuna stazione costruita');
+    for (const fs of finalPub.final_scores) {
+      const mine = (finalPub.stations || []).filter((s) => s.player_id === fs.playerId).length;
+      assert(fs.stationPoints === (3 - mine) * 4, `${fs.playerId}: stationPoints ${fs.stationPoints} con ${mine} stazioni`);
     }
   }
 

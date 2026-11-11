@@ -15,7 +15,7 @@ function isArrayOfRecords(v: unknown): v is Record<string, unknown>[] {
   return Array.isArray(v) && v.every(isRecord);
 }
 
-/** `true` se `v` ha la forma minima di `MapData`: città con `name`, rotte con `len` 1–12, biglietti con `id` testuale. */
+/** `true` se `v` ha la forma minima di `MapData`: città con `name`, rotte con `len` 1–12 (e `tunnel`/`ferries` opzionali coerenti), biglietti con `id` testuale. */
 export function isMapData(v: unknown): v is MapData {
   if (!isRecord(v)) return false;
   const { cities, routes, tickets } = v;
@@ -34,6 +34,12 @@ export function isMapData(v: unknown): v is MapData {
         r.len >= 1 &&
         r.len <= 12 &&
         (r.double === undefined || typeof r.double === 'boolean') &&
+        (r.tunnel === undefined || typeof r.tunnel === 'boolean') &&
+        (r.ferries === undefined ||
+          (typeof r.ferries === 'number' &&
+            Number.isInteger(r.ferries) &&
+            r.ferries >= 0 &&
+            r.ferries <= r.len)) &&
         typeof r.color === 'string',
     ) &&
     tickets.every((t) => typeof t.from === 'string' && typeof t.to === 'string')

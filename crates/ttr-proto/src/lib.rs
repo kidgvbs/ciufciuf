@@ -100,6 +100,13 @@ pub enum InboundAction {
     /// Richiedere lo snapshot completo dopo reconnect.
     #[serde(rename = "REQUEST_SNAPSHOT")]
     RequestSnapshot(RequestSnapshotPayload),
+    /// Europe: costruire una stazione (azione del turno, D12).
+    #[serde(rename = "BUILD_STATION")]
+    BuildStation(BuildStationPayload),
+    /// Europe: in `TUNNEL_RESOLUTION`, pagare le carte extra (`pay: true`) o rinunciare
+    /// (`pay: false`: le carte giocate tornano in mano e il turno finisce, D13).
+    #[serde(rename = "TUNNEL_DECISION")]
+    TunnelDecision(TunnelDecisionPayload),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -158,6 +165,34 @@ pub struct ClaimRoutePayload {
 #[ts(export)]
 pub struct RequestSnapshotPayload {
     pub player_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub client_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct BuildStationPayload {
+    pub player_id: String,
+    pub city_id: CityId,
+    /// Carte pagate: tante quante il costo della prossima stazione (`legalMoves.stationCost`),
+    /// tutte dello stesso colore; le locomotive fanno da jolly.
+    pub cards_discarded: Vec<CardColor>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub client_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TunnelDecisionPayload {
+    pub player_id: String,
+    /// `true` paga le carte extra, `false` rinuncia al tunnel.
+    pub pay: bool,
+    /// Con `pay: true`: esattamente `extraCost` carte, ognuna del colore del tunnel
+    /// (`TunnelReveal.color`) o locomotiva; con `color = LOCOMOTIVE` solo locomotive.
+    /// Ignorato con `pay: false`.
+    pub cards_discarded: Vec<CardColor>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
@@ -237,11 +272,18 @@ pub struct PlayerSummary {
     pub connected: bool,
 }
 
+/// Europe: carte rivelate da un tentativo di tunnel in attesa della decisione
+/// (`TUNNEL_RESOLUTION`).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct TunnelReveal {
     pub route_id: RouteId,
+    /// Carte rivelate dal mazzo (fino a 3; meno se mazzo e scarti non bastano).
     pub cards: Vec<CardColor>,
+    /// Colore che fa scattare il costo extra: quello delle carte giocate, oppure
+    /// `LOCOMOTIVE` se il giocatore ha pagato solo con locomotive.
+    pub color: CardColor,
+    /// Carte extra da pagare (rivelate del colore `color` più locomotive rivelate).
     pub extra_cost: u32,
 }
 
@@ -262,11 +304,27 @@ pub struct FinalScoreInfo {
     pub ticket_completed: i32,
     pub ticket_failed: i32,
     pub longest_path_bonus: i32,
+    /// Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
+    #[serde(default)]
+    pub station_points: i32,
     pub total: i32,
     /// Vincitore (pari merito: più vincitori). Calcolato dal motore con gli
     /// spareggi: totale, biglietti completati, bonus percorso più lungo.
     #[serde(default)]
     pub winner: bool,
+    /// Europe: rotte avversarie prese in prestito dalle stazioni nell'assegnazione
+    /// che massimizza i biglietti (una per stazione al massimo).
+    #[serde(default)]
+    pub borrowed_routes: Vec<BorrowedRoute>,
+}
+
+/// Rotta avversaria usata da una stazione nel punteggio finale.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct BorrowedRoute {
+    pub city_id: CityId,
+    pub route_id: RouteId,
 }
 
 /// Broadcast unicast privato: stato visibile solo al giocatore interessato.
@@ -297,6 +355,25 @@ pub struct LegalMoves {
     pub draw_face_up: Vec<usize>,
     pub can_draw_deck: bool,
     pub can_draw_tickets: bool,
+    /// Europe: città dove il giocatore può costruire ora la prossima stazione
+    /// (vuoto se non ne ha più, se non può pagarla o fuori dal suo turno principale).
+    pub station_cities: Vec<CityId>,
+    /// Europe: costo in carte della prossima stazione; 0 senza stazioni disponibili.
+    pub station_cost: u32,
+    /// Europe: decisione richiesta in `TUNNEL_RESOLUTION`, solo al giocatore di turno.
+    pub tunnel: Option<TunnelDecisionMoves>,
+}
+
+/// Europe: cosa può fare il giocatore di turno davanti a un tunnel rivelato.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TunnelDecisionMoves {
+    pub route_id: RouteId,
+    pub extra_cost: u32,
+    /// Colore delle carte extra ammesse oltre alle locomotive (`LOCOMOTIVE` = solo locomotive).
+    pub color: CardColor,
+    /// `true` se la mano copre il costo extra; altrimenti resta solo la rinuncia.
+    pub can_pay: bool,
 }
 
 /// Payload di errore (dentro `ServerMessage::Error`).
@@ -467,6 +544,18 @@ mod tests {
                 cards_discarded: vec![],
                 client_seq: None,
             }),
+            InboundAction::BuildStation(BuildStationPayload {
+                player_id: player_id.clone(),
+                city_id: "c".into(),
+                cards_discarded: vec![],
+                client_seq: None,
+            }),
+            InboundAction::TunnelDecision(TunnelDecisionPayload {
+                player_id: player_id.clone(),
+                pay: false,
+                cards_discarded: vec![],
+                client_seq: None,
+            }),
             InboundAction::RequestSnapshot(RequestSnapshotPayload {
                 player_id,
                 client_seq: None,
@@ -506,6 +595,35 @@ mod tests {
         match back {
             InboundAction::DrawTickets(p) => assert_eq!(p.player_id, "p2"),
             _ => panic!("wrong variant"),
+        }
+    }
+
+    /// Forma sul filo delle azioni Europe, come la invia il client.
+    #[test]
+    fn inbound_europe_actions_wire_shape() {
+        let station: InboundAction = serde_json::from_str(
+            r#"{"actionType":"BUILD_STATION","player_id":"p1","city_id":"paris","cards_discarded":["RED","LOCOMOTIVE"],"client_seq":7}"#,
+        )
+        .unwrap();
+        match station {
+            InboundAction::BuildStation(p) => {
+                assert_eq!(p.city_id, "paris");
+                assert_eq!(p.cards_discarded, [CardColor::Red, CardColor::Locomotive]);
+                assert_eq!(p.client_seq, Some(7));
+            }
+            other => panic!("wrong variant {other:?}"),
+        }
+        let tunnel: InboundAction = serde_json::from_str(
+            r#"{"actionType":"TUNNEL_DECISION","player_id":"p1","pay":true,"cards_discarded":["BLACK"]}"#,
+        )
+        .unwrap();
+        match tunnel {
+            InboundAction::TunnelDecision(p) => {
+                assert!(p.pay);
+                assert_eq!(p.cards_discarded, [CardColor::Black]);
+                assert_eq!(p.client_seq, None);
+            }
+            other => panic!("wrong variant {other:?}"),
         }
     }
 
@@ -569,15 +687,22 @@ mod tests {
                 ticket_completed: 30,
                 ticket_failed: -10,
                 longest_path_bonus: 10,
-                total: 72,
+                station_points: 4,
+                total: 76,
                 winner: true,
+                borrowed_routes: vec![BorrowedRoute {
+                    city_id: "paris".into(),
+                    route_id: "dieppe_paris_1".into(),
+                }],
             }]),
             longest_path_player_ids: Some(vec!["p1".into()]),
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
         let scores = back.final_scores.unwrap();
-        assert_eq!(scores[0].total, 72);
+        assert_eq!(scores[0].total, 76);
+        assert_eq!(scores[0].station_points, 4);
+        assert_eq!(scores[0].borrowed_routes[0].route_id, "dieppe_paris_1");
         assert_eq!(back.longest_path_player_ids.unwrap(), vec!["p1"]);
     }
 
@@ -621,6 +746,14 @@ mod tests {
                 draw_face_up: vec![0, 2],
                 can_draw_deck: true,
                 can_draw_tickets: true,
+                station_cities: vec!["paris".into()],
+                station_cost: 2,
+                tunnel: Some(TunnelDecisionMoves {
+                    route_id: "madrid_pamplona_1".into(),
+                    extra_cost: 1,
+                    color: CardColor::Black,
+                    can_pay: true,
+                }),
             },
         };
         let json = serde_json::to_string(&state).unwrap();
@@ -733,6 +866,9 @@ mod tests {
                     draw_face_up: vec![],
                     can_draw_deck: false,
                     can_draw_tickets: false,
+                    station_cities: vec![],
+                    station_cost: 0,
+                    tunnel: None,
                 },
             }),
         });

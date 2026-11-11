@@ -14,6 +14,8 @@ import type {
   ClaimedRoute,
   FinalScoreInfo,
   CardColor,
+  StationPlacement,
+  TunnelReveal,
   TicketInfo,
   LegalMoves,
 } from './proto';
@@ -33,8 +35,8 @@ class PublicStore {
   deckSize = $state<number>(0);
   claimedRoutes = $state<ClaimedRoute[]>([]);
   playersSummary = $state<PlayerSummary[]>([]);
-  tunnelReveal = $state<unknown>(null);
-  stations = $state<unknown[]>([]);
+  tunnelReveal = $state<TunnelReveal | null>(null);
+  stations = $state<StationPlacement[]>([]);
   finalScores = $state<FinalScoreInfo[] | null>(null);
   longestPathPlayerIds = $state<string[] | null>(null);
 

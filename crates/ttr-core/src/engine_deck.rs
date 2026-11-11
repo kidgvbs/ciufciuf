@@ -48,6 +48,33 @@ pub fn draw_from_deck(
     draw_pile.pop()
 }
 
+/// Rivela fino a `count` carte dal mazzo coperto per un tunnel (D30).
+///
+/// A mazzo vuoto rimescola gli scarti (una volta per carta mancante, quindi
+/// al più una volta in pratica); se mazzo e scarti sono vuoti non crea un mazzo
+/// nuovo e rivela meno carte. Ogni rimescolamento aggiunge `DeckReshuffled`.
+pub fn reveal_from_deck(
+    draw_pile: &mut Vec<CardColor>,
+    discards: &mut Vec<CardColor>,
+    rng: &mut SeededRng,
+    count: u32,
+    events: &mut Vec<GameEvent>,
+) -> Vec<CardColor> {
+    let mut revealed = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        if draw_pile.is_empty() && !discards.is_empty() {
+            std::mem::swap(draw_pile, discards);
+            rng.shuffle(draw_pile);
+            events.push(GameEvent::DeckReshuffled);
+        }
+        let Some(card) = draw_pile.pop() else {
+            break;
+        };
+        revealed.push(card);
+    }
+    revealed
+}
+
 /// Pesca la carta scoperta all'indice dato e la sostituisce dal mazzo.
 ///
 /// Aggiunge a `events`, in ordine, la carta apparsa nello slot, le eventuali

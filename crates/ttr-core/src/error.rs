@@ -63,6 +63,21 @@ pub enum EngineError {
 
     #[error("payload non valido: {reason}")]
     InvalidPayload { reason: String },
+
+    #[error("città '{city_id}' non trovata nella mappa")]
+    CityNotFound { city_id: String },
+
+    #[error("la città '{city_id}' ha già una stazione")]
+    StationCityOccupied { city_id: String },
+
+    #[error("nessuna stazione disponibile")]
+    NoStationsLeft,
+
+    #[error("carte insufficienti per la stazione: servono {needed}")]
+    InsufficientStationCards { needed: u32 },
+
+    #[error("carte insufficienti per il costo extra del tunnel '{route_id}': servono {needed}")]
+    InsufficientTunnelCards { route_id: String, needed: u32 },
 }
 
 /// Errore di configurazione: ruleset, mappa o giocatori incoerenti.
@@ -182,6 +197,25 @@ pub enum EngineInitError {
 
     #[error("colore giocatore {color} duplicato")]
     DuplicatePlayerColor { color: String },
+
+    #[error("rotta '{route_id}': i traghetti ({ferries}) superano la lunghezza ({len})")]
+    RouteFerriesExceedLength {
+        route_id: String,
+        ferries: u32,
+        len: u32,
+    },
+
+    #[error("rotta '{route_id}': non può essere insieme tunnel e traghetto")]
+    RouteTunnelAndFerry { route_id: String },
+
+    #[error("rotta tunnel '{route_id}': il ruleset non ha tunnels.revealed >= 1")]
+    TunnelsConfigMissing { route_id: String },
+
+    #[error("stations.costs ha {costs} voci ma stations.count è {count}")]
+    StationCostsMismatch { count: u32, costs: usize },
+
+    #[error("stations.costs[{index}] deve essere almeno 1")]
+    StationCostZero { index: usize },
 }
 
 /// Fase di gioco (macchina a stati interna).
@@ -193,6 +227,7 @@ pub enum GamePhase {
     PlayerTurn,
     SecondCardDraw,
     TicketChoice,
+    TunnelResolution,
     LastRound,
     GameOver,
 }

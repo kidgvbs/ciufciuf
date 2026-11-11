@@ -6,7 +6,7 @@
 use serde::{Deserialize, Serialize};
 use ttr_proto::CardColor;
 
-use crate::types::{RouteId, TicketId};
+use crate::types::{CityId, RouteId, TicketId};
 
 /// Sorgente di pesca di una carta treno.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,6 +38,20 @@ pub enum Action {
         /// Suggerimento del client; il motore valida e risolve.
         cards_discarded: Vec<CardColor>,
     },
+    /// Costruire una stazione in una città (Europe).
+    BuildStation {
+        player_index: usize,
+        city_id: CityId,
+        /// Carte pagate; una carta assente in mano è sostituita da una locomotiva.
+        cards_discarded: Vec<CardColor>,
+    },
+    /// Decisione su un tunnel rivelato (Europe): pagare il costo extra o rinunciare.
+    TunnelDecision {
+        player_index: usize,
+        pay: bool,
+        /// Con `pay`: le carte extra; ignorato con la rinuncia.
+        cards_discarded: Vec<CardColor>,
+    },
 }
 
 impl Action {
@@ -47,7 +61,9 @@ impl Action {
             Action::DrawTrainCard { player_index, .. }
             | Action::DrawTickets { player_index }
             | Action::ChooseTickets { player_index, .. }
-            | Action::ClaimRoute { player_index, .. } => *player_index,
+            | Action::ClaimRoute { player_index, .. }
+            | Action::BuildStation { player_index, .. }
+            | Action::TunnelDecision { player_index, .. } => *player_index,
         }
     }
 }

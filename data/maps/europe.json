@@ -1,0 +1,1622 @@
+{
+  "cities": [
+    {
+      "id": "amsterdam",
+      "name": "Amsterdam",
+      "lat": 52.37,
+      "lon": 4.9
+    },
+    {
+      "id": "angora",
+      "name": "Angora",
+      "lat": 39.93,
+      "lon": 32.86
+    },
+    {
+      "id": "athina",
+      "name": "Athína",
+      "lat": 37.98,
+      "lon": 23.73
+    },
+    {
+      "id": "barcelona",
+      "name": "Barcelona",
+      "lat": 41.39,
+      "lon": 2.17
+    },
+    {
+      "id": "berlin",
+      "name": "Berlin",
+      "lat": 52.52,
+      "lon": 13.4
+    },
+    {
+      "id": "brest",
+      "name": "Brest",
+      "lat": 48.39,
+      "lon": -4.49
+    },
+    {
+      "id": "brindisi",
+      "name": "Brindisi",
+      "lat": 40.64,
+      "lon": 17.94
+    },
+    {
+      "id": "bruxelles",
+      "name": "Bruxelles",
+      "lat": 50.85,
+      "lon": 4.35
+    },
+    {
+      "id": "bucuresti",
+      "name": "București",
+      "lat": 44.43,
+      "lon": 26.1
+    },
+    {
+      "id": "budapest",
+      "name": "Budapest",
+      "lat": 47.5,
+      "lon": 19.04
+    },
+    {
+      "id": "cadiz",
+      "name": "Cádiz",
+      "lat": 36.53,
+      "lon": -6.29
+    },
+    {
+      "id": "constantinople",
+      "name": "Constantinople",
+      "lat": 41.01,
+      "lon": 28.98
+    },
+    {
+      "id": "danzig",
+      "name": "Danzig",
+      "lat": 54.35,
+      "lon": 18.65
+    },
+    {
+      "id": "dieppe",
+      "name": "Dieppe",
+      "lat": 49.93,
+      "lon": 1.08
+    },
+    {
+      "id": "edinburgh",
+      "name": "Edinburgh",
+      "lat": 55.95,
+      "lon": -3.19
+    },
+    {
+      "id": "erzurum",
+      "name": "Erzurum",
+      "lat": 39.9,
+      "lon": 41.27
+    },
+    {
+      "id": "essen",
+      "name": "Essen",
+      "lat": 51.46,
+      "lon": 7.01
+    },
+    {
+      "id": "frankfurt",
+      "name": "Frankfurt",
+      "lat": 50.11,
+      "lon": 8.68
+    },
+    {
+      "id": "kharkov",
+      "name": "Kharkov",
+      "lat": 49.99,
+      "lon": 36.23
+    },
+    {
+      "id": "kobenhavn",
+      "name": "København",
+      "lat": 55.68,
+      "lon": 12.57
+    },
+    {
+      "id": "kyiv",
+      "name": "Kyïv",
+      "lat": 50.45,
+      "lon": 30.52
+    },
+    {
+      "id": "lisboa",
+      "name": "Lisboa",
+      "lat": 38.72,
+      "lon": -9.14
+    },
+    {
+      "id": "london",
+      "name": "London",
+      "lat": 51.51,
+      "lon": -0.13
+    },
+    {
+      "id": "madrid",
+      "name": "Madrid",
+      "lat": 40.42,
+      "lon": -3.7
+    },
+    {
+      "id": "marseille",
+      "name": "Marseille",
+      "lat": 43.3,
+      "lon": 5.37
+    },
+    {
+      "id": "moskva",
+      "name": "Moskva",
+      "lat": 55.76,
+      "lon": 37.62
+    },
+    {
+      "id": "munchen",
+      "name": "München",
+      "lat": 48.14,
+      "lon": 11.58
+    },
+    {
+      "id": "palermo",
+      "name": "Palermo",
+      "lat": 38.12,
+      "lon": 13.36
+    },
+    {
+      "id": "pamplona",
+      "name": "Pamplona",
+      "lat": 42.81,
+      "lon": -1.64
+    },
+    {
+      "id": "paris",
+      "name": "Paris",
+      "lat": 48.86,
+      "lon": 2.35
+    },
+    {
+      "id": "petrograd",
+      "name": "Petrograd",
+      "lat": 59.93,
+      "lon": 30.34
+    },
+    {
+      "id": "riga",
+      "name": "Riga",
+      "lat": 56.95,
+      "lon": 24.11
+    },
+    {
+      "id": "roma",
+      "name": "Roma",
+      "lat": 41.9,
+      "lon": 12.5
+    },
+    {
+      "id": "rostov",
+      "name": "Rostov",
+      "lat": 47.24,
+      "lon": 39.71
+    },
+    {
+      "id": "sarajevo",
+      "name": "Sarajevo",
+      "lat": 43.86,
+      "lon": 18.41
+    },
+    {
+      "id": "sevastopol",
+      "name": "Sevastopol",
+      "lat": 44.62,
+      "lon": 33.52
+    },
+    {
+      "id": "smolensk",
+      "name": "Smolensk",
+      "lat": 54.78,
+      "lon": 32.04
+    },
+    {
+      "id": "smyrna",
+      "name": "Smyrna",
+      "lat": 38.42,
+      "lon": 27.14
+    },
+    {
+      "id": "sochi",
+      "name": "Sochi",
+      "lat": 43.59,
+      "lon": 39.72
+    },
+    {
+      "id": "sofia",
+      "name": "Sofia",
+      "lat": 42.7,
+      "lon": 23.32
+    },
+    {
+      "id": "stockholm",
+      "name": "Stockholm",
+      "lat": 59.33,
+      "lon": 18.07
+    },
+    {
+      "id": "venezia",
+      "name": "Venezia",
+      "lat": 45.44,
+      "lon": 12.32
+    },
+    {
+      "id": "warszawa",
+      "name": "Warszawa",
+      "lat": 52.23,
+      "lon": 21.01
+    },
+    {
+      "id": "wien",
+      "name": "Wien",
+      "lat": 48.21,
+      "lon": 16.37
+    },
+    {
+      "id": "wilno",
+      "name": "Wilno",
+      "lat": 54.69,
+      "lon": 25.28
+    },
+    {
+      "id": "zagrab",
+      "name": "Zágráb",
+      "lat": 45.82,
+      "lon": 15.98
+    },
+    {
+      "id": "zurich",
+      "name": "Zürich",
+      "lat": 47.38,
+      "lon": 8.54
+    }
+  ],
+  "routes": [
+    {
+      "id": "amsterdam_bruxelles_1",
+      "from": "amsterdam",
+      "to": "bruxelles",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "amsterdam_essen_1",
+      "from": "amsterdam",
+      "to": "essen",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "amsterdam_frankfurt_1",
+      "from": "amsterdam",
+      "to": "frankfurt",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "amsterdam_london_1",
+      "from": "amsterdam",
+      "to": "london",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "angora_constantinople_1",
+      "from": "angora",
+      "to": "constantinople",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "angora_erzurum_1",
+      "from": "angora",
+      "to": "erzurum",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "angora_smyrna_1",
+      "from": "angora",
+      "to": "smyrna",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "athina_brindisi_1",
+      "from": "athina",
+      "to": "brindisi",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "athina_sarajevo_1",
+      "from": "athina",
+      "to": "sarajevo",
+      "len": 4,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "athina_smyrna_1",
+      "from": "athina",
+      "to": "smyrna",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "athina_sofia_1",
+      "from": "athina",
+      "to": "sofia",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "barcelona_madrid_1",
+      "from": "barcelona",
+      "to": "madrid",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "barcelona_marseille_1",
+      "from": "barcelona",
+      "to": "marseille",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "barcelona_pamplona_1",
+      "from": "barcelona",
+      "to": "pamplona",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_danzig_1",
+      "from": "berlin",
+      "to": "danzig",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_essen_1",
+      "from": "berlin",
+      "to": "essen",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_frankfurt_1",
+      "from": "berlin",
+      "to": "frankfurt",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_frankfurt_2",
+      "from": "berlin",
+      "to": "frankfurt",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_warszawa_1",
+      "from": "berlin",
+      "to": "warszawa",
+      "len": 4,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_warszawa_2",
+      "from": "berlin",
+      "to": "warszawa",
+      "len": 4,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_wien_1",
+      "from": "berlin",
+      "to": "wien",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "brest_dieppe_1",
+      "from": "brest",
+      "to": "dieppe",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "brest_pamplona_1",
+      "from": "brest",
+      "to": "pamplona",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "brest_paris_1",
+      "from": "brest",
+      "to": "paris",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "brindisi_palermo_1",
+      "from": "brindisi",
+      "to": "palermo",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "brindisi_roma_1",
+      "from": "brindisi",
+      "to": "roma",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bruxelles_dieppe_1",
+      "from": "bruxelles",
+      "to": "dieppe",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bruxelles_frankfurt_1",
+      "from": "bruxelles",
+      "to": "frankfurt",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bruxelles_paris_1",
+      "from": "bruxelles",
+      "to": "paris",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bruxelles_paris_2",
+      "from": "bruxelles",
+      "to": "paris",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bucuresti_budapest_1",
+      "from": "bucuresti",
+      "to": "budapest",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bucuresti_constantinople_1",
+      "from": "bucuresti",
+      "to": "constantinople",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bucuresti_kyiv_1",
+      "from": "bucuresti",
+      "to": "kyiv",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bucuresti_sevastopol_1",
+      "from": "bucuresti",
+      "to": "sevastopol",
+      "len": 4,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bucuresti_sofia_1",
+      "from": "bucuresti",
+      "to": "sofia",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "budapest_kyiv_1",
+      "from": "budapest",
+      "to": "kyiv",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "budapest_sarajevo_1",
+      "from": "budapest",
+      "to": "sarajevo",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "budapest_wien_1",
+      "from": "budapest",
+      "to": "wien",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "budapest_wien_2",
+      "from": "budapest",
+      "to": "wien",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "budapest_zagrab_1",
+      "from": "budapest",
+      "to": "zagrab",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cadiz_lisboa_1",
+      "from": "cadiz",
+      "to": "lisboa",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cadiz_madrid_1",
+      "from": "cadiz",
+      "to": "madrid",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "constantinople_sevastopol_1",
+      "from": "constantinople",
+      "to": "sevastopol",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "constantinople_smyrna_1",
+      "from": "constantinople",
+      "to": "smyrna",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "constantinople_sofia_1",
+      "from": "constantinople",
+      "to": "sofia",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "danzig_riga_1",
+      "from": "danzig",
+      "to": "riga",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "danzig_warszawa_1",
+      "from": "danzig",
+      "to": "warszawa",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dieppe_london_1",
+      "from": "dieppe",
+      "to": "london",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "dieppe_london_2",
+      "from": "dieppe",
+      "to": "london",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "dieppe_paris_1",
+      "from": "dieppe",
+      "to": "paris",
+      "len": 1,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "edinburgh_london_1",
+      "from": "edinburgh",
+      "to": "london",
+      "len": 4,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "edinburgh_london_2",
+      "from": "edinburgh",
+      "to": "london",
+      "len": 4,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erzurum_sevastopol_1",
+      "from": "erzurum",
+      "to": "sevastopol",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "erzurum_sochi_1",
+      "from": "erzurum",
+      "to": "sochi",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "essen_frankfurt_1",
+      "from": "essen",
+      "to": "frankfurt",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "essen_kobenhavn_1",
+      "from": "essen",
+      "to": "kobenhavn",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "essen_kobenhavn_2",
+      "from": "essen",
+      "to": "kobenhavn",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "frankfurt_munchen_1",
+      "from": "frankfurt",
+      "to": "munchen",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_paris_1",
+      "from": "frankfurt",
+      "to": "paris",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_paris_2",
+      "from": "frankfurt",
+      "to": "paris",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kharkov_kyiv_1",
+      "from": "kharkov",
+      "to": "kyiv",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kharkov_moskva_1",
+      "from": "kharkov",
+      "to": "moskva",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kharkov_rostov_1",
+      "from": "kharkov",
+      "to": "rostov",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kobenhavn_stockholm_1",
+      "from": "kobenhavn",
+      "to": "stockholm",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kobenhavn_stockholm_2",
+      "from": "kobenhavn",
+      "to": "stockholm",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kyiv_smolensk_1",
+      "from": "kyiv",
+      "to": "smolensk",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kyiv_warszawa_1",
+      "from": "kyiv",
+      "to": "warszawa",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kyiv_wilno_1",
+      "from": "kyiv",
+      "to": "wilno",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lisboa_madrid_1",
+      "from": "lisboa",
+      "to": "madrid",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "madrid_pamplona_1",
+      "from": "madrid",
+      "to": "pamplona",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "madrid_pamplona_2",
+      "from": "madrid",
+      "to": "pamplona",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "marseille_pamplona_1",
+      "from": "marseille",
+      "to": "pamplona",
+      "len": 4,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "marseille_paris_1",
+      "from": "marseille",
+      "to": "paris",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "marseille_roma_1",
+      "from": "marseille",
+      "to": "roma",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "marseille_zurich_1",
+      "from": "marseille",
+      "to": "zurich",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "moskva_petrograd_1",
+      "from": "moskva",
+      "to": "petrograd",
+      "len": 4,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "moskva_smolensk_1",
+      "from": "moskva",
+      "to": "smolensk",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_venezia_1",
+      "from": "munchen",
+      "to": "venezia",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_wien_1",
+      "from": "munchen",
+      "to": "wien",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_zurich_1",
+      "from": "munchen",
+      "to": "zurich",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "palermo_roma_1",
+      "from": "palermo",
+      "to": "roma",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "palermo_smyrna_1",
+      "from": "palermo",
+      "to": "smyrna",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "pamplona_paris_1",
+      "from": "pamplona",
+      "to": "paris",
+      "len": 4,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pamplona_paris_2",
+      "from": "pamplona",
+      "to": "paris",
+      "len": 4,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "paris_zurich_1",
+      "from": "paris",
+      "to": "zurich",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "petrograd_riga_1",
+      "from": "petrograd",
+      "to": "riga",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "petrograd_stockholm_1",
+      "from": "petrograd",
+      "to": "stockholm",
+      "len": 8,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "petrograd_wilno_1",
+      "from": "petrograd",
+      "to": "wilno",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "riga_wilno_1",
+      "from": "riga",
+      "to": "wilno",
+      "len": 4,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "roma_venezia_1",
+      "from": "roma",
+      "to": "venezia",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "rostov_sevastopol_1",
+      "from": "rostov",
+      "to": "sevastopol",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "rostov_sochi_1",
+      "from": "rostov",
+      "to": "sochi",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "sarajevo_sofia_1",
+      "from": "sarajevo",
+      "to": "sofia",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "sarajevo_zagrab_1",
+      "from": "sarajevo",
+      "to": "zagrab",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "sevastopol_sochi_1",
+      "from": "sevastopol",
+      "to": "sochi",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "smolensk_wilno_1",
+      "from": "smolensk",
+      "to": "wilno",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "venezia_zagrab_1",
+      "from": "venezia",
+      "to": "zagrab",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "venezia_zurich_1",
+      "from": "venezia",
+      "to": "zurich",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "warszawa_wien_1",
+      "from": "warszawa",
+      "to": "wien",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "warszawa_wilno_1",
+      "from": "warszawa",
+      "to": "wilno",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "wien_zagrab_1",
+      "from": "wien",
+      "to": "zagrab",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "amsterdam_pamplona",
+      "from": "amsterdam",
+      "to": "pamplona",
+      "points": 7,
+      "deck": "regular"
+    },
+    {
+      "id": "amsterdam_wilno",
+      "from": "amsterdam",
+      "to": "wilno",
+      "points": 12,
+      "deck": "regular"
+    },
+    {
+      "id": "angora_athina",
+      "from": "angora",
+      "to": "athina",
+      "points": 5,
+      "deck": "regular"
+    },
+    {
+      "id": "angora_kharkov",
+      "from": "angora",
+      "to": "kharkov",
+      "points": 10,
+      "deck": "regular"
+    },
+    {
+      "id": "athina_edinburgh",
+      "from": "athina",
+      "to": "edinburgh",
+      "points": 21,
+      "deck": "long"
+    },
+    {
+      "id": "athina_wilno",
+      "from": "athina",
+      "to": "wilno",
+      "points": 11,
+      "deck": "regular"
+    },
+    {
+      "id": "barcelona_bruxelles",
+      "from": "barcelona",
+      "to": "bruxelles",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "barcelona_munchen",
+      "from": "barcelona",
+      "to": "munchen",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "berlin_bucuresti",
+      "from": "berlin",
+      "to": "bucuresti",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "berlin_london",
+      "from": "berlin",
+      "to": "london",
+      "points": 7,
+      "deck": "regular"
+    },
+    {
+      "id": "berlin_moskva",
+      "from": "berlin",
+      "to": "moskva",
+      "points": 12,
+      "deck": "regular"
+    },
+    {
+      "id": "berlin_roma",
+      "from": "berlin",
+      "to": "roma",
+      "points": 9,
+      "deck": "regular"
+    },
+    {
+      "id": "brest_marseille",
+      "from": "brest",
+      "to": "marseille",
+      "points": 7,
+      "deck": "regular"
+    },
+    {
+      "id": "brest_petrograd",
+      "from": "brest",
+      "to": "petrograd",
+      "points": 20,
+      "deck": "long"
+    },
+    {
+      "id": "brest_venezia",
+      "from": "brest",
+      "to": "venezia",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "brindisi_zagrab",
+      "from": "brindisi",
+      "to": "zagrab",
+      "points": 6,
+      "deck": "regular"
+    },
+    {
+      "id": "brindisi_zurich",
+      "from": "brindisi",
+      "to": "zurich",
+      "points": 6,
+      "deck": "regular"
+    },
+    {
+      "id": "bruxelles_danzig",
+      "from": "bruxelles",
+      "to": "danzig",
+      "points": 9,
+      "deck": "regular"
+    },
+    {
+      "id": "bucuresti_riga",
+      "from": "bucuresti",
+      "to": "riga",
+      "points": 10,
+      "deck": "regular"
+    },
+    {
+      "id": "budapest_sofia",
+      "from": "budapest",
+      "to": "sofia",
+      "points": 5,
+      "deck": "regular"
+    },
+    {
+      "id": "budapest_zurich",
+      "from": "budapest",
+      "to": "zurich",
+      "points": 6,
+      "deck": "regular"
+    },
+    {
+      "id": "cadiz_stockholm",
+      "from": "cadiz",
+      "to": "stockholm",
+      "points": 21,
+      "deck": "long"
+    },
+    {
+      "id": "constantinople_palermo",
+      "from": "constantinople",
+      "to": "palermo",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "constantinople_venezia",
+      "from": "constantinople",
+      "to": "venezia",
+      "points": 10,
+      "deck": "regular"
+    },
+    {
+      "id": "danzig_lisboa",
+      "from": "danzig",
+      "to": "lisboa",
+      "points": 20,
+      "deck": "long"
+    },
+    {
+      "id": "dieppe_madrid",
+      "from": "dieppe",
+      "to": "madrid",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "edinburgh_paris",
+      "from": "edinburgh",
+      "to": "paris",
+      "points": 7,
+      "deck": "regular"
+    },
+    {
+      "id": "erzurum_kobenhavn",
+      "from": "erzurum",
+      "to": "kobenhavn",
+      "points": 21,
+      "deck": "long"
+    },
+    {
+      "id": "erzurum_rostov",
+      "from": "erzurum",
+      "to": "rostov",
+      "points": 5,
+      "deck": "regular"
+    },
+    {
+      "id": "essen_kyiv",
+      "from": "essen",
+      "to": "kyiv",
+      "points": 10,
+      "deck": "regular"
+    },
+    {
+      "id": "essen_marseille",
+      "from": "essen",
+      "to": "marseille",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "frankfurt_kobenhavn",
+      "from": "frankfurt",
+      "to": "kobenhavn",
+      "points": 5,
+      "deck": "regular"
+    },
+    {
+      "id": "frankfurt_smolensk",
+      "from": "frankfurt",
+      "to": "smolensk",
+      "points": 13,
+      "deck": "regular"
+    },
+    {
+      "id": "kyiv_petrograd",
+      "from": "kyiv",
+      "to": "petrograd",
+      "points": 6,
+      "deck": "regular"
+    },
+    {
+      "id": "kyiv_sochi",
+      "from": "kyiv",
+      "to": "sochi",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "london_wien",
+      "from": "london",
+      "to": "wien",
+      "points": 10,
+      "deck": "regular"
+    },
+    {
+      "id": "madrid_zurich",
+      "from": "madrid",
+      "to": "zurich",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "moskva_palermo",
+      "from": "moskva",
+      "to": "palermo",
+      "points": 20,
+      "deck": "long"
+    },
+    {
+      "id": "paris_wien",
+      "from": "paris",
+      "to": "wien",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "paris_zagrab",
+      "from": "paris",
+      "to": "zagrab",
+      "points": 7,
+      "deck": "regular"
+    },
+    {
+      "id": "roma_smyrna",
+      "from": "roma",
+      "to": "smyrna",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "rostov_smolensk",
+      "from": "rostov",
+      "to": "smolensk",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "sarajevo_sevastopol",
+      "from": "sarajevo",
+      "to": "sevastopol",
+      "points": 8,
+      "deck": "regular"
+    },
+    {
+      "id": "smolensk_warszawa",
+      "from": "smolensk",
+      "to": "warszawa",
+      "points": 6,
+      "deck": "regular"
+    },
+    {
+      "id": "smyrna_sofia",
+      "from": "smyrna",
+      "to": "sofia",
+      "points": 5,
+      "deck": "regular"
+    },
+    {
+      "id": "stockholm_wien",
+      "from": "stockholm",
+      "to": "wien",
+      "points": 11,
+      "deck": "regular"
+    }
+  ]
+}

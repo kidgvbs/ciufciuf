@@ -13,6 +13,7 @@
     active = false,
     onclick,
     color,
+    long = false,
   }: {
     from: string;
     to: string;
@@ -25,12 +26,15 @@
     onclick?: () => void;
     /** Marcatore colorato: lo stesso colore della linea del biglietto sulla mappa. */
     color?: string;
+    /** Biglietto lungo (mazzo `long`): badge "Lunga" e accento blu. */
+    long?: boolean;
   } = $props();
 </script>
 
 <svelte:element
   this={onclick ? 'button' : 'div'}
   class="ticket"
+  class:long
   class:completed
   class:selected
   class:active
@@ -50,6 +54,9 @@
   {/if}
   {#if completed}
     <span class="t-check" aria-label="Biglietto completato">✓</span>
+  {/if}
+  {#if long}
+    <span class="t-long">Lunga</span>
   {/if}
 </svelte:element>
 
@@ -114,6 +121,31 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--board-ink-soft);
+  }
+  .ticket.long {
+    border-color: #2b5f8a;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.5), transparent 45%),
+      linear-gradient(160deg, #dbe8f1, #b9d0e0);
+  }
+  .ticket.long::before {
+    border-color: rgba(43, 95, 138, 0.5);
+  }
+  .t-long {
+    position: absolute;
+    bottom: -6px;
+    right: 6px;
+    padding: 0 6px;
+    border-radius: 8px;
+    background: #2b5f8a;
+    color: #f4f8fb;
+    font-size: 0.55rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    line-height: 1.5;
+    border: 1px solid var(--board-1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
   .ticket.completed {
     border-color: #1e8449;

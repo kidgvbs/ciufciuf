@@ -1,6 +1,8 @@
 // Barrel: riesporta tutti i tipi generati da ts-rs.
 // MAI modificare i file qui sotto a mano — rigenerare con `cargo test -p ttr-proto`.
 
+export type { BorrowedRoute } from './BorrowedRoute';
+export type { BuildStationPayload } from './BuildStationPayload';
 export type { CardColor } from './CardColor';
 export type { ChooseTicketsPayload } from './ChooseTicketsPayload';
 export type { ClaimedRoute } from './ClaimedRoute';
@@ -24,3 +26,5 @@ export type { Snapshot } from './Snapshot';
 export type { StationPlacement } from './StationPlacement';
 export type { TicketInfo } from './TicketInfo';
 export type { TunnelReveal } from './TunnelReveal';
+export type { TunnelDecisionMoves } from './TunnelDecisionMoves';
+export type { TunnelDecisionPayload } from './TunnelDecisionPayload';

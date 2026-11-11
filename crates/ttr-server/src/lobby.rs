@@ -828,6 +828,16 @@ pub(crate) fn inbound_to_core_action(
             route_id: p.route_id.clone(),
             cards_discarded: p.cards_discarded.clone(),
         },
+        ttr_proto::InboundAction::BuildStation(p) => ttr_core::Action::BuildStation {
+            player_index,
+            city_id: p.city_id.clone(),
+            cards_discarded: p.cards_discarded.clone(),
+        },
+        ttr_proto::InboundAction::TunnelDecision(p) => ttr_core::Action::TunnelDecision {
+            player_index,
+            pay: p.pay,
+            cards_discarded: p.cards_discarded.clone(),
+        },
         ttr_proto::InboundAction::RequestSnapshot(_) => {
             // RequestSnapshot non ha un'azione core corrispondente;
             // viene gestito come caso speciale dal chiamante.
