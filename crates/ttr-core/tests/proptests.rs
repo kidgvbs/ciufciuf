@@ -823,19 +823,49 @@ mod longest_path_threshold {
         }
     }
 
+    /// Panics unless `edges` is a connected graph on `v` cities with cyclomatic number
+    /// `MAX_CYCLOMATIC_NUMBER`.
+    fn assert_threshold_shape(v: usize, edges: &[(usize, usize)]) {
+        let mut parent: Vec<usize> = (0..v).collect();
+        for &(a, b) in edges {
+            let (mut ra, mut rb) = (a, b);
+            while parent[ra] != ra {
+                ra = parent[ra];
+            }
+            while parent[rb] != rb {
+                rb = parent[rb];
+            }
+            parent[ra] = rb;
+        }
+        let roots = (0..v).filter(|&c| parent[c] == c).count();
+        assert_eq!(roots, 1, "not connected: {edges:?}");
+        assert_eq!(
+            edges.len() + 1 - v,
+            MAX_CYCLOMATIC_NUMBER as usize,
+            "cyclomatic number: {edges:?}"
+        );
+    }
+
     /// Release timing: every graph at the threshold (random graphs with unit and mixed
-    /// lengths, and 26-city cubic graphs, the hardest shape) is solved exactly in under a
-    /// second.
+    /// lengths, 26-city cubic graphs and 20-city unit-length graphs, the hardest shapes)
+    /// is solved exactly in under a second.
     #[test]
     #[ignore = "timing: run with --release"]
     fn longest_path_at_max_cyclomatic_number_takes_under_a_second() {
-        let mut worst = Duration::ZERO;
-        let mut time = |edges: &[(usize, usize)], lens: &[u32], v: usize| {
+        let time = |edges: &[(usize, usize)], lens: &[u32], v: usize| {
+            assert_threshold_shape(v, edges);
+            assert!(lens.iter().sum::<u32>() <= 45, "{edges:?} {lens:?}");
             let started = Instant::now();
             let result = report(edges, lens, &identity(v), &identity(edges.len()));
-            worst = worst.max(started.elapsed());
+            let elapsed = started.elapsed();
             assert!(result.exact, "{edges:?} {lens:?}");
+            assert!(
+                elapsed < Duration::from_secs(1),
+                "{elapsed:?} {edges:?} {lens:?}"
+            );
+            elapsed
         };
+        let mut worst = Duration::ZERO;
         for case in 0..600u64 {
             let v = 7 + (case % 8) as usize;
             let mut next = stream(case);
@@ -846,19 +876,31 @@ mod longest_path_threshold {
             } else {
                 buildable_lengths(edges.len(), &mut next)
             };
-            time(&edges, &lens, v);
+            worst = worst.max(time(&edges, &lens, v));
         }
+        eprintln!("random graphs: worst {worst:?}");
+
+        let mut worst = Duration::ZERO;
         for case in 0..100u64 {
             let mut next = stream(1_000 + case);
             let edges = cubic_graph(26, &mut next);
-            assert_eq!(edges.len(), 26 + MAX_CYCLOMATIC_NUMBER as usize - 1);
             let lens = if case % 2 == 0 {
                 vec![1; edges.len()]
             } else {
                 buildable_lengths(edges.len(), &mut next)
             };
-            time(&edges, &lens, 26);
+            worst = worst.max(time(&edges, &lens, 26));
         }
-        assert!(worst < Duration::from_secs(1), "{worst:?}");
+        eprintln!("cubic graphs, 26 cities: worst {worst:?}");
+
+        let mut worst = Duration::ZERO;
+        for case in 0..10u64 {
+            let mut next = stream(2_000 + case);
+            let noise: Vec<u32> = (0..64).map(|_| next() as u32).collect();
+            let edges = graph(20, MAX_CYCLOMATIC_NUMBER as usize, &noise);
+            assert_eq!(edges.len(), 33);
+            worst = worst.max(time(&edges, &vec![1; edges.len()], 20));
+        }
+        eprintln!("unit-length graphs, 20 cities: worst {worst:?}");
     }
 }

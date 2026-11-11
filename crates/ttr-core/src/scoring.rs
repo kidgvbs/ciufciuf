@@ -505,11 +505,14 @@ fn longest_path_with_budget(
         best: 0,
         exhausted: false,
     };
-    for (root, edges) in component_edges.iter().enumerate() {
-        if edges.is_empty() {
+    // Componenti in ordine canonico: per città minima (id), non per radice union-find.
+    for first in 0..city_count {
+        let root = root_of(&mut parent, first);
+        let edges = &component_edges[root];
+        let cities_here = &component_cities[root];
+        if edges.is_empty() || cities_here[0] != first {
             continue;
         }
-        let cities_here = &component_cities[root];
         if edges.len() + 1 == cities_here.len() {
             let (end, _) = farthest_in_tree(&adj, cities_here[0]);
             let (_, diameter) = farthest_in_tree(&adj, end);
@@ -971,6 +974,34 @@ mod tests {
         let cut = longest_path_with_budget(&refs, &routes, 1);
         assert!(!cut.exact);
         assert!(cut.length <= exact.length);
+    }
+
+    /// With the budget spent on the first component, the one holding the smallest city id
+    /// is searched first, whatever the union-find roots are.
+    #[test]
+    fn longest_path_with_exhausted_budget_searches_components_by_smallest_city() {
+        // Triangle c0-c1-c6 (union-find root c6) and K4 on c2..c5 (root below c6).
+        let mut list = vec![
+            make_route("a0", "c0", "c6", 1),
+            make_route("a1", "c1", "c6", 1),
+            make_route("a2", "c0", "c1", 1),
+        ];
+        let k4 = ["c2", "c3", "c4", "c5"];
+        for i in 0..4 {
+            for j in i + 1..4 {
+                list.push(make_route(&format!("b{i}{j}"), k4[i], k4[j], 5));
+            }
+        }
+        let routes = route_map(list);
+        let claimed = claim_all(&routes);
+        let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
+        assert_eq!(
+            longest_path_with_budget(&refs, &routes, 1),
+            LongestPath {
+                length: 3,
+                exact: false
+            }
+        );
     }
 
     #[test]

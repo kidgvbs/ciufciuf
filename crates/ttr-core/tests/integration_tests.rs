@@ -3035,6 +3035,17 @@ fn usa_longest_path_estimate_is_within_the_threshold() {
     );
 }
 
+/// The USA estimate is pinned so that a map change shows up here.
+#[test]
+fn usa_density_estimate_is_pinned() {
+    assert_eq!(
+        usa_ruleset().max_cyclomatic_estimate(&usa_map()),
+        13,
+        "update the pinned value only after verifying time and exactness of the longest \
+         path search (e.g. run the `--ignored` timing test in release)"
+    );
+}
+
 /// Route lengths of the USA map, cycled over the routes of the synthetic maps.
 const USA_LENGTHS: [u32; 12] = [2, 3, 2, 4, 2, 1, 3, 5, 2, 6, 3, 4];
 
