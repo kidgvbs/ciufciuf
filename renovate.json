@@ -129,20 +129,5 @@
         "pinDigest"
       ]
     }
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "description": "Toolchain Rust in rust-toolchain.toml.",
-      "managerFilePatterns": [
-        "/^rust-toolchain\\.toml$/"
-      ],
-      "matchStrings": [
-        "channel\\s*=\\s*\"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
-      ],
-      "depNameTemplate": "rust",
-      "datasourceTemplate": "github-releases",
-      "packageNameTemplate": "rust-lang/rust"
-    }
   ]
 }

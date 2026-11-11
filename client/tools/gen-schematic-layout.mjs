@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 // gen-schematic-layout.mjs — Generatore deterministico del layout schematico USA.
 //
-// Input:  client/src/lib/data/usa.json       (città + rotte, la "mappa")
+// Input:  data/maps/usa.json                  (città + rotte, la "mappa")
 // Output: client/src/lib/data/usa-layout.json (la verità a runtime)
 //
 // Il file generato va committato. Questo script va rieseguito SOLO quando
-// cambia usa.json (nuove città/rotte): il layout è deterministico (nessuna
+// cambia data/maps/usa.json (nuove città/rotte): il layout è deterministico (nessuna
 // fonte di casualità), quindi rigenerare produce sempre lo stesso JSON.
 //
 // Fase 3f+8v3 — cluster escape: label-label via city-shift + font fallback 14.5 se necessario.
@@ -77,7 +77,7 @@ import {
 } from 'd3-force';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const USA_PATH = join(__dirname, '..', 'src', 'lib', 'data', 'usa.json');
+const USA_PATH = join(__dirname, '..', '..', 'data', 'maps', 'usa.json');
 const OUT_PATH = join(__dirname, '..', 'src', 'lib', 'data', 'usa-layout.json');
 
 // ── Costanti ──────────────────────────────────────────────────────────

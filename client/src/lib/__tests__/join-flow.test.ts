@@ -40,6 +40,55 @@ describe('createJoinFlow', () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
+  it('cancel_during_slow_join_ignores_late_result', async () => {
+    const onSlow = vi.fn();
+    const onError = vi.fn();
+    let applied = 0;
+    let fail = false;
+    const flow = createJoinFlow({
+      attempt: (isCancelled) =>
+        new Promise<void>((resolve, reject) =>
+          setTimeout(() => {
+            if (fail) reject(new Error('Failed to fetch'));
+            else {
+              if (!isCancelled()) applied++;
+              resolve();
+            }
+          }, JOIN_TIMEOUT_MS + 5_000),
+        ),
+      registeredNames: async () => ['Anna'],
+      name: 'Anna',
+      onSlow,
+      onError,
+    });
+
+    const result = flow.run();
+    await vi.advanceTimersByTimeAsync(JOIN_TIMEOUT_MS);
+    expect(onSlow).toHaveBeenCalledTimes(1);
+    flow.cancel();
+    flow.cancel();
+    // La fetch riesce dopo l'annullamento: esito ignorato e nessun errore mostrato.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(await result).toBe(false);
+    expect(applied).toBe(0);
+    expect(onError).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Anche un fallimento tardivo resta silenzioso.
+    fail = true;
+    const second = createJoinFlow({
+      attempt: () => Promise.reject(new Error('boom')),
+      registeredNames: async () => [],
+      name: 'Anna',
+      onSlow: vi.fn(),
+      onError,
+    });
+    const pending = second.run();
+    second.cancel();
+    expect(await pending).toBe(false);
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   it('un join rapido non segnala lentezza e ferma il timer', async () => {
     const onSlow = vi.fn();
     const flow = createJoinFlow({

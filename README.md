@@ -49,7 +49,7 @@ A fine partita il motore calcola il vincitore (totale più alto; a parità più 
 
 Limiti e durate:
 
-- **Nomi:** giocatori e partite sono normalizzati in NFKC e le sequenze di spazi diventano uno spazio solo. Sono rifiutati con `INVALID_NAME` i caratteri di controllo, invisibili o "vuoti" (zero-width, bidi, Hangul filler, braille blank, variation selector), i segni combinanti iniziali o più di 2 di fila e le parole che mescolano alfabeti. Due nomi con lo stesso aspetto (maiuscole, larghezza dei caratteri, lettere confondibili come "А" cirillica e "A" latina) hanno la stessa chiave e il secondo riceve `NAME_TAKEN`.
+- **Nomi:** giocatori e partite sono normalizzati in NFKC (massimo 24 caratteri) e le sequenze di spazi diventano uno spazio solo. Sono rifiutati con `INVALID_NAME` i caratteri di controllo, invisibili o "vuoti" (zero-width, bidi, Hangul filler, braille blank, variation selector), i segni combinanti iniziali o più di 2 di fila e le parole che mescolano alfabeti (quindi anche "Ωmega", "서울Seoul" e il persiano con ZWNJ). Gli emoji sono ammessi: `U+FE0F` solo dopo un emoji e `U+200D` solo tra due emoji ("Anna ❤️", sequenze di famiglia), altrove sono rifiutati. Due nomi con lo stesso aspetto hanno la stessa chiave (skeleton confusabile UTS #39, minuscolo) e il secondo riceve `NAME_TAKEN`: oltre a "А" cirillica e "A" latina, sono lo stesso nome anche "Tim"/"Tirn", "Leo"/"Le0" e "Player1"/"Playerl", e in classifica finiscono in una riga sola.
 - **Seed:** il seed di ogni partita è di 64 bit da un generatore crittografico e finisce solo nel save, mai nelle API o nei messaggi WebSocket. `POST /api/games` con un `seed` risponde `400 SEED_NOT_ALLOWED`, salvo che il server sia avviato con `--allow-client-seed` (test e partite riproducibili: con il seed si ricostruiscono le mani di tutti).
 - **Lobby inattiva:** una lobby non avviata senza join, start o connessioni di giocatori per 30 minuti sparisce; senza giocatori bastano 5 minuti, anche con spettatori collegati.
 - **Partita abbandonata:** una partita avviata senza connessioni per 6 ore sparisce dall'elenco, ma il suo save resta su disco e si può riprendere con `--resume`.
@@ -144,9 +144,12 @@ bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server 
 - **Il client non conosce le regole:** le mosse legali arrivano dal server.
 - **Protocollo:** i tipi nascono in `ttr-proto`; `bun run copy-bindings` li copia nel client.
 - **Package manager del client:** bun (`client/bun.lock`). `bun install` blocca il postinstall di `esbuild` (`bun pm untrusted` lo elenca): è innocuo, perché esbuild usa il binario del suo pacchetto per piattaforma, quindi `trustedDependencies` resta vuoto.
+- **Registry del client:** è fissato in `client/bunfig.toml` (`registry.npmjs.org`) e `bun.lock` contiene solo URL di quel registry (la CI lo verifica): non cambiarli anche se in locale si usa un mirror aziendale.
+- **Sviluppo del client:** `bun run dev` usa il proxy di Vite per `/api` e `/ws` verso `localhost:8080`; il parametro `?server=` non esiste più.
+- **`hostToken` della TV:** vive in `sessionStorage`, quindi chiudere la scheda della TV prima dell'avvio fa perdere il controllo della partita. La TV offre "Crea una nuova partita" e la lobby vecchia scade da sola. Annullare un join lento lascia il giocatore registrato sul server: riprovare con lo stesso nome può dare `NAME_TAKEN` e l'host deve riassegnarlo.
 - **Aggiornamento delle dipendenze:** Renovate (`renovate.json`) apre PR raggruppate. `rand`, `rand_chacha` e `rand_core` sono esclusi dal bot, perché determinano lo shuffle e quindi il replay di ogni save: si aggiornano solo a mano, insieme a `RULES_VERSION`.
 - **Major del client:** `vite`, `vitest`, `svelte` e `typescript` richiedono modifiche alla configurazione, quindi le major si approvano dalla Dependency Dashboard di Renovate.
-- **Dati di mappa e ruleset:** `ttr-validate` e l'avvio del server rifiutano dati incoerenti (id duplicati, città inesistenti, rotte doppie non appaiate, biglietti con partenza uguale all'arrivo, ecc.) e le mappe troppo dense per il calcolo esatto del percorso più lungo (numero ciclomatico stimato oltre 20). La USA passa.
+- **Dati di mappa e ruleset:** `ttr-validate` e l'avvio del server rifiutano dati incoerenti (id duplicati, città inesistenti, rotte doppie non appaiate, biglietti con partenza uguale all'arrivo, ecc.) e le mappe troppo dense per il calcolo esatto del percorso più lungo (numero ciclomatico stimato oltre 14; la USA stima 13). Il percorso più lungo è una ricerca esatta (branch and bound) con un budget di sicurezza: se lo esaurisce il server logga un `warn!` e il risultato di quel giocatore può non essere esatto. Le rotte con partenza uguale all'arrivo sono rifiutate.
 - **Errori:** `ErrorPayload.detail` porta il messaggio italiano del motore; il client lo mostra (fallback: `lib/errors.ts`).
 - **Layout della mappa:** `cd client && bun tools/gen-schematic-layout.mjs` (circa 3 minuti, deterministico) rigenera `usa-layout.json`. Va rilanciato se cambiano geometria delle rotte o regole delle etichette.
 
@@ -156,6 +159,6 @@ In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
 1. Ripresa di una partita avviabile dalla TV (elenco dei save in corso + pulsante "Riprendi", `hostToken` della ripresa visibile alla TV)
 2. TV: riquadro con le ultime mosse
-3. Rotazione dei backup `.bak` e biglietti del dialog letti dal ruleset della partita (oggi `usa.json` fisso nel client)
+3. Rotazione dei backup `.bak` e layout schematico della mappa per ruleset (oggi `usa-layout.json` e l'elenco dei ruleset sono statici nel client; la mappa e i biglietti arrivano da `GET /api/rulesets/{id}/map`)
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR.

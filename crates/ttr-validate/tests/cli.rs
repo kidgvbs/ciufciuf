@@ -51,6 +51,11 @@ fn stdout(output: &Output) -> String {
 fn ttr_validate_accepts_shipped_data() {
     let output = run(Path::new(MAP), Path::new(RULESET));
     assert!(output.status.success(), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("numero ciclomatico stimato"),
+        "{}",
+        stdout(&output)
+    );
 }
 
 #[test]
@@ -118,6 +123,14 @@ const CASES: &[Case] = &[
         name: "route-unknown-city",
         mutate: |map, _| map["routes"][0]["to"] = Value::from("atlantis"),
         expected: "atlantis",
+    },
+    Case {
+        name: "route-same-city",
+        mutate: |map, _| {
+            let from = map["routes"][0]["from"].clone();
+            map["routes"][0]["to"] = from;
+        },
+        expected: "rotta 'seattle_vancouver_1': partenza e arrivo coincidono",
     },
     Case {
         name: "ticket-same-city",

@@ -108,11 +108,6 @@ async fn main() {
         }
     };
 
-    let archived = archive_completed_saves(&state);
-    if archived > 0 {
-        info!("{archived} save conclusi archiviati in classifica all'avvio");
-    }
-
     // Flusso di resume: carica il save, ricostruisce il motore,
     // registra la partita in lobby col roster salvato.
     if let Some(resume_path) = &args.resume {
@@ -128,6 +123,13 @@ async fn main() {
                 std::process::exit(1);
             }
         }
+    }
+
+    // Dopo il resume: un save concluso passato a `--resume` va segnalato come
+    // tale, non archiviato prima che il resume lo legga.
+    let archived = archive_completed_saves(&state);
+    if archived > 0 {
+        info!("{archived} save conclusi archiviati in classifica all'avvio");
     }
 
     let router = build_router(state.clone(), args.client_dist);

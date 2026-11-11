@@ -570,3 +570,295 @@ fn face_up_reset_events_match_final_face_up() {
         }
     }
 }
+
+// ── Longest path: esattezza alla soglia di validazione ───────────────
+
+mod longest_path_threshold {
+    use std::collections::BTreeMap;
+    use std::time::{Duration, Instant};
+
+    use proptest::prelude::*;
+    use ttr_core::scoring::{LongestPath, MAX_CYCLOMATIC_NUMBER, longest_path_report};
+    use ttr_core::types::{ClaimedRouteInfo, Route};
+
+    /// Connected multigraph without self-loops on `v` cities: a random spanning tree plus
+    /// `cyclomatic` further edges between random distinct cities.
+    fn graph(v: usize, cyclomatic: usize, noise: &[u32]) -> Vec<(usize, usize)> {
+        let mut edges: Vec<(usize, usize)> = (1..v).map(|i| (i, noise[i] as usize % i)).collect();
+        for extra in 0..cyclomatic {
+            let a = noise[v + 2 * extra] as usize % v;
+            let b = (a + 1 + noise[v + 2 * extra + 1] as usize % (v - 1)) % v;
+            edges.push((a, b));
+        }
+        edges
+    }
+
+    /// Endless splitmix64 stream from `seed`.
+    fn stream(seed: u64) -> impl FnMut() -> u64 {
+        let mut state = seed;
+        move || {
+            state = state.wrapping_add(0x9e37_79b9_7f4a_7c15);
+            let mut z = state;
+            z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+            z ^ (z >> 31)
+        }
+    }
+
+    /// Fisher-Yates shuffle of `0..n` driven by `seed`.
+    fn shuffled(n: usize, seed: u64) -> Vec<usize> {
+        let mut next = stream(seed);
+        let mut items: Vec<usize> = (0..n).collect();
+        for i in (1..n).rev() {
+            items.swap(i, (next() % (i as u64 + 1)) as usize);
+        }
+        items
+    }
+
+    /// Longest-path report of `edges` with city `i` named after `city_names[i]` and edge
+    /// `j` given the route id of slot `edge_slots[j]`.
+    fn report(
+        edges: &[(usize, usize)],
+        lens: &[u32],
+        city_names: &[usize],
+        edge_slots: &[usize],
+    ) -> LongestPath {
+        let mut routes: BTreeMap<String, Route> = BTreeMap::new();
+        for (j, &(a, b)) in edges.iter().enumerate() {
+            let id = format!("r{:03}", edge_slots[j]);
+            routes.insert(
+                id.clone(),
+                Route {
+                    id,
+                    from: format!("c{:02}", city_names[a]),
+                    to: format!("c{:02}", city_names[b]),
+                    len: lens[j],
+                    color: "Gray".into(),
+                    double: false,
+                },
+            );
+        }
+        let claimed: Vec<ClaimedRouteInfo> = routes
+            .keys()
+            .map(|id| ClaimedRouteInfo {
+                route_id: id.clone(),
+                claimed_by: 0,
+            })
+            .collect();
+        let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
+        longest_path_report(&refs, &routes)
+    }
+
+    /// Brute force: the longest trail is the heaviest connected edge subset with at most
+    /// two odd cities, found by removing the cheapest edge subset first.
+    fn brute_force(edges: &[(usize, usize)], lens: &[u32], v: usize) -> u32 {
+        struct Search<'a> {
+            edges: &'a [(usize, usize)],
+            lens: &'a [u32],
+            v: usize,
+            best_removed: u32,
+        }
+        impl Search<'_> {
+            fn connected(&self, removed: u64) -> bool {
+                let mut parent: Vec<usize> = (0..self.v).collect();
+                let find = |parent: &mut Vec<usize>, mut x: usize| {
+                    while parent[x] != x {
+                        x = parent[x];
+                    }
+                    x
+                };
+                let mut root = None;
+                for (j, &(a, b)) in self.edges.iter().enumerate() {
+                    if removed >> j & 1 == 1 {
+                        continue;
+                    }
+                    let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
+                    parent[ra] = rb;
+                }
+                for (j, &(a, _)) in self.edges.iter().enumerate() {
+                    if removed >> j & 1 == 1 {
+                        continue;
+                    }
+                    let r = find(&mut parent, a);
+                    if *root.get_or_insert(r) != r {
+                        return false;
+                    }
+                }
+                true
+            }
+
+            fn walk(&mut self, next: usize, removed: u64, parity: u32, cost: u32) {
+                if cost >= self.best_removed {
+                    return;
+                }
+                if parity.count_ones() <= 2 && self.connected(removed) {
+                    self.best_removed = cost;
+                    return;
+                }
+                for j in next..self.edges.len() {
+                    let (a, b) = self.edges[j];
+                    let parity = parity ^ (1 << a) ^ (1 << b);
+                    self.walk(j + 1, removed | 1 << j, parity, cost + self.lens[j]);
+                }
+            }
+        }
+        let total: u32 = lens.iter().sum();
+        let mut search = Search {
+            edges,
+            lens,
+            v,
+            best_removed: total,
+        };
+        search.walk(0, 0, parity_of(edges), 0);
+        total - search.best_removed
+    }
+
+    fn parity_of(edges: &[(usize, usize)]) -> u32 {
+        edges.iter().fold(0, |p, &(a, b)| p ^ (1 << a) ^ (1 << b))
+    }
+
+    /// Random route lengths 1..=4 for `count` routes with a total of at most 45 trains.
+    fn buildable_lengths(count: usize, next: &mut impl FnMut() -> u64) -> Vec<u32> {
+        let mut total = 0;
+        (0..count)
+            .map(|left| {
+                let len = 1 + (next() % 4) as u32;
+                let len = if total + len + (count - left - 1) as u32 > 45 {
+                    1
+                } else {
+                    len
+                };
+                total += len;
+                len
+            })
+            .collect()
+    }
+
+    fn identity(n: usize) -> Vec<usize> {
+        (0..n).collect()
+    }
+
+    /// Search result of `edges` equals the brute force and every relabeling of the cities
+    /// and routes, and is exact.
+    fn check_exact(
+        v: usize,
+        edges: &[(usize, usize)],
+        lens: &[u32],
+        seeds: [u64; 4],
+    ) -> Result<(), TestCaseError> {
+        let reference = report(edges, lens, &identity(v), &identity(edges.len()));
+        prop_assert!(reference.exact, "{edges:?} {lens:?}");
+        prop_assert_eq!(
+            reference.length,
+            brute_force(edges, lens, v),
+            "{:?} {:?}",
+            edges,
+            lens
+        );
+        for seed in seeds {
+            let relabeled = report(
+                edges,
+                lens,
+                &shuffled(v, seed),
+                &shuffled(edges.len(), seed ^ 0xa5a5),
+            );
+            prop_assert_eq!(relabeled, reference, "{:?} {:?}", edges, lens);
+        }
+        Ok(())
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 64, ..ProptestConfig::default() })]
+
+        /// Connected graphs at exactly `MAX_CYCLOMATIC_NUMBER` with unit lengths: the search
+        /// is exact, equals the brute force and does not depend on how the cities are named.
+        #[test]
+        fn longest_path_is_exact_at_max_cyclomatic_number(
+            v in 7usize..=14,
+            noise in proptest::collection::vec(any::<u32>(), 64),
+            seeds in any::<[u64; 4]>(),
+        ) {
+            let edges = graph(v, MAX_CYCLOMATIC_NUMBER as usize, &noise);
+            check_exact(v, &edges, &vec![1; edges.len()], seeds)?;
+        }
+
+        /// Same with mixed route lengths adding up to at most the 45 trains of a player.
+        #[test]
+        fn longest_path_is_exact_at_max_cyclomatic_number_with_mixed_lengths(
+            v in 7usize..=14,
+            noise in proptest::collection::vec(any::<u32>(), 64),
+            seeds in any::<[u64; 5]>(),
+        ) {
+            let edges = graph(v, MAX_CYCLOMATIC_NUMBER as usize, &noise);
+            let mut next = stream(seeds[4]);
+            let lens = buildable_lengths(edges.len(), &mut next);
+            check_exact(v, &edges, &lens, [seeds[0], seeds[1], seeds[2], seeds[3]])?;
+        }
+    }
+
+    /// Random connected multigraph without self-loops in which every one of `v` cities has
+    /// three routes (the pairing model, retried until connected).
+    fn cubic_graph(v: usize, next: &mut impl FnMut() -> u64) -> Vec<(usize, usize)> {
+        fn root(parent: &mut [usize], mut x: usize) -> usize {
+            while parent[x] != x {
+                x = parent[x];
+            }
+            x
+        }
+        loop {
+            let mut stubs: Vec<usize> = (0..v).flat_map(|c| [c, c, c]).collect();
+            for i in (1..stubs.len()).rev() {
+                stubs.swap(i, (next() % (i as u64 + 1)) as usize);
+            }
+            let edges: Vec<(usize, usize)> = stubs.chunks(2).map(|c| (c[0], c[1])).collect();
+            let mut parent: Vec<usize> = (0..v).collect();
+            for &(a, b) in &edges {
+                let (ra, rb) = (root(&mut parent, a), root(&mut parent, b));
+                parent[ra] = rb;
+            }
+            let first = root(&mut parent, 0);
+            if edges.iter().all(|&(a, b)| a != b) && (0..v).all(|c| root(&mut parent, c) == first) {
+                return edges;
+            }
+        }
+    }
+
+    /// Release timing: every graph at the threshold (random graphs with unit and mixed
+    /// lengths, and 26-city cubic graphs, the hardest shape) is solved exactly in under a
+    /// second.
+    #[test]
+    #[ignore = "timing: run with --release"]
+    fn longest_path_at_max_cyclomatic_number_takes_under_a_second() {
+        let mut worst = Duration::ZERO;
+        let mut time = |edges: &[(usize, usize)], lens: &[u32], v: usize| {
+            let started = Instant::now();
+            let result = report(edges, lens, &identity(v), &identity(edges.len()));
+            worst = worst.max(started.elapsed());
+            assert!(result.exact, "{edges:?} {lens:?}");
+        };
+        for case in 0..600u64 {
+            let v = 7 + (case % 8) as usize;
+            let mut next = stream(case);
+            let noise: Vec<u32> = (0..64).map(|_| next() as u32).collect();
+            let edges = graph(v, MAX_CYCLOMATIC_NUMBER as usize, &noise);
+            let lens = if case % 2 == 0 {
+                vec![1; edges.len()]
+            } else {
+                buildable_lengths(edges.len(), &mut next)
+            };
+            time(&edges, &lens, v);
+        }
+        for case in 0..100u64 {
+            let mut next = stream(1_000 + case);
+            let edges = cubic_graph(26, &mut next);
+            assert_eq!(edges.len(), 26 + MAX_CYCLOMATIC_NUMBER as usize - 1);
+            let lens = if case % 2 == 0 {
+                vec![1; edges.len()]
+            } else {
+                buildable_lengths(edges.len(), &mut next)
+            };
+            time(&edges, &lens, 26);
+        }
+        assert!(worst < Duration::from_secs(1), "{worst:?}");
+    }
+}

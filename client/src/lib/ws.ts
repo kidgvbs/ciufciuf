@@ -6,8 +6,9 @@
 // - Dedup dei messaggi privati con `PrivateState.seq`; il server rinumera i seq a ogni
 //   sessione, quindi i contatori si azzerano a ogni nuova connessione.
 // - Riconnessione: backoff esponenziale con jitter, azzerato solo dopo 10 s di connessione
-//   stabile (SNAPSHOT ricevuto); `visibilitychange` e `online` richiedono uno SNAPSHOT e, se
-//   il socket resta muto per 3 s, lo riaprono.
+//   stabile (il timer parte dal primo SNAPSHOT e gli SNAPSHOT successivi non lo rinviano);
+//   `visibilitychange` e `online` richiedono uno SNAPSHOT e, se il socket resta muto per 3 s, lo
+//   riaprono; un socket in CONNECTING da oltre 5 s viene sostituito.
 // - Messaggi con forma non valida: scartati, con al più un REQUEST_SNAPSHOT ogni 5 s.
 // - Errori fatali (partita inesistente, non autorizzato, protocollo diverso, troppi spettatori):
 //   niente riconnessione.
@@ -89,6 +90,9 @@ const WATCHDOG_MS = 3_000;
 /** Intervallo minimo tra due REQUEST_SNAPSHOT causati da messaggi malformati. */
 const BAD_MESSAGE_SNAPSHOT_INTERVAL_MS = 5_000;
 
+/** Un socket ancora in `CONNECTING` dopo tanto tempo viene sostituito al ritorno in primo piano. */
+const CONNECTING_STUCK_MS = 5_000;
+
 const READY_STATE_CONNECTING = 0;
 const READY_STATE_OPEN = 1;
 
@@ -134,6 +138,7 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
   let stableTimer: ReturnType<typeof setTimeout> | null = null;
   let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
   let lastBadMessageRequest = -Infinity;
+  let connectStartedAt = 0;
 
   function clearTimer(timer: ReturnType<typeof setTimeout> | null): null {
     if (timer) clearTimeout(timer);
@@ -186,8 +191,7 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
         // solo se la connessione resta stabile.
         snapshotSeen = true;
         watchdogTimer = clearTimer(watchdogTimer);
-        stableTimer = clearTimer(stableTimer);
-        stableTimer = setTimeout(() => {
+        stableTimer ??= setTimeout(() => {
           stableTimer = null;
           backoffMs = INITIAL_BACKOFF_MS;
         }, STABLE_MS);
@@ -310,6 +314,7 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
 
     try {
       const sock = createSocket(buildWsUrl());
+      connectStartedAt = Date.now();
       ws = sock;
       detachSocket = attach(sock);
     } catch (e) {
@@ -353,13 +358,23 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
     connect();
   }
 
-  /** Verifica la connessione: socket chiuso → riapri; socket aperto → SNAPSHOT con watchdog. */
+  /**
+   * Verifica la connessione: socket chiuso o bloccato in `CONNECTING` da oltre 5 s → riapri;
+   * socket aperto → SNAPSHOT con watchdog.
+   */
   function refresh(): void {
     if (closed) return;
     if (!ws || ws.readyState > READY_STATE_OPEN) {
       reconnectTimer = clearTimer(reconnectTimer);
       backoffMs = INITIAL_BACKOFF_MS;
       connect();
+      return;
+    }
+    if (
+      ws.readyState === READY_STATE_CONNECTING &&
+      Date.now() - connectStartedAt > CONNECTING_STUCK_MS
+    ) {
+      forceReconnect();
       return;
     }
     // Anche con il WS aperto lo stato potrebbe essere stantio: se non risponde, riapri.

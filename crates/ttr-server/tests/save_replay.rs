@@ -1280,6 +1280,50 @@ async fn reassign_on_fresh_game_is_rejected() {
 
 // ── Archiviazione all'avvio e durabilità del reassign ────────────────
 
+/// `--resume` su un save concluso: il binario esce con 1 e «partita già
+/// conclusa», senza che l'archiviazione all'avvio elimini prima il save.
+#[tokio::test]
+async fn resume_of_completed_save_reports_game_over() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+    // `results.jsonl` è una directory: l'archiviazione fallisce e il save resta.
+    std::fs::create_dir(server.saves_dir.join(ttr_server::save::RESULTS_FILE)).unwrap();
+
+    let g = create_game_with_seed(&server.base_url, "Conclusa", Some(42)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    let mut a = Player::new(WsClient::connect(&server, &g.game_id, &pa.player_id, &pa.token).await);
+    let mut b = Player::new(WsClient::connect(&server, &g.game_id, &pb.player_id, &pb.token).await);
+    let final_public = run_game(&mut a, &mut b, &map).await;
+    assert_eq!(final_public.state, GameState::GameOver);
+    let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_save(&save, |s| s["status"] == "completed").await;
+
+    let fresh = temp_saves_dir();
+    let copy = fresh.join("conclusa.json");
+    std::fs::copy(&save, &copy).unwrap();
+    let out = tokio::task::spawn_blocking({
+        let (fresh, copy) = (fresh.clone(), copy.clone());
+        move || {
+            std::process::Command::new(env!("CARGO_BIN_EXE_ttr-server"))
+                .arg("--data-dir")
+                .arg(data_dir())
+                .arg("--saves-dir")
+                .arg(&fresh)
+                .arg("--resume")
+                .arg(&copy)
+                .output()
+                .expect("avvio di ttr-server")
+        }
+    })
+    .await
+    .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("già conclusa"), "{stderr}");
+}
+
 /// Un save `completed` rimasto su disco (archiviazione fallita) viene
 /// archiviato all'avvio successivo e poi eliminato.
 #[tokio::test]

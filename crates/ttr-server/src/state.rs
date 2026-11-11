@@ -19,6 +19,9 @@ pub struct AppState {
     pub rulesets: Arc<BTreeMap<String, Ruleset>>,
     /// Mappe caricate, indicizzate per id (file stem di `data/maps/*.json`).
     pub maps: Arc<BTreeMap<String, MapData>>,
+    /// Documenti JSON delle mappe come letti da disco (con i campi che il
+    /// motore ignora, come `lat`/`lon`), indicizzati come `maps`.
+    pub map_documents: Arc<BTreeMap<String, serde_json::Value>>,
     /// Percorso della cartella `saves/`.
     pub saves_dir: PathBuf,
     /// Percorso della cartella `data/`.
@@ -43,13 +46,14 @@ impl AppState {
     /// Fallisce se un ruleset non è coerente con la sua mappa.
     pub fn new(data_dir: PathBuf, saves_dir: PathBuf, port: u16) -> Result<Self, String> {
         let rulesets = load_rulesets(&data_dir)?;
-        let maps = load_maps(&data_dir, &rulesets)?;
+        let (maps, map_documents) = load_maps(&data_dir, &rulesets)?;
         validate_rulesets(&rulesets, &maps)?;
 
         Ok(Self {
             games: Arc::new(RwLock::new(BTreeMap::new())),
             rulesets: Arc::new(rulesets),
             maps: Arc::new(maps),
+            map_documents: Arc::new(map_documents),
             saves_dir,
             data_dir,
             port,
@@ -121,13 +125,17 @@ fn load_rulesets(data_dir: &Path) -> Result<BTreeMap<String, Ruleset>, String> {
     Ok(map)
 }
 
+/// Mappe caricate e documenti JSON originali, indicizzati per id mappa.
+type LoadedMaps = (
+    BTreeMap<String, MapData>,
+    BTreeMap<String, serde_json::Value>,
+);
+
 /// Carica le mappe referenziate dai ruleset da `data/maps/{map}.json`.
-fn load_maps(
-    data_dir: &Path,
-    rulesets: &BTreeMap<String, Ruleset>,
-) -> Result<BTreeMap<String, MapData>, String> {
+fn load_maps(data_dir: &Path, rulesets: &BTreeMap<String, Ruleset>) -> Result<LoadedMaps, String> {
     let maps_dir = data_dir.join("maps");
     let mut loaded = BTreeMap::new();
+    let mut documents = BTreeMap::new();
 
     for ruleset in rulesets.values() {
         let map_name = &ruleset.map;
@@ -139,13 +147,16 @@ fn load_maps(
             std::fs::read_to_string(&path).map_err(|e| format!("lettura {:?}: {}", path, e))?;
         let map: MapData =
             serde_json::from_str(&json).map_err(|e| format!("parsing mappa {:?}: {}", path, e))?;
+        let document: serde_json::Value =
+            serde_json::from_str(&json).map_err(|e| format!("parsing mappa {:?}: {}", path, e))?;
         loaded.insert(map_name.clone(), map);
+        documents.insert(map_name.clone(), document);
     }
 
     if loaded.is_empty() {
         return Err(format!("nessuna mappa trovata in {:?}", maps_dir));
     }
-    Ok(loaded)
+    Ok((loaded, documents))
 }
 
 /// Verifica ogni coppia ruleset/mappa: il server non parte con dati incoerenti.

@@ -10,6 +10,8 @@ use crate::names::NameError;
 pub enum LobbyError {
     #[error("Partita non trovata.")]
     GameNotFound,
+    #[error("Ruleset non trovato.")]
+    RulesetNotFound,
     #[error("L'attore della partita è terminato.")]
     GameActorGone,
     #[error("La partita è al completo.")]
@@ -51,6 +53,7 @@ impl LobbyError {
     pub fn code(&self) -> &'static str {
         match self {
             Self::GameNotFound | Self::GameActorGone => "GAME_NOT_FOUND",
+            Self::RulesetNotFound => "RULESET_NOT_FOUND",
             Self::GameFull => "GAME_FULL",
             Self::GameStarted => "GAME_STARTED",
             Self::RosterIncomplete => "ROSTER_INCOMPLETE",
@@ -72,7 +75,9 @@ impl LobbyError {
     /// Status HTTP associato.
     pub fn status(&self) -> StatusCode {
         match self {
-            Self::GameNotFound | Self::GameActorGone => StatusCode::NOT_FOUND,
+            Self::GameNotFound | Self::GameActorGone | Self::RulesetNotFound => {
+                StatusCode::NOT_FOUND
+            }
             Self::GameFull
             | Self::GameStarted
             | Self::RosterIncomplete

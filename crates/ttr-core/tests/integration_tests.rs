@@ -2794,6 +2794,19 @@ fn engine_new_rejects_route_to_unknown_city() {
 }
 
 #[test]
+fn engine_new_rejects_route_same_city() {
+    let mut map = mini_map();
+    map.routes[0].to = "A".into();
+    assert_eq!(
+        init_error(mini_ruleset(), map, 2, 0),
+        EngineInitError::RouteSameCity {
+            route_id: "A_B_1".into(),
+            city_id: "A".into()
+        }
+    );
+}
+
+#[test]
 fn engine_new_rejects_ticket_to_unknown_city() {
     let mut map = mini_map();
     map.tickets[0].from = "Z".into();
@@ -3010,6 +3023,103 @@ fn engine_new_accepts_dense_map_when_trains_limit_claims() {
     rs.trains_per_player = 12;
     let (ids, names, colors) = two_players();
     Engine::new(1, rs, dense_map(10), ids, names, colors, 0).unwrap();
+}
+
+/// Highest estimate the shipped USA map may have: `MAX_CYCLOMATIC_NUMBER` with margin.
+#[test]
+fn usa_longest_path_estimate_is_within_the_threshold() {
+    let estimate = usa_ruleset().max_cyclomatic_estimate(&usa_map());
+    assert!(
+        estimate < ttr_core::scoring::MAX_CYCLOMATIC_NUMBER,
+        "stima USA {estimate}"
+    );
+}
+
+/// Route lengths of the USA map, cycled over the routes of the synthetic maps.
+const USA_LENGTHS: [u32; 12] = [2, 3, 2, 4, 2, 1, 3, 5, 2, 6, 3, 4];
+
+/// Planar grid of `side` x `side` cities without two opposite corners (47 cities for
+/// `side` 7) whose first `doubled` links are double routes, named `{prefix}...`.
+fn grid_routes(prefix: &str, side: usize, doubled: usize) -> (Vec<City>, Vec<Route>) {
+    let skipped = |x: usize, y: usize| (x, y) == (0, 0) || (x, y) == (side - 1, side - 1);
+    let name = |x: usize, y: usize| format!("{prefix}{x}_{y}");
+    let mut cities = Vec::new();
+    let mut routes = Vec::new();
+    let mut link = 0;
+    for x in 0..side {
+        for y in 0..side {
+            if skipped(x, y) {
+                continue;
+            }
+            cities.push(city(&name(x, y)));
+            for (nx, ny) in [(x + 1, y), (x, y + 1)] {
+                if nx >= side || ny >= side || skipped(nx, ny) {
+                    continue;
+                }
+                let len = USA_LENGTHS[link % USA_LENGTHS.len()];
+                let (from, to) = (name(x, y), name(nx, ny));
+                if link < doubled {
+                    for n in [1, 2] {
+                        routes.push(route(
+                            &format!("{from}_{to}_{n}"),
+                            &from,
+                            &to,
+                            len,
+                            "Gray",
+                            true,
+                        ));
+                    }
+                } else {
+                    routes.push(route(
+                        &format!("{from}_{to}_1"),
+                        &from,
+                        &to,
+                        len,
+                        "Gray",
+                        false,
+                    ));
+                }
+                link += 1;
+            }
+        }
+    }
+    (cities, routes)
+}
+
+fn grid_map(components: usize) -> MapData {
+    let mut map = usa_map();
+    map.cities.clear();
+    map.routes.clear();
+    for component in 0..components {
+        let (cities, routes) = grid_routes(&format!("g{component}"), 7, 20);
+        map.cities.extend(cities);
+        map.routes.extend(routes);
+    }
+    for t in &mut map.tickets {
+        t.from = "g00_1".into();
+        t.to = "g01_0".into();
+    }
+    map
+}
+
+/// A 47-city, 100-route planar grid, the shape of Europe, passes with a margin, and a
+/// disjoint copy of it does not change the estimate: the bound is per connected component.
+#[test]
+fn planar_grid_estimate_is_per_component() {
+    let rs = usa_ruleset();
+    let single = grid_map(1);
+    assert_eq!((single.cities.len(), single.routes.len()), (47, 100));
+    let estimate = rs.max_cyclomatic_estimate(&single);
+    assert!(
+        estimate < ttr_core::scoring::MAX_CYCLOMATIC_NUMBER,
+        "stima griglia {estimate}"
+    );
+    rs.validate(&single).unwrap();
+
+    let doubled = grid_map(2);
+    assert_eq!(doubled.cities.len(), 94);
+    assert_eq!(rs.max_cyclomatic_estimate(&doubled), estimate);
+    rs.validate(&doubled).unwrap();
 }
 
 #[test]

@@ -10,7 +10,8 @@
 
   let { host, onJoin, onCancel, notice = '' }: {
     host: string;
-    onJoin: (name: string, gameId: string, color?: PlayerColor) => Promise<void>;
+    /** `isCancelled()` è vero se l'utente ha premuto "Annulla": l'esito non va applicato. */
+    onJoin: (name: string, gameId: string, color: PlayerColor | undefined, isCancelled: () => boolean) => Promise<void>;
     onCancel?: () => void;
     /** Messaggio da mostrare (es. connessione abbandonata); riabilita i controlli. */
     notice?: string;
@@ -100,7 +101,16 @@
     }
   });
 
-  // La richiesta non viene mai annullata: se è lenta lo diciamo, e se poi riesce si prosegue.
+  // La richiesta non viene mai abortita: se è lenta lo diciamo; "Annulla" la abbandona e il suo
+  // esito tardivo viene ignorato. Altrimenti, se riesce, si prosegue.
+  function cancelJoin() {
+    joinFlow?.cancel();
+    joinFlow = null;
+    joining = false;
+    slowJoin = false;
+    error = '';
+  }
+
   async function join() {
     const playerName = name.trim();
     const gid = gameId.trim();
@@ -110,7 +120,7 @@
     error = '';
     stopJoinTimer();
     joinFlow = createJoinFlow({
-      attempt: () => onJoin(playerName, gid, color === '' ? undefined : color),
+      attempt: (isCancelled) => onJoin(playerName, gid, color === '' ? undefined : color, isCancelled),
       registeredNames: async () => (await lobby.getGame(gid)).players.map((p) => p.name),
       name: playerName,
       onSlow: () => { slowJoin = true; },
@@ -205,6 +215,7 @@
 
     {#if slowJoin && !error}
       <p class="muted" role="status">{SLOW_JOIN_MESSAGE}</p>
+      <button class="btn cancel-btn" onclick={cancelJoin}>Annulla</button>
     {/if}
     {#if error || notice}
       <p class="error" role="alert">{error || notice}</p>
@@ -219,7 +230,7 @@
     </button>
 
     {#if onCancel}
-      <button class="btn cancel-btn" onclick={onCancel} disabled={joining}>Indietro</button>
+      <button class="btn cancel-btn" onclick={() => { cancelJoin(); onCancel(); }} disabled={joining && !slowJoin}>Indietro</button>
     {/if}
   </div>
 </div>

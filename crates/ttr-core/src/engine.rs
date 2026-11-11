@@ -54,6 +54,9 @@ pub struct Engine {
 
     /// Punti del bonus del percorso più lungo, letti dal ruleset in `new`.
     pub(crate) longest_path_bonus_points: u32,
+    /// Giocatori il cui percorso più lungo non è esatto (budget di ricerca esaurito),
+    /// calcolati a fine partita; vuoto sulle mappe validate.
+    pub(crate) longest_path_inexact: Vec<usize>,
 
     // Log
     pub(crate) action_log: Vec<ActionRecord>,
@@ -252,6 +255,7 @@ impl Engine {
             routes_by_id,
             tickets_by_id,
             longest_path_bonus_points,
+            longest_path_inexact: Vec::new(),
             action_log: Vec::new(),
         })
     }
@@ -300,6 +304,12 @@ impl Engine {
     #[must_use]
     pub fn num_players(&self) -> usize {
         self.players.len()
+    }
+    /// Players whose longest path hit the search budget at game over, so that the bonus may
+    /// be wrong; always empty on maps that pass validation.
+    #[must_use]
+    pub fn longest_path_inexact_players(&self) -> &[usize] {
+        &self.longest_path_inexact
     }
     #[must_use]
     pub fn last_round(&self) -> bool {

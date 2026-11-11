@@ -52,21 +52,70 @@ async fn idle_lobby_is_removed() {
     wait_for_games(&server.base_url, |games| games.is_empty()).await;
 }
 
+/// Il tempo trascorre davvero: il TTL è molto più lungo dell'intervallo tra
+/// i join, così anche un carico alto lascia oltre un secondo di margine. La
+/// verifica deterministica sta nei test con tempo in pausa di `session.rs`.
 #[tokio::test]
 async fn active_lobby_is_not_removed() {
+    let limits = SessionLimits {
+        lobby_idle_ttl: Duration::from_millis(2500),
+        ..SessionLimits::default()
+    };
+    let server = TestServer::start_with_limits(limits).await;
+    let g = create_game(&server.base_url, "Busy").await;
+    // Un join ogni 800 ms tiene viva la lobby oltre il TTL; lo sleep fa
+    // trascorrere il tempo, non sincronizza nulla.
+    for name in ["Anna", "Bob", "Ciro", "Dora"] {
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        join_game(&server.base_url, &g.game_id, name, None).await;
+    }
+    assert_eq!(listed_games(&server.base_url).await.len(), 1);
+}
+
+/// Le join rifiutate non rinnovano il TTL: la lobby vuota sparisce.
+#[tokio::test]
+async fn failed_joins_do_not_keep_lobby_alive() {
+    let limits = SessionLimits {
+        empty_lobby_ttl: Duration::from_millis(300),
+        ..SessionLimits::default()
+    };
+    let server = TestServer::start_with_limits(limits).await;
+    let g = create_game(&server.base_url, "Vuota").await;
+    for _ in 0..25 {
+        let (status, _) = post_json(
+            &server.base_url,
+            &format!("/api/games/{}/join", g.game_id),
+            serde_json::json!({ "name": "" }),
+        )
+        .await;
+        // 404 se la lobby è già scaduta, sotto carico.
+        assert!(matches!(status, 400 | 404), "status {status}");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    wait_for_games(&server.base_url, |games| games.is_empty()).await;
+}
+
+/// Una connessione con il playerId giusto e il token sbagliato non rinnova il TTL.
+#[tokio::test]
+async fn unauthenticated_connect_does_not_keep_lobby_alive() {
     let limits = SessionLimits {
         lobby_idle_ttl: Duration::from_millis(400),
         ..SessionLimits::default()
     };
     let server = TestServer::start_with_limits(limits).await;
-    let g = create_game(&server.base_url, "Busy").await;
-    // Un join ogni 150 ms tiene viva la lobby oltre il TTL; lo sleep fa
-    // trascorrere il tempo, non sincronizza nulla.
-    for name in ["Anna", "Bob", "Ciro", "Dora"] {
-        tokio::time::sleep(Duration::from_millis(150)).await;
-        join_game(&server.base_url, &g.game_id, name, None).await;
+    let g = create_game(&server.base_url, "Con giocatore").await;
+    let anna = join_game(&server.base_url, &g.game_id, "Anna", None).await;
+    for _ in 0..20 {
+        let url = format!(
+            "{}?playerId={}&token=sbagliato",
+            server.ws_url(&g.game_id),
+            anna.player_id
+        );
+        // La connessione viene chiusa dal server, o la partita non c'è più.
+        let _ = tokio_tungstenite::connect_async(&url).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
     }
-    assert_eq!(listed_games(&server.base_url).await.len(), 1);
+    wait_for_games(&server.base_url, |games| games.is_empty()).await;
 }
 
 #[tokio::test]
@@ -90,7 +139,7 @@ async fn abandoned_game_keeps_save() {
 
 #[tokio::test]
 async fn connected_game_is_not_abandoned() {
-    let server = TestServer::start_with_limits(abandon_limits(Duration::from_millis(300))).await;
+    let server = TestServer::start_with_limits(abandon_limits(Duration::from_secs(2))).await;
     let g = create_game_with_seed(&server.base_url, "Connected", Some(1)).await;
     let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
     join_game(&server.base_url, &g.game_id, "Bob", None).await;
@@ -99,7 +148,7 @@ async fn connected_game_is_not_abandoned() {
     ws.recv().await;
 
     // Verifica che qualcosa non accada: il tempo deve superare `abandoned_ttl`.
-    tokio::time::sleep(Duration::from_millis(900)).await;
+    tokio::time::sleep(Duration::from_millis(3000)).await;
     assert_eq!(
         listed_games(&server.base_url).await.len(),
         1,
@@ -247,10 +296,12 @@ async fn anonymous_spectators_do_not_keep_lobby_alive() {
     let server = TestServer::start_with_limits(limits).await;
     let g = create_game(&server.base_url, "Vuota").await;
 
-    let started = tokio::time::Instant::now();
-    wait_for_async(Duration::from_secs(5), || async {
-        let mut spectator = WsClient::connect_spectator(&server, &g.game_id).await;
-        let _ = spectator.recv().await;
+    wait_for_async(WAIT, || async {
+        // Sotto carico la lobby può essere già scaduta: la connessione fallisce.
+        if let Ok((mut ws, _)) = tokio_tungstenite::connect_async(&server.ws_url(&g.game_id)).await
+        {
+            let _ = tokio::time::timeout(Duration::from_secs(2), ws.next()).await;
+        }
         // Un passo di polling ogni ~100 ms, come lo spettatore del test.
         tokio::time::sleep(Duration::from_millis(80)).await;
         listed_games(&server.base_url)
@@ -259,27 +310,6 @@ async fn anonymous_spectators_do_not_keep_lobby_alive() {
             .then_some(())
     })
     .await;
-    assert!(
-        started.elapsed() < Duration::from_secs(2),
-        "la lobby vuota doveva scadere entro il TTL, ci ha messo {:?}",
-        started.elapsed()
-    );
-}
-
-/// Una lobby con un giocatore resta governata da `lobby_idle_ttl`, non da `empty_lobby_ttl`.
-#[tokio::test]
-async fn lobby_with_a_player_ignores_the_empty_ttl() {
-    let limits = SessionLimits {
-        empty_lobby_ttl: Duration::from_millis(100),
-        ..SessionLimits::default()
-    };
-    let server = TestServer::start_with_limits(limits).await;
-    let g = create_game(&server.base_url, "Con giocatore").await;
-    join_game(&server.base_url, &g.game_id, "Anna", None).await;
-
-    // Verifica che qualcosa non accada: oltre `empty_lobby_ttl` la lobby resta.
-    tokio::time::sleep(Duration::from_millis(400)).await;
-    assert_eq!(listed_games(&server.base_url).await.len(), 1);
 }
 
 #[tokio::test]

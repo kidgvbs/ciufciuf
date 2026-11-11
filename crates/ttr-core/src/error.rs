@@ -157,6 +157,9 @@ pub enum EngineInitError {
     #[error("biglietto '{ticket_id}': partenza e arrivo coincidono ('{city_id}')")]
     TicketSameCity { ticket_id: String, city_id: String },
 
+    #[error("rotta '{route_id}': partenza e arrivo coincidono ('{city_id}')")]
+    RouteSameCity { route_id: String, city_id: String },
+
     #[error("rotta doppia '{route_id}': l'id deve finire con _1 o _2")]
     DoubleRouteBadId { route_id: String },
 
@@ -166,7 +169,7 @@ pub enum EngineInitError {
     DoubleRouteUnpaired { route_id: String, sister_id: String },
 
     #[error(
-        "mappa troppo densa per il percorso più lungo: fino a {routes} rotte reclamabili da un giocatore e numero ciclomatico fino a {cyclomatic} (massimo {max})"
+        "mappa troppo densa per il percorso più lungo: fino a {routes} rotte reclamabili da un giocatore e numero ciclomatico stimato fino a {cyclomatic} (massimo {max})"
     )]
     LongestPathTooDense {
         routes: usize,

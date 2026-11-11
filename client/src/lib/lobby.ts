@@ -262,6 +262,7 @@ export function parseSeed(raw: string): number | undefined | null {
 /** Testi italiani per i codici di errore REST che il server può non accompagnare da un dettaglio. */
 const ERROR_TEXT: Record<string, string> = {
   GAME_NOT_FOUND: 'La partita non esiste più',
+  RULESET_NOT_FOUND: 'Mappa non trovata sul server',
   GAME_FULL: 'Partita al completo',
   NAME_TAKEN: 'Nome già in uso',
   COLOR_TAKEN: 'Questo colore è già stato scelto da un altro giocatore',
@@ -348,6 +349,11 @@ export class LobbyClient {
   async getProfiles(): Promise<string[]> {
     const data = await this.request<{ profiles: string[] }>('GET', '/api/profiles');
     return data.profiles;
+  }
+
+  // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader)
+  async getRulesetMap(rulesetId: string): Promise<unknown> {
+    return this.request<unknown>('GET', `/api/rulesets/${encodeURIComponent(rulesetId)}/map`);
   }
 
   // POST /api/games

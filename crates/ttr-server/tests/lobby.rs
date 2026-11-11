@@ -498,6 +498,56 @@ async fn lobby_errors_use_the_documented_codes() {
     assert_eq!(body["error"], "UNAUTHORIZED");
 }
 
+/// `DELETE` senza body (o senza `Content-Type`) risponde 401 con l'errore standard.
+#[tokio::test]
+async fn delete_without_body_is_401() {
+    let server = TestServer::start().await;
+    let g = create_game(&server.base_url, "Senza body").await;
+    let url = format!("{}/api/games/{}", server.base_url, g.game_id);
+    let res = reqwest::Client::new()
+        .delete(&url)
+        .send()
+        .await
+        .expect("DELETE senza body");
+    assert_eq!(res.status(), 401);
+    let body: serde_json::Value = res.json().await.expect("body errore");
+    assert_eq!(body["error"], "UNAUTHORIZED");
+    assert!(body["detail"].as_str().is_some_and(|d| !d.is_empty()));
+
+    let res = reqwest::Client::new()
+        .delete(&url)
+        .header("content-type", "application/json")
+        .send()
+        .await
+        .expect("DELETE con content-type e body vuoto");
+    assert_eq!(res.status(), 401);
+
+    let (status, _) = get_json(&server.base_url, &format!("/api/games/{}", g.game_id)).await;
+    assert_eq!(status, 200, "la partita non è stata chiusa");
+}
+
+/// GET /api/rulesets/{id}/map serve il documento della mappa con i campi che
+/// il motore ignora (`lat`/`lon`); un ruleset sconosciuto dà 404.
+#[tokio::test]
+async fn ruleset_map_endpoint_serves_the_map_document() {
+    let server = TestServer::start().await;
+    let (status, body) = get_json(&server.base_url, "/api/rulesets/usa_v2/map").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["rulesetId"], "usa_v2");
+    let on_disk: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(data_dir().join("maps/usa.json")).expect("lettura mappa"),
+    )
+    .expect("parsing mappa");
+    for key in ["cities", "routes", "tickets"] {
+        assert_eq!(body[key], on_disk[key], "{key}");
+    }
+    assert!(body["cities"][0]["lat"].is_number());
+
+    let (status, body) = get_json(&server.base_url, "/api/rulesets/non_esiste/map").await;
+    assert_eq!(status, 404);
+    assert_eq!(body["error"], "RULESET_NOT_FOUND");
+}
+
 // ── Seed ─────────────────────────────────────────────────────────────
 
 /// Il seed di default viene da un CSPRNG: due partite nello stesso secondo

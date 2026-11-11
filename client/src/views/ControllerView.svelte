@@ -9,7 +9,7 @@
   //
   // Persistenza identità in localStorage per reconnect dopo standby.
 
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { publicStore, privateStore, connectionStore, applySnapshot, resetStores } from '../lib/stores.svelte.ts';
   import {
     LobbyClient,
@@ -18,8 +18,9 @@
     clearIdentity,
     savePlayerName,
   } from '../lib/lobby';
+  import { gameMap } from '../lib/game-map.svelte.ts';
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
-  import { resolveServerHost } from '../lib/server-host';
+  import { currentHostEnv } from '../lib/server-host';
   import { parseRejoinHash } from '../lib/rejoin';
   import { createActionGate } from '../lib/action-gate';
   import { notConnectedError, fatalMessage } from '../lib/errors';
@@ -31,8 +32,8 @@
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
 
   // ── Stato connessione ───────────────────────────────────────────
-  // Default: stesso server che serve la pagina. Override: `/controller?server=http://<ip>:8080`.
-  let host = $state(resolveServerHost(window.location.search));
+  // Il server è sempre quello che serve la pagina (in dev lo raggiunge il proxy di Vite).
+  let host = $state(currentHostEnv().origin);
   let gameId = $state('');
   let playerId = $state('');
   let token = $state('');
@@ -160,6 +161,19 @@
     connectionKey = key;
   }
 
+  // Mappa e biglietti della partita corrente, dal ruleset indicato dal server.
+  $effect(() => {
+    const gid = gameId;
+    if (!gid) {
+      gameMap.reset();
+      return;
+    }
+    untrack(() => {
+      const client = lobby;
+      gameMap.track(host, async () => (await client.getGame(gid)).rulesetId);
+    });
+  });
+
   // Chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
   // dispose dopo close: close() notifica onConnectionChange(false) → settle().
   $effect(() => () => { connection?.close(); connection = null; connectionKey = null; drawGate.dispose(); });
@@ -167,10 +181,17 @@
   // ── Join ───────────────────────────────────────────────────────
   // Al resume il server richiede il token originale: lo inviamo se abbiamo un'identità
   // salvata per la stessa partita.
-  async function onJoin(name: string, gid: string, color?: PlayerColor) {
+  async function onJoin(
+    name: string,
+    gid: string,
+    color: PlayerColor | undefined,
+    isCancelled: () => boolean,
+  ) {
     notice = '';
     const saved = loadIdentity(gid);
     const result = await lobby.joinGame(gid, name, color, saved?.token);
+    // "Annulla" premuto durante un join lento: l'esito tardivo viene ignorato.
+    if (isCancelled()) return;
     gameId = gid;
     playerId = result.playerId;
     token = result.token;

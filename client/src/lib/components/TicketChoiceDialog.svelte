@@ -2,13 +2,12 @@
   // Dialog scelta biglietti (initial draft o pescata mid-game).
 
   import type { TicketInfo } from '../proto';
-  import usaMap from '../data/usa.json';
-  import type { MapData } from '../map-utils';
+  import { gameMap } from '../game-map.svelte.ts';
   import TicketCard from './TicketCard.svelte';
 
-  const mapData = usaMap as MapData;
-  const ticketMap = new Map(mapData.tickets.map((t) => [t.id, t]));
-  const cityMap = new Map(mapData.cities.map((c) => [c.id, c]));
+  const mapData = $derived(gameMap.state.data);
+  const ticketMap = $derived(new Map((mapData?.tickets ?? []).map((t) => [t.id, t])));
+  const cityMap = $derived(new Map((mapData?.cities ?? []).map((c) => [c.id, c])));
 
   function cityName(id: string): string {
     return cityMap.get(id)?.name ?? id;
@@ -100,6 +99,15 @@
       Tieni almeno {minKeep} biglietto{minKeep > 1 ? 'i' : ''}
       &mdash; selezionati: {selected.size}
     </p>
+
+    {#if gameMap.state.status === 'error'}
+      <p class="hint" role="alert">
+        Nomi delle città non disponibili: {gameMap.state.error}
+        <button class="btn" onclick={() => gameMap.retry()}>Riprova</button>
+      </p>
+    {:else if !mapData}
+      <p class="hint" role="status">Caricamento mappa…</p>
+    {/if}
 
     <div class="ticket-list">
       {#each offeredTickets as t}

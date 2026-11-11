@@ -2,7 +2,8 @@
 //!
 //! I nomi sono normalizzati in NFKC con un solo spazio ASCII tra le parole; i
 //! caratteri invisibili, di controllo e i mix di alfabeti nella stessa parola
-//! sono rifiutati. Il confronto tra nomi usa `name_key`, lo skeleton
+//! sono rifiutati; `U+FE0F` e `U+200D` sono ammessi solo dentro sequenze di
+//! emoji. Il confronto tra nomi usa `name_key`, lo skeleton
 //! confusabile UTS #39 in minuscolo.
 
 use unicode_normalization::UnicodeNormalization;
@@ -38,7 +39,7 @@ pub fn normalize_name(raw: &str, max_chars: usize) -> Result<String, NameError> 
         return Err(NameError::TooLong { max: max_chars });
     }
     let nfkc: String = raw.nfkc().collect();
-    if nfkc.chars().any(is_forbidden) {
+    if has_forbidden(&nfkc) {
         return Err(NameError::ForbiddenChar);
     }
     let name = nfkc.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -55,6 +56,115 @@ pub fn normalize_name(raw: &str, max_chars: usize) -> Result<String, NameError> 
         }
     }
     Ok(name)
+}
+
+/// Vero se il nome ha un carattere non ammesso. `U+FE0F` segue un carattere
+/// Extended_Pictographic; `U+200D` unisce due caratteri Extended_Pictographic
+/// (il primo eventualmente seguito da `U+FE0F`).
+fn has_forbidden(s: &str) -> bool {
+    let chars: Vec<char> = s.chars().collect();
+    chars.iter().enumerate().any(|(i, &c)| {
+        let prev = i.checked_sub(1).map(|j| chars[j]);
+        let next = chars.get(i + 1).copied();
+        match c {
+            '\u{FE0F}' => !prev.is_some_and(is_extended_pictographic),
+            '\u{200D}' => {
+                let joins_after = match prev {
+                    Some('\u{FE0F}') => i >= 2 && is_extended_pictographic(chars[i - 2]),
+                    Some(p) => is_extended_pictographic(p),
+                    None => false,
+                };
+                !(joins_after && next.is_some_and(is_extended_pictographic))
+            }
+            _ => is_forbidden(c),
+        }
+    })
+}
+
+/// Approssimazione dell'Extended_Pictographic di Unicode (UTS #51): i blocchi
+/// emoji e i simboli storici che ne fanno parte.
+fn is_extended_pictographic(c: char) -> bool {
+    matches!(
+        c,
+        '\u{A9}'
+            | '\u{AE}'
+            | '\u{203C}'
+            | '\u{2049}'
+            | '\u{2122}'
+            | '\u{2139}'
+            | '\u{2194}'..='\u{2199}'
+            | '\u{21A9}'..='\u{21AA}'
+            | '\u{231A}'..='\u{231B}'
+            | '\u{2328}'
+            | '\u{2388}'
+            | '\u{23CF}'
+            | '\u{23E9}'..='\u{23F3}'
+            | '\u{23F8}'..='\u{23FA}'
+            | '\u{24C2}'
+            | '\u{25AA}'..='\u{25AB}'
+            | '\u{25B6}'
+            | '\u{25C0}'
+            | '\u{25FB}'..='\u{25FE}'
+            | '\u{2600}'..='\u{2605}'
+            | '\u{2607}'..='\u{2612}'
+            | '\u{2614}'..='\u{2685}'
+            | '\u{2690}'..='\u{2705}'
+            | '\u{2708}'..='\u{2712}'
+            | '\u{2714}'
+            | '\u{2716}'
+            | '\u{271D}'
+            | '\u{2721}'
+            | '\u{2728}'
+            | '\u{2733}'..='\u{2734}'
+            | '\u{2744}'
+            | '\u{2747}'
+            | '\u{274C}'
+            | '\u{274E}'
+            | '\u{2753}'..='\u{2755}'
+            | '\u{2757}'
+            | '\u{2763}'..='\u{2767}'
+            | '\u{2795}'..='\u{2797}'
+            | '\u{27A1}'
+            | '\u{27B0}'
+            | '\u{27BF}'
+            | '\u{2934}'..='\u{2935}'
+            | '\u{2B05}'..='\u{2B07}'
+            | '\u{2B1B}'..='\u{2B1C}'
+            | '\u{2B50}'
+            | '\u{2B55}'
+            | '\u{3030}'
+            | '\u{303D}'
+            | '\u{3297}'
+            | '\u{3299}'
+            | '\u{1F000}'..='\u{1F0FF}'
+            | '\u{1F10D}'..='\u{1F10F}'
+            | '\u{1F12F}'
+            | '\u{1F16C}'..='\u{1F171}'
+            | '\u{1F17E}'..='\u{1F17F}'
+            | '\u{1F18E}'
+            | '\u{1F191}'..='\u{1F19A}'
+            | '\u{1F1AD}'..='\u{1F1E5}'
+            | '\u{1F201}'..='\u{1F20F}'
+            | '\u{1F21A}'
+            | '\u{1F22F}'
+            | '\u{1F232}'..='\u{1F23A}'
+            | '\u{1F23C}'..='\u{1F23F}'
+            | '\u{1F249}'..='\u{1F3FA}'
+            | '\u{1F400}'..='\u{1F53D}'
+            | '\u{1F546}'..='\u{1F64F}'
+            | '\u{1F680}'..='\u{1F6FF}'
+            | '\u{1F774}'..='\u{1F77F}'
+            | '\u{1F7D5}'..='\u{1F7FF}'
+            | '\u{1F80C}'..='\u{1F80F}'
+            | '\u{1F848}'..='\u{1F84F}'
+            | '\u{1F85A}'..='\u{1F86F}'
+            | '\u{1F888}'..='\u{1F88F}'
+            | '\u{1F8AE}'..='\u{1F8FF}'
+            | '\u{1F90C}'..='\u{1F93A}'
+            | '\u{1F93C}'..='\u{1F945}'
+            | '\u{1F947}'..='\u{1FAFF}'
+            | '\u{1FC00}'..='\u{1FFFD}'
+    )
 }
 
 /// Caratteri che non possono comparire in un nome: controllo, formato, uso
@@ -121,6 +231,39 @@ pub fn name_key(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_emoji_sequences() {
+        assert_eq!(
+            normalize_name("Anna \u{2764}\u{FE0F}", 24).unwrap(),
+            "Anna \u{2764}\u{FE0F}"
+        );
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        assert_eq!(normalize_name(family, 24).unwrap(), family);
+        let eye = "\u{1F441}\u{FE0F}\u{200D}\u{1F5E8}\u{FE0F}";
+        assert_eq!(normalize_name(eye, 24).unwrap(), eye);
+    }
+
+    #[test]
+    fn rejects_variation_selector_and_zwj_outside_emoji() {
+        for bad in [
+            "Anna\u{FE0F}",
+            "Anna\u{200D}",
+            "Anna\u{200D}Bob",
+            "\u{2764}\u{200D}Anna",
+            "Anna\u{200D}\u{2764}",
+            "\u{2764}\u{200D}",
+            "\u{FE0F}\u{2764}",
+            "\u{2764}\u{FE0F}\u{FE0F}",
+            "\u{2764}\u{FE00}",
+        ] {
+            assert_eq!(
+                normalize_name(bad, 24),
+                Err(NameError::ForbiddenChar),
+                "{bad:?}"
+            );
+        }
+    }
 
     #[test]
     fn normalizes_to_nfc_and_trims() {

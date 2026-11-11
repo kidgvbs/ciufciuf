@@ -299,7 +299,7 @@ pub(crate) struct GameSession {
     pub(crate) saved_roster: BTreeMap<String, SavedEntry>,
     /// Istante di fine partita: dopo `game_over_linger` l'attore termina.
     pub finished_at: Option<Instant>,
-    /// Ultimo comando `Join`/`Start`/`Reassign` o `Connect` di un giocatore.
+    /// Ultimo `Join`/`Start`/`Reassign` riuscito o `Connect` autenticato di un giocatore.
     last_activity: Instant,
     /// Da quando la partita avviata non ha connessioni attive.
     abandoned_since: Option<Instant>,
@@ -415,6 +415,11 @@ impl GameSession {
                 .any(|(_, tx)| !tx.is_closed())
     }
 
+    /// Rinnova il TTL della lobby: solo attività riuscita e autenticata.
+    fn touch(&mut self) {
+        self.last_activity = Instant::now();
+    }
+
     /// Aggiorna `abandoned_since` in base alle connessioni attive.
     fn refresh_abandoned(&mut self) {
         if !self.started || self.finished_at.is_some() || self.has_active_connection() {
@@ -448,19 +453,6 @@ impl GameSession {
             }
             let Some(cmd) = cmd else { break };
 
-            if matches!(
-                cmd,
-                GameCommand::Join { .. }
-                    | GameCommand::Start { .. }
-                    | GameCommand::Connect {
-                        player_id: Some(_),
-                        ..
-                    }
-                    | GameCommand::Reassign { .. }
-            ) {
-                self.last_activity = Instant::now();
-            }
-
             match cmd {
                 GameCommand::Join {
                     player_id,
@@ -471,6 +463,9 @@ impl GameSession {
                     reply,
                 } => {
                     let result = self.handle_join(player_id, name, color, token, resume_token);
+                    if result.is_ok() {
+                        self.touch();
+                    }
                     let _ = reply.send(result);
                 }
                 GameCommand::Reassign {
@@ -480,6 +475,9 @@ impl GameSession {
                     reply,
                 } => {
                     let result = self.handle_reassign(&host_token, &name, new_token);
+                    if result.is_ok() {
+                        self.touch();
+                    }
                     let _ = reply.send(result);
                 }
                 GameCommand::Start {
@@ -489,6 +487,9 @@ impl GameSession {
                     reply,
                 } => {
                     let result = self.handle_start(host_token, ruleset, map);
+                    if result.is_ok() {
+                        self.touch();
+                    }
                     let _ = reply.send(result);
                 }
                 GameCommand::Action {
@@ -854,6 +855,18 @@ impl GameSession {
                     } = event
                     {
                         self.finished.store(true, Ordering::Release);
+                        if let Some(inexact) = self
+                            .engine
+                            .as_ref()
+                            .map(|e| e.longest_path_inexact_players())
+                            .filter(|p| !p.is_empty())
+                        {
+                            tracing::warn!(
+                                game_id = %self.game_id,
+                                players = ?inexact,
+                                "percorso più lungo non esatto: budget di ricerca esaurito"
+                            );
+                        }
                         self.final_scores = Some(bridge::build_final_scores(
                             final_scores,
                             longest_path_players,
@@ -931,6 +944,10 @@ impl GameSession {
                 let _ = reply.send(ConnectOutcome::TooManySpectators);
                 return;
             }
+        }
+
+        if player_id.is_some() {
+            self.touch();
         }
 
         let conn_id = self.next_conn_id;
@@ -1262,5 +1279,131 @@ mod tests {
 
         assert!(rx.try_recv().is_ok() && rx.try_recv().is_ok());
         assert_eq!(rx.try_recv().unwrap_err(), TryRecvError::Disconnected);
+    }
+
+    /// Avvia l'attore di una lobby con tempo di tokio in pausa.
+    fn spawn_lobby(
+        limits: SessionLimits,
+    ) -> (mpsc::Sender<GameCommand>, tokio::task::JoinHandle<()>) {
+        let (tx, rx) = mpsc::channel(16);
+        let mut session = lobby_session();
+        session.rx = rx;
+        session.limits = limits;
+        session.last_activity = Instant::now();
+        (tx, tokio::spawn(session.run()))
+    }
+
+    fn ttl_limits() -> SessionLimits {
+        SessionLimits {
+            lobby_idle_ttl: Duration::from_secs(10),
+            empty_lobby_ttl: Duration::from_secs(1),
+            ..SessionLimits::default()
+        }
+    }
+
+    /// Fa trascorrere `d` di tempo simulato e lascia girare l'attore.
+    async fn elapse(d: Duration) {
+        tokio::time::advance(d).await;
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    async fn join(tx: &mpsc::Sender<GameCommand>, name: &str) -> Result<JoinResponse, LobbyError> {
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        tx.send(GameCommand::Join {
+            player_id: name.into(),
+            name: name.into(),
+            color: None,
+            token: format!("tok-{name}"),
+            resume_token: None,
+            reply,
+        })
+        .await
+        .unwrap();
+        rx.await.unwrap()
+    }
+
+    async fn connect(tx: &mpsc::Sender<GameCommand>, player: &str, token: &str) -> ConnectOutcome {
+        let (out, _out_rx) = mpsc::channel(8);
+        let (reply, rx) = tokio::sync::oneshot::channel();
+        tx.send(GameCommand::Connect {
+            player_id: Some(player.into()),
+            token: Some(token.into()),
+            tx: out,
+            reply,
+        })
+        .await
+        .unwrap();
+        rx.await.unwrap()
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn successful_join_renews_the_lobby_ttl() {
+        let (tx, task) = spawn_lobby(ttl_limits());
+        join(&tx, "Anna").await.unwrap();
+        for name in ["Bob", "Ciro", "Dora"] {
+            elapse(Duration::from_secs(6)).await;
+            assert!(!task.is_finished());
+            join(&tx, name).await.unwrap();
+        }
+        elapse(Duration::from_secs(9)).await;
+        assert!(!task.is_finished());
+        elapse(Duration::from_secs(2)).await;
+        assert!(task.is_finished());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_join_does_not_renew_the_lobby_ttl() {
+        let (tx, task) = spawn_lobby(ttl_limits());
+        join(&tx, "Anna").await.unwrap();
+        for _ in 0..5 {
+            elapse(Duration::from_secs(1)).await;
+            assert!(join(&tx, "").await.is_err());
+        }
+        elapse(Duration::from_secs(6)).await;
+        assert!(task.is_finished());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn only_authenticated_connect_renews_the_lobby_ttl() {
+        let (tx, task) = spawn_lobby(ttl_limits());
+        join(&tx, "Anna").await.unwrap();
+        elapse(Duration::from_secs(6)).await;
+        assert!(matches!(
+            connect(&tx, "Anna", "sbagliato").await,
+            ConnectOutcome::Unauthorized
+        ));
+        elapse(Duration::from_secs(5)).await;
+        assert!(task.is_finished(), "token errato: il TTL non si rinnova");
+
+        let (tx, task) = spawn_lobby(ttl_limits());
+        join(&tx, "Anna").await.unwrap();
+        elapse(Duration::from_secs(6)).await;
+        assert!(matches!(
+            connect(&tx, "Anna", "tok-Anna").await,
+            ConnectOutcome::Ok { .. }
+        ));
+        elapse(Duration::from_secs(6)).await;
+        assert!(!task.is_finished(), "connect autenticato: TTL rinnovato");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn lobby_with_a_player_ignores_the_empty_ttl() {
+        let (tx, task) = spawn_lobby(ttl_limits());
+        join(&tx, "Anna").await.unwrap();
+        elapse(Duration::from_secs(5)).await;
+        assert!(!task.is_finished());
+        elapse(Duration::from_secs(6)).await;
+        assert!(task.is_finished());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn empty_lobby_expires_with_the_empty_ttl() {
+        let (_tx, task) = spawn_lobby(ttl_limits());
+        elapse(Duration::from_millis(900)).await;
+        assert!(!task.is_finished());
+        elapse(Duration::from_millis(200)).await;
+        assert!(task.is_finished());
     }
 }

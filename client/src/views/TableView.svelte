@@ -2,7 +2,7 @@
   // Table view (TV, browser HDMI): mappa condivisa + lobby + game over.
   // Connessione spettatore senza playerId.
 
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { publicStore, connectionStore, applySnapshot, resetStores } from '../lib/stores.svelte.ts';
   import {
     LobbyClient,
@@ -16,8 +16,9 @@
     type GameListItem,
     type Standings,
   } from '../lib/lobby';
+  import { gameMap } from '../lib/game-map.svelte.ts';
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
-  import { resolveServerHost } from '../lib/server-host';
+  import { currentHostEnv } from '../lib/server-host';
   import { buildRejoinUrl } from '../lib/rejoin';
   import { fatalMessage, errorMessage } from '../lib/errors';
   import { qrDataUrl } from '../lib/qr';
@@ -32,9 +33,8 @@
   import DeckCard from '../lib/components/DeckCard.svelte';
   import type { CardColor } from '../lib/proto';
 
-  // Default: stesso server che serve la pagina (statics da ttr-server).
-  // Override per sviluppo (solo `vite dev`): `/?server=http://<ip>:8080`.
-  let host = $state<string>(resolveServerHost(window.location.search));
+  // Il server è sempre quello che serve la pagina (in dev lo raggiunge il proxy di Vite).
+  let host = $state<string>(currentHostEnv().origin);
   let gameId = $state<string>('');
   let connection: GameConnection | null = $state(null);
   let hostToken = $state<string>('');
@@ -276,6 +276,19 @@
     })();
   });
 
+  // Mappa e biglietti della partita agganciata, dal ruleset indicato dal server.
+  $effect(() => {
+    const gid = gameId;
+    if (!gid) {
+      gameMap.reset();
+      return;
+    }
+    untrack(() => {
+      const client = lobby;
+      gameMap.track(host, async () => (await client.getGame(gid)).rulesetId);
+    });
+  });
+
   // Chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
   $effect(() => () => { connection?.close(); connection = null; });
 
@@ -368,6 +381,7 @@
               <div class="map-cards">
                 {#each RULESETS as rs}
                   <MapCard
+                    {host}
                     ruleset={rs}
                     selected={rulesetId === rs.id}
                     onSelect={(id) => (rulesetId = id)}
@@ -413,6 +427,9 @@
                 <button class="btn start-btn" onclick={startGame}>🚀 Start!</button>
               {:else if hostToken}
                 <p class="hint">Minimo 2 giocatori</p>
+              {:else}
+                <p class="hint">Questa TV non ha il token host e non può avviare la partita.</p>
+                <button class="btn" onclick={() => leaveGame()}>➕ Crea una nuova partita</button>
               {/if}
               {#if missingPlayers.length > 0}
                 <div class="missing-players">

@@ -47,6 +47,26 @@ fn error_response(e: LobbyError) -> axum::response::Response {
     (status, Json(ErrorResponse::from(e))).into_response()
 }
 
+// ── /api/rulesets/{id}/map ─────────────────────────────────────────
+
+/// GET /api/rulesets/{id}/map — il documento JSON della mappa del ruleset
+/// (`cities`, `routes`, `tickets`, con i campi extra come `lat`/`lon`) più
+/// `rulesetId`.
+pub async fn ruleset_map(
+    State(state): State<AppState>,
+    Path(ruleset_id): Path<String>,
+) -> axum::response::Response {
+    let document = state
+        .ruleset(&ruleset_id)
+        .and_then(|r| state.map_documents.get(&r.map));
+    let Some(serde_json::Value::Object(fields)) = document else {
+        return error_response(LobbyError::RulesetNotFound);
+    };
+    let mut body = fields.clone();
+    body.insert("rulesetId".into(), ruleset_id.into());
+    Json(body).into_response()
+}
+
 // ── /api/lan ───────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
@@ -601,8 +621,17 @@ pub struct DeleteRequest {
 pub async fn delete_game(
     State(state): State<AppState>,
     Path(game_id): Path<String>,
-    Json(body): Json<DeleteRequest>,
+    body: axum::body::Bytes,
 ) -> axum::response::Response {
+    // Alcuni proxy tolgono il body alle DELETE: senza token vale 401,
+    // con o senza `Content-Type`.
+    if body.is_empty() {
+        return error_response(LobbyError::Unauthorized);
+    }
+    let body: DeleteRequest = match serde_json::from_slice(&body) {
+        Ok(b) => b,
+        Err(e) => return error_response(LobbyError::BadRequest(format!("body non valido: {e}"))),
+    };
     let handle = match find_game(&state, &game_id).await {
         Ok(h) => h,
         Err(e) => return error_response(e),

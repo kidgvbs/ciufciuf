@@ -254,6 +254,13 @@ impl Engine {
             self.longest_path_bonus_points,
         );
 
+        self.longest_path_inexact = scores
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.longest_path_exact)
+            .map(|(i, _)| i)
+            .collect();
+
         let mut final_scores: Vec<FinalScore> = self
             .players
             .iter()

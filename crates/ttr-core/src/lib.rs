@@ -19,6 +19,7 @@
 //! ```
 
 mod action;
+mod density;
 mod engine;
 mod engine_claim;
 mod engine_deck;

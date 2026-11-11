@@ -13,13 +13,12 @@
   import MapSvg from './MapSvg.svelte';
   import TrainCard from './TrainCard.svelte';
   import TicketCard from './TicketCard.svelte';
-  import usaMap from '../data/usa.json';
-  import type { MapData } from '../map-utils';
+  import { gameMap } from '../game-map.svelte.ts';
 
-  const mapData = usaMap as MapData;
-  const ticketMap = new Map(mapData.tickets.map((t) => [t.id, t]));
-  const routeMap = new Map(mapData.routes.map((r) => [r.id, r]));
-  const cityMap = new Map(mapData.cities.map((c) => [c.id, c]));
+  const mapData = $derived(gameMap.state.data);
+  const ticketMap = $derived(new Map((mapData?.tickets ?? []).map((t) => [t.id, t])));
+  const routeMap = $derived(new Map((mapData?.routes ?? []).map((r) => [r.id, r])));
+  const cityMap = $derived(new Map((mapData?.cities ?? []).map((c) => [c.id, c])));
 
   function cityName(id: string): string {
     return cityMap.get(id)?.name ?? id;

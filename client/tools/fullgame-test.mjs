@@ -98,7 +98,7 @@ async function rest(method, path, body) {
 
 // ── Mappa rotte ─────────────────────────────────────────────────────────
 const routes = new Map();
-const usaPath = join(ROOT, 'client', 'src', 'lib', 'data', 'usa.json');
+const usaPath = join(ROOT, 'data', 'maps', 'usa.json');
 for (const r of JSON.parse(readFileSync(usaPath, 'utf8')).routes) routes.set(r.id, r);
 const toCardColor = (c) => (c === 'Gray' ? null : c.toUpperCase());
 

@@ -6,10 +6,11 @@
   // Le mappe non disponibili mostrano un placeholder neutro disegnato da noi.
   import type { RulesetInfo } from '../rulesets';
   import type { MapData } from '../map-utils';
-  import usaMap from '../data/usa.json';
+  import { loadRulesetMap } from '../map-loader';
   import usaLayout from '../data/usa-layout.json';
 
-  let { ruleset, selected, onSelect }: {
+  let { host, ruleset, selected, onSelect }: {
+    host: string;
     ruleset: RulesetInfo;
     selected: boolean;
     onSelect: (id: string) => void;
@@ -20,7 +21,17 @@
 
   // Mini-render del layout schematico (stesse posizioni e curve di MapSvg),
   // scalato in "meet" nella thumbnail con padding.
-  const mapData = usaMap as MapData;
+  // Rotte e città arrivano dal server; il layout schematico resta quello USA.
+  let mapData = $state.raw<MapData | null>(null);
+  $effect(() => {
+    if (ruleset.id !== 'usa_v2') return;
+    let cancelled = false;
+    loadRulesetMap(host, ruleset.id).then(
+      (m) => { if (!cancelled) mapData = m; },
+      (e: unknown) => console.warn('[map-card] mappa non disponibile:', e),
+    );
+    return () => { cancelled = true; };
+  });
   const layout = usaLayout as unknown as {
     width: number;
     height: number;
@@ -35,8 +46,9 @@
   const cityPos = new Map(
     Object.entries(layout.cities).map(([id, p]) => [id, { x: ox + p.x * k, y: oy + p.y * k }]),
   );
-  const seenPairs = new Set<string>();
-  const thumbRoutes = mapData.routes
+  const thumbRoutes = $derived.by(() => {
+    const seenPairs = new Set<string>();
+    return (mapData?.routes ?? [])
     .filter((r) => {
       const key = [r.from, r.to].sort().join('|');
       if (seenPairs.has(key)) return false;
@@ -51,6 +63,7 @@
       return { id: r.id, d };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
+  });
 </script>
 
 <button
@@ -69,7 +82,7 @@
           <path d={r.d} fill="none"
             stroke="#a68b5b" stroke-width="1.4" stroke-linecap="round" opacity="0.75" />
         {/each}
-        {#each mapData.cities as c}
+        {#each mapData?.cities ?? [] as c}
           {@const p = cityPos.get(c.id)}
           {#if p}
             <circle cx={p.x} cy={p.y} r="1.8" fill="#57432a" opacity="0.9" />

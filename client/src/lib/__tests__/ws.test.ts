@@ -6,7 +6,7 @@ import {
   type GameCallbacks,
   type SocketLike,
 } from '../ws';
-import { resolveServerHost, isAllowedHost } from '../server-host';
+import { isAllowedHost } from '../server-host';
 import {
   saveIdentity,
   loadIdentity,
@@ -344,6 +344,30 @@ describe('createGameConnection', () => {
     expect(callbacks.onPrivateState).not.toHaveBeenCalled();
   });
 
+  it('frequent_snapshots_do_not_postpone_backoff_reset', () => {
+    connect();
+    // Due cadute rapide: il backoff sale a 2000 ms.
+    for (let i = 0; i < 2; i++) {
+      lastSocket().open();
+      lastSocket().receive(snapshot(1));
+      lastSocket().drop();
+      vi.advanceTimersByTime(30_000);
+    }
+    const sock = lastSocket();
+    sock.open();
+    // Uno SNAPSHOT ogni 4 s (es. cambi di scheda frequenti): il timer stabile parte dal primo.
+    for (let seq = 1; seq <= 4; seq++) {
+      sock.receive(snapshot(seq));
+      vi.advanceTimersByTime(4_000);
+    }
+    sock.drop();
+    const count = FakeSocket.instances.length;
+    vi.advanceTimersByTime(499);
+    expect(FakeSocket.instances).toHaveLength(count);
+    vi.advanceTimersByTime(1);
+    expect(FakeSocket.instances).toHaveLength(count + 1);
+  });
+
   describe('visibilità e rete', () => {
     let doc: FakeEventTarget;
     let win: FakeEventTarget;
@@ -374,6 +398,31 @@ describe('createGameConnection', () => {
       expect(sock.closeCalls).toBe(1);
       expect(FakeSocket.instances).toHaveLength(2);
       expect(callbacks.onConnectionChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('stuck_connecting_socket_is_replaced_on_visibility', () => {
+      const { callbacks } = connect();
+      const stuck = lastSocket();
+      expect(stuck.readyState).toBe(0);
+
+      // Da meno di 5 s in CONNECTING: si aspetta.
+      vi.advanceTimersByTime(4_999);
+      doc.dispatch('visibilitychange');
+      expect(stuck.closeCalls).toBe(0);
+      expect(FakeSocket.instances).toHaveLength(1);
+
+      // Oltre 5 s: il socket bloccato viene chiuso e sostituito, senza attendere il backoff.
+      vi.advanceTimersByTime(2);
+      doc.dispatch('visibilitychange');
+      expect(stuck.closeCalls).toBe(1);
+      expect(FakeSocket.instances).toHaveLength(2);
+      expect(lastSocket()).not.toBe(stuck);
+
+      // Il vecchio socket, se si chiude in ritardo, non innesca altre riconnessioni.
+      stuck.drop();
+      vi.advanceTimersByTime(120_000);
+      expect(FakeSocket.instances).toHaveLength(2);
+      expect(callbacks.onFatal).not.toHaveBeenCalled();
     });
 
     it('visible socket that answers is kept', () => {
@@ -482,51 +531,17 @@ describe('createGameConnection', () => {
 // ── Host del server ──────────────────────────────────────────────────
 
 describe('server host', () => {
-  const env = { origin: 'http://tv.local:8080', dev: false };
+  const env = { origin: 'http://tv.local:8080' };
 
-  it('server_param_ignored_when_not_same_origin', () => {
-    expect(resolveServerHost('?server=http://evil.example:9', env)).toBe(env.origin);
-    expect(resolveServerHost('', env)).toBe(env.origin);
-    expect(resolveServerHost('?server=http://tv.local:8080/', env)).toBe(env.origin);
+  it('only_page_origin_is_allowed', () => {
+    expect(isAllowedHost('http://tv.local:8080', env)).toBe(true);
+    expect(isAllowedHost('http://tv.local:8080/', env)).toBe(true);
+    expect(isAllowedHost('http://192.168.1.9:8080', env)).toBe(false);
+    expect(isAllowedHost('http://evil.example:9', env)).toBe(false);
+    expect(isAllowedHost('', env)).toBe(false);
   });
 
-  it('?server= è accettato in dev', () => {
-    expect(resolveServerHost('?server=http://192.168.1.9:8080', { ...env, dev: true })).toBe(
-      'http://192.168.1.9:8080',
-    );
-  });
-
-  it('dev_server_param_rejects_public_host', () => {
-    const dev = { ...env, dev: true };
-    for (const ok of [
-      'http://localhost:8080',
-      'http://127.0.0.1:8080',
-      'http://127.9.9.9',
-      'http://10.0.0.5:8080',
-      'http://172.16.0.1',
-      'http://172.31.255.255',
-      'http://192.168.0.7:8080',
-    ]) {
-      expect(resolveServerHost(`?server=${ok}`, dev)).toBe(ok);
-    }
-    for (const bad of [
-      'http://evil.example:9',
-      'http://8.8.8.8',
-      'http://172.32.0.1',
-      'http://172.15.0.1',
-      'http://192.169.0.1',
-      'http://11.0.0.1',
-      'http://localhost.evil.example',
-      'http://10.0.0.1.evil.example',
-      'http://256.0.0.1',
-      'ftp://localhost',
-      'localhost:8080',
-    ]) {
-      expect(resolveServerHost(`?server=${bad}`, dev)).toBe(env.origin);
-    }
-  });
-
-  it('server_param_ignored_when_not_same_origin: identità con host diverso ignorata', () => {
+  it('identità con host diverso dall origin ignorata', () => {
     const storage = new Map<string, string>();
     (globalThis as Record<string, unknown>).localStorage = {
       getItem: (k: string) => storage.get(k) ?? null,
@@ -535,18 +550,15 @@ describe('server host', () => {
     };
     saveIdentity({ playerId: 'p', token: 't', gameId: 'g', host: 'http://192.168.1.9:8080' });
     expect(loadIdentity('g', env)).toBeNull();
-    expect(loadIdentity('g', { ...env, dev: true })).not.toBeNull();
-    saveIdentity({ playerId: 'p', token: 't', gameId: 'h', host: 'http://evil.example' });
-    expect(loadIdentity('h', { ...env, dev: true })).toBeNull();
-    expect(isAllowedHost(env.origin, env)).toBe(true);
-    expect(isAllowedHost('', env)).toBe(false);
+    saveIdentity({ playerId: 'p', token: 't', gameId: 'h', host: env.origin });
+    expect(loadIdentity('h', env)).not.toBeNull();
   });
 });
 
 // ── Identità per partita ─────────────────────────────────────────────
 
 describe('identità', () => {
-  const env = { origin: 'http://tv.local:8080', dev: false };
+  const env = { origin: 'http://tv.local:8080' };
   let storage: Map<string, string>;
 
   beforeEach(() => {

@@ -50,7 +50,7 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 Vincoli su mappa e ruleset, ognuno con una variante dedicata di `EngineInitError`:
 
 - id unici per città, rotte e biglietti;
-- le città di rotte e biglietti esistono; un biglietto ha `from != to`;
+- le città di rotte e biglietti esistono; una rotta e un biglietto hanno `from != to`;
 - ogni rotta ha `len >= 1` e la sua lunghezza compare in `routePoints`;
 - `trainsPerPlayer >= 1`;
 - una rotta con `double: true` ha id con suffisso `_1`/`_2` e una gemella con `double: true`, stessi estremi e stessa lunghezza;
@@ -59,4 +59,6 @@ Vincoli su mappa e ruleset, ognuno con una variante dedicata di `EngineInitError
 
 ## Longest path e densità della mappa
 
-Il calcolo del percorso più lungo è esatto entro `MAX_SEARCH_NODES` nodi di ricerca. `Ruleset::validate` stima il numero ciclomatico massimo (rotte − città + 1) di una componente che un giocatore può costruire con `trainsPerPlayer` treni, usando la degenerazione del multigrafo delle rotte, e rifiuta la mappa se supera `MAX_CYCLOMATIC_NUMBER` (20, in `scoring.rs`). La mappa USA stima 19.
+Il percorso più lungo (un trail: nessuna rotta riusata, città ripetibili) è calcolato con un branch and bound sulle rotte che il trail lascia fuori: i componenti ad albero usano il diametro pesato, gli altri una ricerca esatta entro `MAX_SEARCH_NODES` nodi (in `scoring.rs`). Se il budget si esaurisce il risultato è solo un limite inferiore: `longest_path_report` lo segnala con `exact: false` e `Engine::longest_path_inexact_players` elenca i giocatori coinvolti a fine partita.
+
+`Ruleset::validate` stima il numero ciclomatico massimo (rotte − città + 1) di una componente che un giocatore può costruire con `trainsPerPlayer` treni e rifiuta la mappa se la stima supera `MAX_CYCLOMATIC_NUMBER` (14, in `scoring.rs`). La stima è un limite superiore calcolato per ogni componente connessa della mappa (`density.rs`): per ogni moltiplicatore `a/b` il limite di treni diventa un costo `a/b` per ogni unità di lunghezza, e il sottografo più denso a quel prezzo è una chiusura di peso massimo risolta con un min-cut; vale il minimo sui moltiplicatori provati. Non assume che la mappa sia planare. La mappa USA stima 13 (il massimo realmente costruibile è circa 11).

@@ -1,7 +1,8 @@
-// Flusso di join con timeout "lento": la richiesta non viene mai annullata.
+// Flusso di join con timeout "lento": la richiesta non viene mai abortita.
 //
 // Allo scadere del timeout si avvisa l'utente ma la richiesta resta in corso (il server potrebbe
 // averla già eseguita). Se poi fallisce, si controlla se il nome risulta già registrato.
+// `cancel()` abbandona il flusso: la richiesta prosegue ma il suo esito viene ignorato.
 
 export const JOIN_TIMEOUT_MS = 10_000;
 
@@ -13,10 +14,13 @@ export interface JoinFlow {
   run(): Promise<boolean>;
   /** Ferma il timer del join (idempotente). */
   stopJoinTimer(): void;
+  /** Abbandona il join in corso: nessun callback, esito della richiesta ignorato (idempotente). */
+  cancel(): void;
 }
 
 export interface JoinFlowOptions {
-  attempt: () => Promise<void>;
+  /** `isCancelled()` diventa vero dopo `cancel()`: l'esito non va più applicato. */
+  attempt: (isCancelled: () => boolean) => Promise<void>;
   /** Nomi già registrati nella partita (`GET /api/games/{id}`). */
   registeredNames: () => Promise<string[]>;
   name: string;
@@ -31,10 +35,17 @@ function sameName(a: string, b: string): boolean {
 
 export function createJoinFlow(opts: JoinFlowOptions): JoinFlow {
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let cancelled = false;
+  const isCancelled = () => cancelled;
 
   function stopJoinTimer(): void {
     if (timer) clearTimeout(timer);
     timer = null;
+  }
+
+  function cancel(): void {
+    cancelled = true;
+    stopJoinTimer();
   }
 
   async function run(): Promise<boolean> {
@@ -42,14 +53,15 @@ export function createJoinFlow(opts: JoinFlowOptions): JoinFlow {
     stopJoinTimer();
     timer = setTimeout(() => {
       slow = true;
-      opts.onSlow();
+      if (!cancelled) opts.onSlow();
     }, opts.timeoutMs ?? JOIN_TIMEOUT_MS);
     try {
-      await opts.attempt();
+      await opts.attempt(isCancelled);
       stopJoinTimer();
-      return true;
+      return !cancelled;
     } catch (e: unknown) {
       stopJoinTimer();
+      if (cancelled) return false;
       let message = e instanceof Error ? e.message : 'Errore';
       if (slow) {
         try {
@@ -58,11 +70,12 @@ export function createJoinFlow(opts: JoinFlowOptions): JoinFlow {
         } catch (lookupError) {
           console.warn('[join] verifica del nome fallita:', lookupError);
         }
+        if (cancelled) return false;
       }
       opts.onError(message);
       return false;
     }
   }
 
-  return { run, stopJoinTimer };
+  return { run, stopJoinTimer, cancel };
 }

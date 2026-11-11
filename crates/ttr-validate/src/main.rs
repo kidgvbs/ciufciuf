@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::fs;
 use std::path::PathBuf;
 
+use ttr_core::scoring::MAX_CYCLOMATIC_NUMBER;
 use ttr_core::types::{MapData, Route, Ruleset};
 
 // ── Validazione ─────────────────────────────────────────────────────
@@ -50,8 +51,13 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
     r.check(
         "Ruleset/mappa: id, città, rotte, biglietti, mazzi, giocatori",
         |r| {
-            if let Err(e) = ruleset.validate(map) {
-                r.err(format!("Ruleset: {e}"));
+            match ruleset.validate(map) {
+                Ok(()) => println!(
+                    "  Percorso più lungo: numero ciclomatico stimato {} (massimo {})",
+                    ruleset.max_cyclomatic_estimate(map),
+                    MAX_CYCLOMATIC_NUMBER
+                ),
+                Err(e) => r.err(format!("Ruleset: {e}")),
             }
             warn_unused_route_points(r, map, ruleset);
         },

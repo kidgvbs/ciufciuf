@@ -20,11 +20,11 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - run: cargo test --release -p ttr-core -- --ignored longest_path_
       - name: ts-rs bindings are up to date
         run: |
-          git diff --exit-code -- crates/ttr-proto/bindings
           bash client/scripts/copy-bindings.sh
-          git diff --exit-code -- client/src/lib/proto
+          test -z "$(git status --porcelain -- crates/ttr-proto/bindings client/src/lib/proto)" || { git status --porcelain; exit 1; }
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -39,6 +39,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: client/package.json
+      - name: lockfile uses the public registry
+        run: "! grep -n 'https://' bun.lock | grep -v 'https://registry.npmjs.org/'"
       - run: bun install --frozen-lockfile
       - run: bun run check
       - run: bun run test
