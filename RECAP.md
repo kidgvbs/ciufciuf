@@ -134,7 +134,7 @@ ciufciuf/
 │   ├── rulesets/       # descriptor per ruleset
 │   └── layouts/        # layout schematico per mappa (servito da /api/rulesets/{id}/layout)
 ├── client/             # TypeScript + Svelte 5 (D22)
-└── docs/plan/          # piano ufficiale + archivio versioni
+└── docs/plan/          # piano ufficiale (v1.3; la v1.2 superata è stata rimossa l'11/11/2026)
 ```
 
 ## 7. Workflow operativo (per agenti)
