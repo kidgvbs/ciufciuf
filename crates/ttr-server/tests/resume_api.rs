@@ -1,5 +1,5 @@
-//! Test dell'API dei save: elenco dei save riprendibili e resume dalla TV
-//! (`GET /api/saves`, `POST /api/saves/{id}/resume`).
+//! Test dell'API dei save: elenco dei save riprendibili, resume ed eliminazione
+//! dalla TV (`GET /api/saves`, `POST /api/saves/{id}/resume`, `DELETE /api/saves/{id}`).
 
 mod common;
 
@@ -47,6 +47,31 @@ async fn resume(server: &TestServer, game_id: &str) -> (u16, serde_json::Value) 
         .expect("POST /api/saves/{id}/resume");
     let status = resp.status().as_u16();
     (status, resp.json().await.unwrap_or(serde_json::Value::Null))
+}
+
+/// DELETE senza body, come fa la TV.
+async fn delete_save(server: &TestServer, game_id: &str) -> (u16, serde_json::Value) {
+    let resp = reqwest::Client::new()
+        .delete(format!("{}/api/saves/{}", server.base_url, game_id))
+        .send()
+        .await
+        .expect("DELETE /api/saves/{id}");
+    let status = resp.status().as_u16();
+    (status, resp.json().await.unwrap_or(serde_json::Value::Null))
+}
+
+/// Backup `{id}.deleted-*.bak` lasciati dall'eliminazione.
+fn deleted_backups(server: &TestServer, game_id: &str) -> Vec<std::path::PathBuf> {
+    let prefix = format!("{game_id}.deleted-");
+    std::fs::read_dir(&server.saves_dir)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".bak"))
+        })
+        .collect()
 }
 
 async fn listed_saves(server: &TestServer) -> Vec<serde_json::Value> {
@@ -252,4 +277,99 @@ async fn completed_save_is_neither_listed_nor_resumable() {
     let (status, body) = resume(&server, &g.game_id).await;
     assert_error(&(status, body.clone()), 409, "SAVE_NOT_RESUMABLE");
     assert!(body["detail"].as_str().unwrap().contains("conclusa"));
+}
+
+/// L'eliminazione risponde 204 senza body, rinomina il save in un backup
+/// recuperabile a mano e lo toglie dall'elenco; un secondo delete è 404.
+#[tokio::test]
+async fn delete_renames_the_save_and_hides_it() {
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Da eliminare").await;
+    let other = saved_game(&server, "Resta").await;
+    let original = std::fs::read_to_string(save_path(&server, &g.game_id)).unwrap();
+
+    let (status, body) = delete_save(&server, &g.game_id).await;
+    assert_eq!((status, &body), (204, &serde_json::Value::Null));
+
+    assert!(!save_path(&server, &g.game_id).exists());
+    let backups = deleted_backups(&server, &g.game_id);
+    assert_eq!(backups.len(), 1, "{backups:?}");
+    assert_eq!(std::fs::read_to_string(&backups[0]).unwrap(), original);
+    assert_eq!(
+        listed_ids(&listed_saves(&server).await),
+        [other.game_id.as_str()]
+    );
+
+    let again = delete_save(&server, &g.game_id).await;
+    assert_error(&again, 404, "SAVE_NOT_FOUND");
+}
+
+/// Il save di una partita viva non si tocca: l'host la chiude prima.
+#[tokio::test]
+async fn delete_of_a_live_game_is_rejected_and_leaves_the_file() {
+    let server = TestServer::start().await;
+    let g = started_game(&server, "Viva").await;
+
+    let res = delete_save(&server, &g.game_id).await;
+    assert_error(&res, 409, "GAME_ALREADY_ACTIVE");
+
+    assert!(save_path(&server, &g.game_id).exists());
+    assert!(deleted_backups(&server, &g.game_id).is_empty());
+}
+
+#[tokio::test]
+async fn delete_of_unknown_or_malformed_id_is_not_found() {
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Esiste").await;
+
+    for id in [
+        uuid::Uuid::new_v4().to_string(),
+        "non-un-uuid".to_string(),
+        g.game_id.to_uppercase(),
+        "..%2F..%2Fsecret".to_string(),
+    ] {
+        let res = delete_save(&server, &id).await;
+        assert_error(&res, 404, "SAVE_NOT_FOUND");
+    }
+    assert!(save_path(&server, &g.game_id).exists());
+}
+
+/// Dopo l'eliminazione il save non si può più riprendere.
+#[tokio::test]
+async fn resume_after_delete_is_not_found() {
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Eliminata").await;
+
+    assert_eq!(delete_save(&server, &g.game_id).await.0, 204);
+
+    let res = resume(&server, &g.game_id).await;
+    assert_error(&res, 404, "SAVE_NOT_FOUND");
+    assert!(!save_path(&server, &g.game_id).exists());
+}
+
+/// Delete e resume concorrenti dello stesso save: non riescono entrambi e non
+/// resta mai una partita registrata senza il suo file (né un file resuscitato).
+#[tokio::test]
+async fn concurrent_delete_and_resume_never_both_win() {
+    let server = TestServer::start().await;
+    let g = saved_game(&server, "Corsa").await;
+
+    for _ in 0..8 {
+        let id = clone_save(&server, &g.game_id, |_| {});
+        let (deleted, resumed) = tokio::join!(delete_save(&server, &id), resume(&server, &id));
+
+        match (deleted.0, resumed.0) {
+            (204, 404) => {
+                assert!(!server.state.games.read().await.contains_key(&id));
+                assert!(!save_path(&server, &id).exists());
+                assert_eq!(deleted_backups(&server, &id).len(), 1);
+            }
+            (409, 201) => {
+                assert!(server.state.games.read().await.contains_key(&id));
+                assert!(save_path(&server, &id).exists());
+                assert!(deleted_backups(&server, &id).is_empty());
+            }
+            other => panic!("esito inatteso {other:?}: {deleted:?} {resumed:?}"),
+        }
+    }
 }

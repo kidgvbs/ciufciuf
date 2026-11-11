@@ -785,6 +785,18 @@ pub async fn resume_save(
     }
 }
 
+/// DELETE /api/saves/{id} — elimina un save non attivo rinominandolo in
+/// `saves/{id}.deleted-{unix}.bak`; risponde 204.
+pub async fn delete_save(
+    State(state): State<AppState>,
+    Path(game_id): Path<String>,
+) -> axum::response::Response {
+    match crate::delete_saved_game(&state, &game_id).await {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => error_response(e.into()),
+    }
+}
+
 // ── Conversione InboundAction → ttr_core::Action ───────────────────
 
 /// Converte un'azione inbound del protocollo in un'azione core,

@@ -73,6 +73,7 @@ Cose da ricordare:
 |---|---|
 | `<id>.json` | Save di una partita **in corso**: seed, log delle azioni, per ogni giocatore solo l'hash SHA-256 del token |
 | `<id>.resume-<timestamp>.bak` | Copia del save a ogni resume. Mai ruotati: li cancello a mano |
+| `<id>.deleted-<timestamp>.bak` | Save eliminato dalla TV. Per recuperarlo lo rinomino in `<id>.json` |
 | `profiles.json` | Profili (max 200). Se illeggibile viene spostato in `profiles.json.corrupt-<unix>`, mai sovrascritto |
 | `results.jsonl` | Una riga per partita conclusa (nome, totale, vincitore). Una partita compare una volta sola |
 
@@ -84,7 +85,7 @@ Cose da ricordare:
 
 ## 4. Riprendere una partita salvata
 
-**Dalla TV:** nella home, sezione "Partite salvate", premo **Riprendi** sulla partita. La TV entra nella lobby con l'`hostToken` (in `sessionStorage`), quindi "Riassegna" e "Start" funzionano senza copiare nulla. Elenco: `GET /api/saves`; ripresa: `POST /api/saves/{id}/resume` (§5).
+**Dalla TV:** nella home, sezione "Partite salvate", premo **Riprendi** sulla partita. La TV entra nella lobby con l'`hostToken` (in `sessionStorage`), quindi "Riassegna" e "Start" funzionano senza copiare nulla. Con **Elimina** (e conferma) tolgo un save dall'elenco: il file diventa `saves/<id>.deleted-<timestamp>.bak`, recuperabile a mano rinominandolo. Elenco: `GET /api/saves`; ripresa: `POST /api/saves/{id}/resume`; eliminazione: `DELETE /api/saves/{id}` (§5).
 
 **Da riga di comando:**
 
@@ -122,6 +123,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 | `GET /api/rulesets/{id}/layout` | | Layout schematico della mappa (`width`, `height`, `cities`, `labels`, `routes` con 2–3 punti) più `rulesetId` e `mapId`; mappa senza layout → `404 LAYOUT_NOT_FOUND` |
 | `GET /api/saves` | | `{saves:[{gameId,name,rulesetId,players:[nome,…],createdAt,updatedAt}]}`: save `in_progress` riprendibili (regole attuali, ruleset noto) e non già attivi, dal più recente; i file illeggibili sono saltati con un warn |
 | `POST /api/saves/{id}/resume` | | `201 {gameId, hostToken, rulesetId, maxPlayers}` (come la creazione) |
+| `DELETE /api/saves/{id}` | | `204`: il save diventa `<id>.deleted-<unix>.bak`; partita attiva → `409 GAME_ALREADY_ACTIVE` |
 | `GET /api/standings` | | `{games, standings:[{name,games,wins,total_points,best}]}` |
 | `GET /api/profiles` | | `{profiles:[nome,…]}` (illeggibile → lista vuota + warn nel log) |
 | `GET /ws/{gameId}?playerId=&token=` | | Upgrade WebSocket (§6) |
@@ -143,8 +145,8 @@ Note:
 | `RULESET_NOT_FOUND` | 404 | ruleset inesistente |
 | `LAYOUT_NOT_FOUND` | 404 | la mappa del ruleset non ha un file in `data/layouts/` |
 | `NOT_FOUND` | 404 | endpoint `/api/*` inesistente |
-| `SAVE_NOT_FOUND` | 404 | resume di un id non canonico o senza file `saves/<id>.json` |
-| `GAME_ALREADY_ACTIVE` | 409 | resume di una partita già in lobby o in corso |
+| `SAVE_NOT_FOUND` | 404 | resume o eliminazione di un id non canonico o senza file `saves/<id>.json` |
+| `GAME_ALREADY_ACTIVE` | 409 | resume o eliminazione di una partita già in lobby o in corso |
 | `SAVE_NOT_RESUMABLE` | 409 | save concluso, illeggibile, con regole precedenti o con `gameId` diverso dal nome del file (`detail` spiega) |
 | `GAME_FULL`, `GAME_STARTED`, `ROSTER_INCOMPLETE`, `COLOR_TAKEN`, `NAME_TAKEN`, `NAME_NOT_IN_SAVE` | 409 | conflitti di lobby |
 | `UNAUTHORIZED`, `RESUME_TOKEN_MISMATCH` | 401 | `hostToken` o token sbagliato |

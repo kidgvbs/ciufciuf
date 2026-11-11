@@ -192,3 +192,29 @@ const ROUTE_POINTS: Record<number, number> = {
 export function routePoints(len: number): number {
   return ROUTE_POINTS[len] ?? 0;
 }
+
+// ── Biglietti evidenziati sulla mappa ──────────────────────────────
+
+/** Palette dei biglietti: colore per indice (pin/linea sulla mappa, marcatore sulla card). */
+export const TICKET_PIN_COLORS = ['#0f766e', '#b45309', '#7c3aed', '#a13d63', '#0369a1'];
+
+/** Colore del biglietto in posizione `index` (la palette si ripete). */
+export function ticketPinColor(index: number): string {
+  return TICKET_PIN_COLORS[index % TICKET_PIN_COLORS.length] ?? '#0f766e';
+}
+
+/**
+ * Coppie città da evidenziare per i biglietti offerti, nello stesso ordine.
+ * Un biglietto senza descrittore dà una coppia vuota (la mappa la salta) così
+ * gli indici, e quindi i colori, restano allineati alle card.
+ */
+export function offeredTicketPins(
+  offered: ReadonlyArray<{ id: string }>,
+  tickets: ReadonlyArray<{ id: string; from: string; to: string }>,
+): Array<{ from: string; to: string }> {
+  const byId = new Map(tickets.map((t) => [t.id, t]));
+  return offered.map((o) => {
+    const t = byId.get(o.id);
+    return { from: t?.from ?? '', to: t?.to ?? '' };
+  });
+}

@@ -12,6 +12,7 @@
     selected = false,
     active = false,
     onclick,
+    color,
   }: {
     from: string;
     to: string;
@@ -22,6 +23,8 @@
     active?: boolean;
     /** Se presente, il card è un <button> (toggle evidenza sulla mappa). */
     onclick?: () => void;
+    /** Marcatore colorato: lo stesso colore della linea del biglietto sulla mappa. */
+    color?: string;
   } = $props();
 </script>
 
@@ -42,6 +45,9 @@
     <span class="t-pts-label">punti</span>
   </div>
   <div class="t-city to">{to}</div>
+  {#if color}
+    <span class="t-marker" style:background={color} aria-hidden="true"></span>
+  {/if}
   {#if completed}
     <span class="t-check" aria-label="Biglietto completato">✓</span>
   {/if}
@@ -137,6 +143,16 @@
   .ticket.clickable:focus-visible {
     outline: 2px solid #0f766e;
     outline-offset: 2px;
+  }
+  .t-marker {
+    position: absolute;
+    top: -5px;
+    left: -5px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid var(--board-1);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
   .t-check {
     position: absolute;

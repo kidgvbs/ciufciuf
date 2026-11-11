@@ -72,7 +72,7 @@ Limiti e durate:
 
 ### Riprendere una partita salvata
 
-Dalla TV: la home elenca le **Partite salvate** (save `in_progress` riprendibili con le regole attuali e non già in lobby, dal più recente) e il pulsante **Riprendi** registra la partita in lobby. Come per una partita nuova, la TV riceve l'`hostToken` e lo tiene in `sessionStorage`, quindi i pulsanti "Riassegna" e "Start" funzionano subito. Una partita già attiva non si riprende una seconda volta (`409 GAME_ALREADY_ACTIVE`): nessuno può ottenere un secondo `hostToken` per una partita in corso. Chiunque sia in LAN può riprendere un save, con la stessa fiducia richiesta per creare una partita.
+Dalla TV: la home elenca le **Partite salvate** (save `in_progress` riprendibili con le regole attuali e non già in lobby, dal più recente) e il pulsante **Riprendi** registra la partita in lobby. Come per una partita nuova, la TV riceve l'`hostToken` e lo tiene in `sessionStorage`, quindi i pulsanti "Riassegna" e "Start" funzionano subito. Una partita già attiva non si riprende una seconda volta (`409 GAME_ALREADY_ACTIVE`): nessuno può ottenere un secondo `hostToken` per una partita in corso. Il pulsante **Elimina**, dopo una conferma, toglie il save dall'elenco rinominandolo in `saves/<id>.deleted-<timestamp>.bak`: il file resta recuperabile a mano. Un save di una partita attiva non si elimina (`409 GAME_ALREADY_ACTIVE`): prima la si chiude. Chiunque sia in LAN può riprendere o eliminare un save, con la stessa fiducia richiesta per creare una partita.
 
 Da riga di comando, per l'operatore:
 

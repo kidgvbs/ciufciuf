@@ -473,4 +473,9 @@ export class LobbyClient {
   async resumeSave(gameId: string): Promise<CreatedGame> {
     return this.request<CreatedGame>('POST', `/api/saves/${encodeURIComponent(gameId)}/resume`);
   }
+
+  // DELETE /api/saves/{id} — elimina un salvataggio non attivo (il file resta come backup)
+  async deleteSave(gameId: string): Promise<void> {
+    return this.request<void>('DELETE', `/api/saves/${encodeURIComponent(gameId)}`);
+  }
 }

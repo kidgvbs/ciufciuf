@@ -33,6 +33,7 @@
   import MapCard from '../lib/components/MapCard.svelte';
   import TrainCard from '../lib/components/TrainCard.svelte';
   import TrainIcon from '../lib/components/TrainIcon.svelte';
+  import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import DeckCard from '../lib/components/DeckCard.svelte';
   import type { CardColor } from '../lib/proto';
 
@@ -65,6 +66,10 @@
   // Salvataggi riprendibili e id di quello in corso di ripresa (vuoto = nessuno).
   let savedGames = $state<SavedGameItem[]>([]);
   let resumingSave = $state<string>('');
+  // Salvataggio di cui si chiede conferma di eliminazione e id di quello in corso di eliminazione.
+  let confirmingDelete = $state<SavedGameItem | null>(null);
+  let deletingSave = $state<string>('');
+  const saveBusy = $derived(resumingSave !== '' || deletingSave !== '');
 
   const lobby = $derived(new LobbyClient(host));
   const gameState = $derived(publicStore.state);
@@ -116,7 +121,7 @@
 
   // Riprende un salvataggio dalla TV: l'hostToken arriva dal server, senza passare dal log.
   async function resumeSave(save: SavedGameItem) {
-    if (resumingSave) return;
+    if (saveBusy) return;
     resumingSave = save.gameId;
     try {
       const resumed = await lobby.resumeSave(save.gameId);
@@ -131,6 +136,24 @@
       notice = `Ripresa di ${save.name} fallita: ${describe(e)}`;
     }
     resumingSave = '';
+  }
+
+  // Conferma del dialog: elimina il salvataggio scelto e ricarica l'elenco.
+  async function confirmDelete() {
+    const save = confirmingDelete;
+    confirmingDelete = null;
+    if (!save || saveBusy) return;
+    deletingSave = save.gameId;
+    try {
+      await lobby.deleteSave(save.gameId);
+      await refreshGames();
+    } catch (e) {
+      console.error('Eliminazione fallita:', e);
+      // Come per la ripresa: prima si aggiorna l'elenco, poi si mostra l'errore.
+      await refreshGames();
+      notice = `Eliminazione di ${save.name} fallita: ${describe(e)}`;
+    }
+    deletingSave = '';
   }
 
   // La TV diventa host della partita appena creata o ripresa.
@@ -467,11 +490,18 @@
                         {s.players.join(', ')} · {formatSavedAt(s.updatedAt)}
                       </span>
                     </div>
-                    <button
-                      class="btn follow-btn"
-                      onclick={() => resumeSave(s)}
-                      disabled={resumingSave !== ''}
-                    >Riprendi</button>
+                    <div class="game-row-actions">
+                      <button
+                        class="btn follow-btn"
+                        onclick={() => resumeSave(s)}
+                        disabled={saveBusy}
+                      >Riprendi</button>
+                      <button
+                        class="btn delete-btn"
+                        onclick={() => (confirmingDelete = s)}
+                        disabled={saveBusy}
+                      >Elimina</button>
+                    </div>
                   </div>
                 {/each}
               </div>
@@ -648,6 +678,16 @@
       <MapSvg />
     </div>
   {/if}
+
+  {#if confirmingDelete}
+    <ConfirmDialog
+      title="Eliminare la partita salvata?"
+      message={`Eliminare la partita salvata «${confirmingDelete.name}»? Il file resta in saves/ come backup.`}
+      confirmLabel="Elimina"
+      onConfirm={confirmDelete}
+      onCancel={() => (confirmingDelete = null)}
+    />
+  {/if}
 </div>
 
 <style>
@@ -699,11 +739,13 @@
   .game-row:last-child { border-bottom:none; }
   .game-row-info { display:flex; flex-direction:column; gap:0.15rem; }
   .game-meta { font-size:0.8rem; color:var(--chrome-muted); }
+  .game-row-actions { display:flex; gap:0.5rem; }
   /* Contrasto 4.5:1 con testo #fff */
   button { font-size:1rem; margin-top:0.5rem; padding:0.5rem 1rem; color:#fff; background:#9a5a16; border-radius:var(--btn-radius); }
   button:not(.btn) { border:none; cursor:pointer; }
   button:not(.btn):hover { background:#cf8a2a; }
   .follow-btn { background:#2471a3; margin-top:0; }
+  .delete-btn { background:#922b21; margin-top:0; }
   .leave-game-btn { background:#5a4a35; font-size:0.8rem; padding:0.4rem 0.9rem; }
   .start-btn { background:#1e8449; font-size:1.2rem; padding:0.75rem 2rem; }
 

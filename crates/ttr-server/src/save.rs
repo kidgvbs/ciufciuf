@@ -475,6 +475,37 @@ pub(crate) fn backup_before_resume(path: &Path) -> Result<Option<PathBuf>, Strin
     Err(format!("troppi backup esistenti per {:?}", path))
 }
 
+/// Elimina un save rinominandolo in `{id}.deleted-{unix}.bak`, senza mai
+/// sovrascrivere un backup esistente. Ritorna il nuovo percorso, o `None` se il
+/// save non esiste. Il chiamante garantisce che nessuna sessione scriva `path`.
+pub(crate) fn soft_delete_save(path: &Path) -> Result<Option<PathBuf>, String> {
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+
+    for attempt in 0..MAX_BACKUP_ATTEMPTS {
+        let extension = if attempt == 0 {
+            format!("deleted-{}.bak", unix)
+        } else {
+            format!("deleted-{}-{}.bak", unix, attempt)
+        };
+        let backup_path = path.with_extension(extension);
+        match backup_path.try_exists() {
+            Ok(false) => {}
+            Ok(true) => continue,
+            Err(e) => return Err(format!("controllo {:?}: {}", backup_path, e)),
+        }
+        return match std::fs::rename(path, &backup_path) {
+            Ok(()) => Ok(Some(backup_path)),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("rinomina {:?} in {:?}: {}", path, backup_path, e)),
+        };
+    }
+
+    Err(format!("troppi backup esistenti per {:?}", path))
+}
+
 /// Legge un save file.
 pub fn read_save(path: &Path) -> Result<SaveData, String> {
     let json = std::fs::read_to_string(path).map_err(|e| format!("lettura {:?}: {}", path, e))?;

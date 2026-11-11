@@ -54,7 +54,7 @@ pub(crate) fn spawn_session(
 /// Se `client_dist` esiste come directory, vi serve i file statici del client
 /// con fallback SPA a `index.html` per le rotte `/` e `/controller`.
 pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
-    use axum::routing::{any, get, post};
+    use axum::routing::{any, delete, get, post};
 
     let api_router = Router::new()
         .route("/api/lan", get(lobby::lan_info))
@@ -75,6 +75,7 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
         .route("/api/standings", get(lobby::standings))
         .route("/api/profiles", get(lobby::list_profiles))
         .route("/api/saves", get(lobby::list_saves))
+        .route("/api/saves/{id}", delete(lobby::delete_save))
         .route("/api/saves/{id}/resume", post(lobby::resume_save))
         .route("/ws/{game_id}", get(ws::ws_handler))
         // I percorsi `/api` senza endpoint rispondono 404 JSON invece di cadere nel fallback SPA.
@@ -165,6 +166,39 @@ pub(crate) async fn resume_saved_game(
     resume_from_file(state, &path, Some(game_id)).await
 }
 
+/// Elimina `{saves_dir}/{game_id}.json` rinominandolo in `.deleted-{unix}.bak`
+/// per `DELETE /api/saves/{id}`. Controllo e rinomina stanno nella stessa
+/// sezione critica di `register_resumed`, quindi delete e resume non si incrociano;
+/// girano in un task a sé, così una disconnessione del client non li interrompe.
+pub(crate) async fn delete_saved_game(state: &AppState, game_id: &str) -> Result<(), ResumeError> {
+    if !save::is_canonical_uuid(game_id) {
+        return Err(ResumeError::NotFound);
+    }
+    let state = state.clone();
+    let game_id = game_id.to_owned();
+    tokio::spawn(async move {
+        let path = state.saves_dir.join(format!("{game_id}.json"));
+        let games = state.games.write().await;
+        if state.shutting_down.load(Ordering::Acquire) {
+            return Err(ResumeError::ShuttingDown);
+        }
+        if games.contains_key(&game_id) {
+            return Err(ResumeError::AlreadyActive);
+        }
+        let renamed = tokio::task::spawn_blocking(move || save::soft_delete_save(&path))
+            .await
+            .map_err(|e| ResumeError::Io(format!("eliminazione interrotta: {e}")))?
+            .map_err(ResumeError::Io)?;
+        drop(games);
+        match renamed {
+            Some(_) => Ok(()),
+            None => Err(ResumeError::NotFound),
+        }
+    })
+    .await
+    .map_err(|e| ResumeError::Io(format!("eliminazione interrotta: {e}")))?
+}
+
 /// Replay e registrazione in lobby: lettura e replay avvengono fuori dal
 /// runtime e prima del lock; controlli, backup e inserimento stanno in una sola
 /// sezione critica, quindi di due resume concorrenti dello stesso save vince uno.
@@ -181,7 +215,7 @@ async fn resume_from_file(
     })
     .await
     .map_err(|e| ResumeError::Io(format!("replay interrotto: {e}")))??;
-    register_resumed(state, prepared).await
+    register_resumed(state, prepared, expected_id.is_some()).await
 }
 
 /// Save letto, validato e riprodotto, pronto per essere registrato.
@@ -254,9 +288,24 @@ fn prepare_resume(
     })
 }
 
+/// Registra il save in lobby in un task a sé: se il client HTTP si disconnette e
+/// il futuro dell'handler viene scartato, sezione critica, backup e avvio della
+/// sessione arrivano comunque in fondo senza interleaving con altre richieste.
 async fn register_resumed(
     state: &AppState,
     prepared: PreparedResume,
+    require_file: bool,
+) -> Result<ResumeOutcome, ResumeError> {
+    let state = state.clone();
+    tokio::spawn(async move { register_resumed_task(&state, prepared, require_file).await })
+        .await
+        .map_err(|e| ResumeError::Io(format!("registrazione interrotta: {e}")))?
+}
+
+async fn register_resumed_task(
+    state: &AppState,
+    prepared: PreparedResume,
+    require_file: bool,
 ) -> Result<ResumeOutcome, ResumeError> {
     use tokio::sync::mpsc;
     use uuid::Uuid;
@@ -313,7 +362,8 @@ async fn register_resumed(
     // Come in `create_game`: i controlli e l'inserimento stanno nella stessa
     // sezione critica, così lo shutdown vede la partita inserita. Il backup è
     // fatto qui, dopo i controlli, quindi solo dal resume che vince; costa una
-    // copia di file con il lock tenuto.
+    // copia di file con il lock tenuto. Via REST un save sparito nel frattempo
+    // (eliminato dopo il replay) non va resuscitato.
     {
         let mut games = state.games.write().await;
         if state.shutting_down.load(Ordering::Acquire) {
@@ -329,10 +379,13 @@ async fn register_resumed(
         if active >= state.limits.max_active_games {
             return Err(ResumeError::TooManyGames);
         }
-        tokio::task::spawn_blocking(move || save::backup_before_resume(&save_path))
+        let backup = tokio::task::spawn_blocking(move || save::backup_before_resume(&save_path))
             .await
             .map_err(|e| ResumeError::Io(format!("backup interrotto: {e}")))?
             .map_err(ResumeError::Io)?;
+        if require_file && backup.is_none() {
+            return Err(ResumeError::NotFound);
+        }
         games.insert(game_id.clone(), handle.clone());
     }
 

@@ -53,6 +53,9 @@
         Solo controller — la TV non li riceve mai. */
     highlightTickets?: Array<{ from: string; to: string }>;
   } = $props();
+  // Id unici per istanza: nel dialog biglietti due mappe coesistono (quella di sfondo
+  // può essere `display:none`, e i gradienti lì dentro non vengono risolti).
+  const uid = $props.id();
 
   const routeIndex = $derived(MapUtils.groupDoubleRoutes(mapData.routes).routeIndex);
 
@@ -412,7 +415,6 @@
   // pointer-events none, il tap-to-claim sulle rotte sottostanti resta
   // intatto. La sparizione al completamento la decide il controller
   // (filtra i biglietti `completed` segnalati dal server): qui zero logica.
-  const TICKET_PIN_COLORS = ['#0f766e', '#b45309', '#7c3aed', '#a13d63', '#0369a1'];
   interface TicketLayer { from: Point; to: Point; d: string; color: string }
   const ticketLayers = $derived.by(() => {
     const layers: TicketLayer[] = [];
@@ -431,7 +433,7 @@
         from: fromPos,
         to: toPos,
         d: `M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`,
-        color: TICKET_PIN_COLORS[i % TICKET_PIN_COLORS.length] ?? '#0f766e',
+        color: MapUtils.ticketPinColor(i),
       });
     });
     return layers;
@@ -469,14 +471,14 @@
     <defs>
       <!-- Riflesso/ombreggiatura dei tasselli: coordinate locali del
            tassello (ruotato), quindi la luce segue la direzione della rotta. -->
-      <linearGradient id="slot-shade" x1="0" y1="0" x2="0" y2="1">
+      <linearGradient id="{uid}-slot-shade" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0" stop-color="#fff" stop-opacity="0.45" />
         <stop offset="0.45" stop-color="#fff" stop-opacity="0.06" />
         <stop offset="0.55" stop-color="#000" stop-opacity="0" />
         <stop offset="1" stop-color="#000" stop-opacity="0.28" />
       </linearGradient>
       <!-- Pallino città a "bottone" (luce da nord-ovest) -->
-      <radialGradient id="city-dot" cx="0.38" cy="0.32" r="0.75">
+      <radialGradient id="{uid}-city-dot" cx="0.38" cy="0.32" r="0.75">
         <stop offset="0" stop-color="#fffdf6" />
         <stop offset="0.6" stop-color="#f3e8cc" />
         <stop offset="1" stop-color="#cdb98f" />
@@ -534,7 +536,7 @@
                   <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.28}
                     fill={color} stroke="#1d150c" stroke-width={1.3 * swFactor} />
                   <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.28}
-                    fill="url(#slot-shade)" />
+                    fill="url(#{uid}-slot-shade)" />
                   <!-- Finestrini: distinguono il vagone da una rotta libera dello stesso colore -->
                   {#if g.slotL >= 14 * swFactor}
                     {@const winW = Math.min(5, g.slotL * 0.2)}
@@ -554,7 +556,7 @@
                 <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
                   fill={fill} stroke="#4a3920" stroke-width={1.2 * swFactor} stroke-opacity="0.85" />
                 <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
-                  fill="url(#slot-shade)" opacity="0.8" />
+                  fill="url(#{uid}-slot-shade)" opacity="0.8" />
               </g>
             {/each}
           {/if}
@@ -595,7 +597,7 @@
             {@const hub = (cityDegree.get(city.id) ?? 0) >= 6}
             <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
               fill="#2a1d0c" opacity="0.25" />
-            <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#city-dot)"
+            <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
               stroke="#453416" stroke-width="2" />
             {#if hub}
               <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />

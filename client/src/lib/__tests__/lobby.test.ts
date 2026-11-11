@@ -131,6 +131,28 @@ describe('LobbyClient', () => {
     expect((err as LobbyError).message).toBe('La partita è già attiva.');
   });
 
+  it('deleteSave invia DELETE senza corpo sul gameId codificato e accetta il 204', async () => {
+    const calls = mockFetch(new Response(null, { status: 204 }));
+    await expect(new LobbyClient('http://h:1').deleteSave('g/1')).resolves.toBeUndefined();
+    expect(calls[0]?.url).toBe('http://h:1/api/saves/g%2F1');
+    expect(calls[0]?.init.method).toBe('DELETE');
+    expect(calls[0]?.init.body).toBeUndefined();
+  });
+
+  it('deleteSave su una partita attiva lancia un LobbyError col dettaglio del server', async () => {
+    mockFetch(
+      Response.json(
+        { error: 'GAME_ALREADY_ACTIVE', detail: 'La partita è già attiva.' },
+        { status: 409 },
+      ),
+    );
+    const err = await new LobbyClient('http://h:1').deleteSave('g').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(LobbyError);
+    expect((err as LobbyError).status).toBe(409);
+    expect((err as LobbyError).code).toBe('GAME_ALREADY_ACTIVE');
+    expect((err as LobbyError).message).toBe('La partita è già attiva.');
+  });
+
   it('un errore del server diventa LobbyError con codice e testo italiano', async () => {
     mockFetch(Response.json({ error: 'RESUME_TOKEN_MISMATCH', detail: null }, { status: 401 }));
     const err = await new LobbyClient('http://h:1')
