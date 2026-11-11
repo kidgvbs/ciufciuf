@@ -201,6 +201,9 @@ fn score_tickets(uf: &mut UnionFind, tickets: &[(&str, &str, u32)]) -> TicketEva
 /// rotte avversarie. Vince l'assegnazione che massimizza punti completati meno punti
 /// falliti; a parità la prima in ordine canonico (stazioni in ordine di costruzione,
 /// per ciascuna prima "nessuna rotta", poi le rotte per id crescente).
+///
+/// Prima della ricerca le opzioni equivalenti a un'altra precedente nell'ordine
+/// canonico vengono scartate (vedi `prune_station_options`): il risultato non cambia.
 pub fn evaluate_tickets(
     own: &mut UnionFind,
     tickets: &[(&str, &str, u32)],
@@ -209,10 +212,44 @@ pub fn evaluate_tickets(
     if stations.is_empty() {
         return score_tickets(own, tickets);
     }
+    let pruned = prune_station_options(own, stations);
     let mut best: Option<TicketEvaluation> = None;
-    let mut picks: Vec<Option<usize>> = Vec::with_capacity(stations.len());
-    search_stations(own, tickets, stations, &mut picks, &mut best);
+    let mut picks: Vec<Option<usize>> = Vec::with_capacity(pruned.len());
+    search_stations(own, tickets, &pruned, &mut picks, &mut best);
     best.expect("la ricerca visita almeno l'assegnazione vuota")
+}
+
+/// Scarta le opzioni che non possono mai vincere, senza cambiare l'esito della ricerca.
+///
+/// Le assegnazioni delle stazioni precedenti possono solo aggiungere unioni a `own`, quindi:
+/// - un'opzione il cui `other_city` è già connesso alla città della stazione in `own` non
+///   cambia la connettività, come "nessuna rotta", che viene prima: non vince mai;
+/// - fra le opzioni di una stazione con `other_city` nella stessa componente di `own`,
+///   l'effetto è identico, quindi vince sempre la prima per id.
+fn prune_station_options(
+    own: &mut UnionFind,
+    stations: &[StationCandidates],
+) -> Vec<StationCandidates> {
+    stations
+        .iter()
+        .map(|station| {
+            let city_root = own.find(&station.city);
+            let mut seen_roots: Vec<String> = Vec::new();
+            let mut options = Vec::new();
+            for option in &station.options {
+                let root = own.find(&option.other_city);
+                if root == city_root || seen_roots.contains(&root) {
+                    continue;
+                }
+                seen_roots.push(root);
+                options.push(option.clone());
+            }
+            StationCandidates {
+                city: station.city.clone(),
+                options,
+            }
+        })
+        .collect()
 }
 
 fn search_stations(
@@ -1238,5 +1275,81 @@ mod tests {
         let eval = evaluate_tickets(&mut own, &[("s", "a", 4), ("s", "b", 5)], &[station]);
         assert_eq!(eval.completed, [false, true]);
         assert_eq!(eval.borrowed, [("s".to_string(), "r2".to_string())]);
+    }
+
+    /// Riferimento: la ricerca esaustiva su tutte le opzioni, senza potatura.
+    fn evaluate_tickets_brute_force(
+        own: &mut UnionFind,
+        tickets: &[(&str, &str, u32)],
+        stations: &[StationCandidates],
+    ) -> TicketEvaluation {
+        if stations.is_empty() {
+            return score_tickets(own, tickets);
+        }
+        let mut best: Option<TicketEvaluation> = None;
+        let mut picks: Vec<Option<usize>> = Vec::with_capacity(stations.len());
+        search_stations(own, tickets, stations, &mut picks, &mut best);
+        best.expect("la ricerca visita almeno l'assegnazione vuota")
+    }
+
+    const PRUNE_CITIES: usize = 9;
+
+    proptest! {
+        #![proptest_config(ProptestConfig { cases: 256, ..ProptestConfig::default() })]
+
+        /// La potatura delle opzioni equivalenti non cambia mai l'esito (completati,
+        /// punti, rotte prese in prestito) rispetto alla ricerca esaustiva.
+        #[test]
+        fn pruned_station_search_matches_brute_force(
+            own_edges in proptest::collection::vec((0..PRUNE_CITIES, 0..PRUNE_CITIES), 0..7),
+            station_cities in Just((0..PRUNE_CITIES).collect::<Vec<_>>())
+                .prop_shuffle()
+                .prop_map(|v| v.into_iter().take(3).collect::<Vec<_>>()),
+            num_stations in 1usize..=3,
+            option_ends in proptest::collection::vec(
+                proptest::collection::vec(0..PRUNE_CITIES, 0..=8),
+                3,
+            ),
+            raw_tickets in proptest::collection::vec(
+                (0..PRUNE_CITIES, 0..PRUNE_CITIES, 1u32..=20),
+                1..=10,
+            ),
+        ) {
+            let city = |i: usize| format!("c{i}");
+            let mut own = UnionFind::new();
+            for &(a, b) in &own_edges {
+                own.union(&city(a), &city(b));
+            }
+            let stations: Vec<StationCandidates> = station_cities
+                .iter()
+                .zip(&option_ends)
+                .take(num_stations)
+                .map(|(&s, ends)| StationCandidates {
+                    city: city(s),
+                    // Rotte per id crescente; l'estremo opposto non è la città stessa.
+                    options: ends
+                        .iter()
+                        .filter(|&&e| e != s)
+                        .enumerate()
+                        .map(|(k, &e)| StationOption {
+                            route_id: format!("r{s}_{k:02}"),
+                            other_city: city(e),
+                        })
+                        .collect(),
+                })
+                .collect();
+            let names: Vec<(String, String, u32)> = raw_tickets
+                .iter()
+                .map(|&(a, b, p)| (city(a), city(b), p))
+                .collect();
+            let tickets: Vec<(&str, &str, u32)> = names
+                .iter()
+                .map(|(a, b, p)| (a.as_str(), b.as_str(), *p))
+                .collect();
+
+            let expected = evaluate_tickets_brute_force(&mut own.deep_clone(), &tickets, &stations);
+            let pruned = evaluate_tickets(&mut own, &tickets, &stations);
+            prop_assert_eq!(pruned, expected);
+        }
     }
 }

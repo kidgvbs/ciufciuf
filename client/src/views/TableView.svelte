@@ -37,6 +37,7 @@
   import DeckCard from '../lib/components/DeckCard.svelte';
   import type { CardColor } from '../lib/proto';
   import TunnelCards from '../lib/components/TunnelCards.svelte';
+  import RecentMoves from '../lib/components/RecentMoves.svelte';
 
   // Il server è sempre quello che serve la pagina (in dev lo raggiunge il proxy di Vite).
   let host = $state<string>(currentHostEnv().origin);
@@ -381,8 +382,12 @@
 
   // Presence: giocatori senza WebSocket attiva, solo a
   // partita avviata (in lobby il QR c'è già; a game over non serve).
+  // Il QR di rientro per-giocatore (Riassegna) sostituisce quello generico: chi ce l'ha
+  // sotto la propria scheda non compare anche nella striscia generica.
   const offlinePlayers = $derived(
-    isInGame ? publicStore.playersSummary.filter((p) => !p.connected) : [],
+    isInGame
+      ? publicStore.playersSummary.filter((p) => !p.connected && !(hostToken && rejoinLinks[p.name]))
+      : [],
   );
   const offlineNames = $derived(offlinePlayers.map((p) => p.name).join(', '));
 
@@ -692,6 +697,11 @@
             {/if}
           </div>
         {/if}
+        <RecentMoves
+          moves={publicStore.recentMoves}
+          players={publicStore.playersSummary}
+          map={gameMap.state.data}
+        />
         <div class="visible-deck">
           <h3>Carte scoperte</h3>
           <div class="cards-row">
@@ -852,7 +862,11 @@
     background-image: var(--table-felt);
     padding:0.75rem; overflow-y:auto;
     border-right:1px solid var(--chrome-line);
+    /* Colonna: "Ultime mosse" cede altezza per prima, così le carte scoperte restano in vista. */
+    display:flex; flex-direction:column; box-sizing:border-box;
   }
+  .sidebar > :global(*) { flex:none; }
+  .sidebar > :global(.recent-moves) { flex:0 1 auto; min-height:4.5rem; }
   .player-card {
     background: var(--chrome-bg-2);
     padding:0.55rem 0.65rem; margin-bottom:0.55rem;

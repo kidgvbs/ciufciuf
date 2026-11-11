@@ -475,7 +475,7 @@
 
   // Stazioni (Europe): segnaposto a casetta nel colore del giocatore, in alto a sinistra del
   // pallino (le stelle dei biglietti stanno in alto a destra). Disegno nostro.
-  const STATION_R = $derived(compact ? 5.5 : 7);
+  const STATION_R = $derived(compact ? 7.5 : 8.5);
   function stationPath(r: number): string {
     return `M ${-r} ${r} L ${-r} ${-r * 0.1} L 0 ${-r * 1.1} L ${r} ${-r * 0.1} L ${r} ${r} Z`;
   }
@@ -686,8 +686,13 @@
           {@const pos = cityPositions.get(city.id)}
           {#if pos && selectableCitySet.has(city.id)}
             {@const picked = city.id === selectedCityId}
-            <circle cx={pos.x} cy={pos.y} r={cityDotR + 5} fill="none"
-              stroke={picked ? '#d35400' : '#e8a83e'} stroke-width={(picked ? 3.5 : 2.5) * swFactor}
+            <!-- Alone + anello con contorno scuro: leggibile sulla pergamena anche sul telefono. -->
+            <circle cx={pos.x} cy={pos.y} r={cityDotR + 10} fill={picked ? '#d35400' : '#e8a83e'}
+              fill-opacity={picked ? 0.4 : 0.28} class={picked ? 'city-halo picked' : 'city-halo'} />
+            <circle cx={pos.x} cy={pos.y} r={cityDotR + 6} fill="none"
+              stroke="#2a1d0c" stroke-width={(picked ? 7 : 6) * swFactor} />
+            <circle cx={pos.x} cy={pos.y} r={cityDotR + 6} fill="none"
+              stroke={picked ? '#d35400' : '#f5b942'} stroke-width={(picked ? 4.5 : 3.5) * swFactor}
               class={picked ? 'city-ring picked' : 'city-ring'} />
           {/if}
         {/each}
@@ -695,8 +700,10 @@
           <g transform="translate({st.x - cityDotR - STATION_R * 0.9} {st.y - cityDotR - STATION_R * 0.9})">
             <path d={stationPath(STATION_R)} transform="translate({SHADOW_DX * 0.6} {SHADOW_DY * 0.6})"
               fill="#2a1d0c" opacity="0.35" />
+            <path d={stationPath(STATION_R)} fill={st.color} stroke="#2a1d0c"
+              stroke-width={4.4 * swFactor} stroke-linejoin="round" />
             <path d={stationPath(STATION_R)} fill={st.color} stroke="#fdf7e6"
-              stroke-width={1.8 * swFactor} stroke-linejoin="round" />
+              stroke-width={2.2 * swFactor} stroke-linejoin="round" />
             <rect x={-STATION_R * 0.22} y={STATION_R * 0.1} width={STATION_R * 0.44} height={STATION_R * 0.9}
               fill="#fdf7e6" opacity="0.85" />
           </g>
@@ -898,8 +905,8 @@
   }
   .tunnel-hatch, .tunnel-outline, .ferry-glyph { pointer-events: none; }
   .city-tappable { cursor: pointer; }
-  .city-ring { opacity: 0.9; }
+  .city-ring { opacity: 1; }
   @media (prefers-reduced-motion: no-preference) {
-    .city-ring:not(.picked) { animation: glow-pulse 1.2s ease-in-out infinite alternate; }
+    .city-ring:not(.picked), .city-halo:not(.picked) { animation: glow-pulse 1.2s ease-in-out infinite alternate; }
   }
 </style>

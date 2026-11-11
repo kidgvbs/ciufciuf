@@ -248,6 +248,64 @@ pub struct PublicState {
     pub final_scores: Option<Vec<FinalScoreInfo>>,
     /// Vincitori del longest path: id giocatori, non indici.
     pub longest_path_player_ids: Option<Vec<String>>,
+    /// Ultime mosse della partita, dalla più vecchia alla più recente (al più
+    /// `RECENT_MOVES_MAX`), con sole informazioni pubbliche: niente carte pescate
+    /// dal mazzo né biglietti. Il draft iniziale non compare.
+    #[serde(default)]
+    pub recent_moves: Vec<RecentMove>,
+}
+
+/// Numero massimo di voci in `PublicState.recent_moves`.
+pub const RECENT_MOVES_MAX: usize = 8;
+
+/// Una mossa recente (un turno di un giocatore), visibile a tutti.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "SCREAMING_SNAKE_CASE")]
+#[ts(export)]
+pub enum RecentMove {
+    /// Pesca carte treno: `deck` carte coperte (colore nascosto) e le scoperte prese.
+    DrawCards {
+        player_id: String,
+        deck: u32,
+        face_up: Vec<CardColor>,
+    },
+    /// Pesca biglietti a metà partita: quanti ne ha tenuti (`None` finché sceglie).
+    DrawTickets {
+        player_id: String,
+        kept: Option<u32>,
+    },
+    /// Rotta reclamata (non tunnel).
+    ClaimRoute {
+        player_id: String,
+        route_id: RouteId,
+        points: u32,
+    },
+    /// Europe: tentativo di tunnel con le carte rivelate e l'esito.
+    Tunnel {
+        player_id: String,
+        route_id: RouteId,
+        revealed: Vec<CardColor>,
+        color: CardColor,
+        extra_cost: u32,
+        outcome: TunnelOutcome,
+    },
+    /// Europe: stazione costruita.
+    BuildStation { player_id: String, city_id: CityId },
+}
+
+/// Esito di un tentativo di tunnel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[ts(export)]
+pub enum TunnelOutcome {
+    /// Costo extra 0: rotta presa subito (D31).
+    Claimed,
+    /// In attesa della decisione (`TUNNEL_RESOLUTION`).
+    Pending,
+    /// Carte extra pagate, rotta presa.
+    Paid,
+    /// Rinuncia: carte giocate tornate in mano.
+    Declined,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -658,12 +716,33 @@ mod tests {
             stations: vec![],
             final_scores: None,
             longest_path_player_ids: None,
+            recent_moves: vec![
+                RecentMove::DrawCards {
+                    player_id: "p1".into(),
+                    deck: 1,
+                    face_up: vec![CardColor::Red],
+                },
+                RecentMove::Tunnel {
+                    player_id: "p2".into(),
+                    route_id: "madrid_pamplona_1".into(),
+                    revealed: vec![CardColor::Black, CardColor::Locomotive],
+                    color: CardColor::Black,
+                    extra_cost: 2,
+                    outcome: TunnelOutcome::Pending,
+                },
+            ],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
         assert_eq!(back.game_id, "g1");
         assert_eq!(back.visible_deck.len(), 3);
         assert!(back.final_scores.is_none());
+        assert_eq!(back.recent_moves, state.recent_moves);
+        assert!(
+            json.contains(r#""kind":"DRAW_CARDS","player_id":"p1","deck":1"#),
+            "{json}"
+        );
+        assert!(json.contains(r#""outcome":"PENDING""#), "{json}");
     }
 
     #[test]
@@ -696,6 +775,7 @@ mod tests {
                 }],
             }]),
             longest_path_player_ids: Some(vec!["p1".into()]),
+            recent_moves: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -723,6 +803,7 @@ mod tests {
             stations: vec![],
             final_scores: None,
             longest_path_player_ids: None,
+            recent_moves: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -802,6 +883,7 @@ mod tests {
             stations: vec![],
             final_scores: None,
             longest_path_player_ids: None,
+            recent_moves: vec![],
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"PUBLIC_STATE\""));
@@ -855,6 +937,7 @@ mod tests {
                 stations: vec![],
                 final_scores: None,
                 longest_path_player_ids: None,
+                recent_moves: vec![],
             },
             private: Some(PrivateState {
                 seq: 5,
@@ -902,6 +985,7 @@ mod tests {
                 stations: vec![],
                 final_scores: None,
                 longest_path_player_ids: None,
+                recent_moves: vec![],
             },
             private: None,
         });

@@ -97,8 +97,10 @@ const BOUNDS = MAP_BOUNDS[MAP_ID];
 // Regolazioni manuali per-mappa (il piazzamento automatico sceglie per punteggio, non per
 // gusto). Stanno qui (non nel JSON) perché una rigenerazione le cancellerebbe, e valgono
 // SOLO per la mappa che le dichiara: nessun id di una mappa può influenzare l'altra.
-//   labelOverrides: id città → { anchor, dir } (vedi resolveOverride)
-//   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (≤8px)
+//   labelOverrides: id città → { anchor, dir } (vedi resolveOverride) oppure
+//                   { anchor, dx, dy } = offset esplicito (hub dove nessuno degli 8 angoli è pulito)
+//   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (USA ≤8px,
+//                   Europe fino a ~18px: tetto cumulato 30px per città con il cluster-escape)
 const MAP_TUNING = {
   usa: {
     labelOverrides: {
@@ -121,8 +123,39 @@ const MAP_TUNING = {
   europe: {
     // Mappa più fitta (cluster Paris/Bruxelles/Frankfurt con 3 doppie): più px per carta.
     unit: 40,
-    labelOverrides: {},
-    f2Shifts: [],
+    labelOverrides: {
+      // Paris (10 tratte): nessuno degli 8 angoli è libero (l'automatico finiva sul doppio Pamplona).
+      // Unico varco pulito: a destra, nel cuneo tra le doppie per Frankfurt e il tunnel per Zürich.
+      paris: { anchor: 'start', dx: 33.5, dy: 11.5 },
+    },
+    // Fase 4.1: approccio < 10px da 11 coppie (peggiori bruxelles↔paris|frankfurt↔paris 1.1px,
+    // bruxelles↔frankfurt|frankfurt↔paris 4.0px) a 7 (min 5.1px). Le coppie con una doppia sullo
+    // stesso hub (Paris, Frankfurt, Berlin) restano sotto 10px per geometria: a 20px dal dot la
+    // distanza tra le tracce è 20·sin(angolo) meno l'offset ±7.75px della doppia (osservato ~6px
+    // a 60°). Gli shift sono stati trovati con una ricerca locale su un modello geometrico delle
+    // curve disegnate, poi verificati col generatore (gate a 0, ratio ≤1.6×); la motivazione è
+    // l'hub che si apre, il dettaglio per città non è deducibile da un solo spostamento.
+    f2Shifts: [
+      // Hub Paris/Bruxelles/Frankfurt: apre gli angoli tra le doppie e il cuneo est di Paris
+      // (dove va la label, vedi labelOverrides.paris).
+      ['paris', 7, -5, 'hub Paris/Bruxelles/Frankfurt + cuneo est per la label'],
+      ['bruxelles', -5, -7, 'hub Paris/Bruxelles/Frankfurt'],
+      ['frankfurt', -1, 13, 'hub Paris/Bruxelles/Frankfurt'],
+      ['essen', -4, -9, 'hub Frankfurt/Berlin (berlin↔frankfurt vs essen↔frankfurt)'],
+      ['amsterdam', -2, -4, 'ratio amsterdam↔bruxelles (len 1) dopo lo spostamento di Bruxelles'],
+      ['zurich', 0, 11, 'cuneo est di Paris tra la doppia per Frankfurt e il tunnel per Zürich'],
+      ['marseille', 1, 1, 'hub Paris/Pamplona'],
+      // Hub Pamplona/Madrid/Barcellona.
+      ['pamplona', -7, -7, 'hub Pamplona/Madrid/Barcellona'],
+      ['madrid', 1, -13, 'hub Pamplona/Madrid/Barcellona'],
+      ['barcelona', 6, 7, 'hub Pamplona/Madrid/Barcellona'],
+      // Hub Berlin/Varsavia.
+      ['warszawa', -1, 18, 'hub Berlin/Varsavia (berlin↔danzig vs berlin↔warszawa)'],
+      ['danzig', -8, -14, 'hub Berlin/Varsavia (apre berlin↔danzig verso nord)'],
+      // Smyrna.
+      ['palermo', -4, 10, 'hub Smyrna (athina↔smyrna vs palermo↔smyrna)'],
+      ['athina', 2, -10, 'hub Smyrna (athina↔smyrna vs palermo↔smyrna)'],
+    ],
   },
 };
 const TUNING = MAP_TUNING[MAP_ID];
@@ -1054,6 +1087,13 @@ const LABEL_OVERRIDES = TUNING.labelOverrides;
 function resolveOverride(c, name, id) {
   const ov = LABEL_OVERRIDES[id];
   if (!ov) return null;
+  // Offset esplicito { anchor, dx, dy }: per gli hub dove nessuno degli 8 angoli è pulito
+  // (es. Paris, 10 tratte). Vale solo se pulito (conflitti 0, ownership inclusa) alla
+  // geometria corrente: altrimenti decide il piazzamento automatico + repair finale.
+  if (ov.dx !== undefined) {
+    const cand = { d: 0, dx: ov.dx, dy: ov.dy, anchor: ov.anchor };
+    return scoreLabel(c, cand, name, id).total === 0 ? cand : null;
+  }
   const cands = candidatesFor()
     .filter((k) => k.anchor === ov.anchor && (ov.dir === 'up' ? k.dy < 0 : k.dy > 0))
     .sort((a, b) => a.d - b.d);

@@ -42,6 +42,20 @@
     return m[color] ?? null;
   }
 
+  /** Nome italiano del colore di una rotta ("Grigia" se non ha un colore carta). */
+  function routeColorName(color: string): string {
+    const card = routeColorToCard(color);
+    return card ? CARD_COLOR_NAME[card] : 'Grigia';
+  }
+
+  /** Scroll solo se serve, senza animazione con `prefers-reduced-motion`. */
+  function revealEl(el: HTMLElement | undefined) {
+    if (!el) return;
+    const reduce = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'nearest' });
+  }
+
   let { playerId, onLeave, sendAction, drawBusy }: {
     playerId: string;
     onLeave: () => void;
@@ -113,6 +127,8 @@
   let buildingStation = $state(false);
   let stationCity = $state<string | null>(null);
   let stationTab = $state<'map' | 'list'>('map');
+  let mapEl = $state<HTMLDivElement>();
+  let stationPayEl = $state<HTMLDivElement>();
 
   // Flash "biglietto completato" (§8.2): salta il primo sync (snapshot/reconnect)
   let knownCompleted: Set<string> | null = null;
@@ -227,8 +243,8 @@
   );
   const paySummaryText = $derived.by(() => {
     const parts: string[] = [];
-    if (payColoredNeeded > 0 && payColor) parts.push(`${payColoredNeeded}× ${payColor}`);
-    if (payLocos > 0) parts.push(`${payLocos}× LOCOMOTIVE`);
+    if (payColoredNeeded > 0 && payColor) parts.push(`${payColoredNeeded}× ${CARD_COLOR_NAME[payColor]}`);
+    if (payLocos > 0) parts.push(`${payLocos}× ${CARD_COLOR_NAME.LOCOMOTIVE}`);
     return parts.length > 0 ? parts.join(' + ') : '—';
   });
 
@@ -303,6 +319,15 @@
     } else if (stationCity !== null && !stationCities.includes(stationCity)) {
       stationCity = null;
     }
+  });
+
+  // Scelta della città sulla mappa: la mappa (sopra il rail in portrait) torna in vista;
+  // scelta la città, torna in vista il pannello di pagamento.
+  $effect(() => {
+    if (buildingStation && stationCity === null && stationTab === 'map') revealEl(mapEl);
+  });
+  $effect(() => {
+    if (buildingStation && stationCity !== null) revealEl(stationPayEl);
   });
 
   function startStation() {
@@ -520,7 +545,10 @@
          (l'utente le trova da solo; il tap alla cieca resta
          comunque sicuro perché onRouteTap filtra su legalMoves).
          highlightTickets: solo i biglietti pinnati, mai le claimabili. -->
-    <div class="cv-map" class:map-hidden={!showMap}>
+    <div class="cv-map" class:map-hidden={!showMap} bind:this={mapEl}>
+      {#if buildingStation && stationCity === null && stationTab === 'map'}
+        <div class="map-hint" role="status">🏠 Tocca una città evidenziata per la stazione</div>
+      {/if}
       <MapSvg
         compact
         selectedRouteId={payingRouteId}
@@ -575,7 +603,7 @@
               onclick={() => drawFaceUp(idx)}
               class="btn action-btn face-up"
               disabled={drawBusy}
-              aria-label={card ? `Pesca carta ${card}` : 'Pesca carta scoperta'}
+              aria-label={card ? `Pesca carta ${CARD_COLOR_NAME[card]}` : 'Pesca carta scoperta'}
             >
               {#if card}
                 <TrainCard color={card} />
@@ -625,7 +653,7 @@
                   <button onclick={() => startPayment(rid)} class="btn route-option">
                     <div class="route-name">{cityName(r.from)} → {cityName(r.to)}</div>
                     <div class="route-meta">
-                      {r.color} · {r.len} 🚂 · ⭐{routePoints(r.len)}{#if r.ferries} · ⛴ {r.ferries} loco{/if}{#if r.tunnel} · tunnel{/if}
+                      {routeColorName(r.color)} · {r.len} 🚂 · ⭐{routePoints(r.len)}{#if r.ferries} · ⛴ {r.ferries} loco{/if}{#if r.tunnel} · tunnel{/if}
                     </div>
                   </button>
                 {/if}
@@ -662,7 +690,7 @@
                     aria-pressed={payColor === c}
                     disabled={handCount(c) === 0}
                     onclick={() => { payColor = c; }}
-                    aria-label="Paga con {c} ({handCount(c)} in mano)"
+                    aria-label="Paga con {CARD_COLOR_NAME[c]} ({handCount(c)} in mano)"
                   >
                     <TrainCard color={c} count={handCount(c)} small />
                   </button>
@@ -670,7 +698,7 @@
               </div>
             {:else if payColor}
               <p class="pay-label">
-                Colore: <strong>{payColor}</strong>
+                Colore: <strong>{CARD_COLOR_NAME[payColor]}</strong>
                 (hai {handCount(payColor)})
               </p>
             {/if}
@@ -741,21 +769,23 @@
                 {/each}
               </div>
             {:else}
-              <p class="pay-label">Tocca una città evidenziata sulla mappa.</p>
+              <p class="pay-label">Tocca una città evidenziata sulla mappa (in alto).</p>
             {/if}
             <button onclick={cancelStation} class="btn cancel-route">Annulla</button>
           </div>
         {:else}
-          <PaymentPanel
-            total={stationCost}
-            {hand}
-            title="Stazione a {cityName(stationCity)} ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})"
-            confirmLabel="✅ Costruisci stazione"
-            busy={drawBusy}
-            onConfirm={confirmStation}
-            backLabel="Cambia città"
-            onBack={() => (stationCity = null)}
-          />
+          <div bind:this={stationPayEl}>
+            <PaymentPanel
+              total={stationCost}
+              {hand}
+              title="Stazione a {cityName(stationCity)} ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})"
+              confirmLabel="✅ Costruisci stazione"
+              busy={drawBusy}
+              onConfirm={confirmStation}
+              backLabel="Cambia città"
+              onBack={() => (stationCity = null)}
+            />
+          </div>
           <button onclick={cancelStation} class="btn cancel-route">Annulla</button>
         {/if}
       {/if}
@@ -1066,11 +1096,30 @@
   }
   .cv-map {
     position: relative;
+    /* scrollIntoView non deve infilare la mappa sotto l'header sticky. */
+    scroll-margin-top: 4.5rem;
     margin: 0.75rem 1rem 0;
     height: 240px;
   }
   .cv-map.map-hidden {
     display: none;
+  }
+  .map-hint {
+    position: absolute;
+    top: 0.4rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+    max-width: calc(100% - 1rem);
+    padding: 0.3rem 0.7rem;
+    border: 1px solid var(--gold);
+    border-radius: 999px;
+    background: rgba(35, 26, 17, 0.92);
+    color: #fbf6e9;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-align: center;
+    pointer-events: none;
   }
   .cv-rail {
     display: flex;

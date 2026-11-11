@@ -161,7 +161,7 @@ bun tools/fullgame-test.mjs --spawn-server     # partita completa con un server 
 
 In ordine di priorità, con il dettaglio in [`RECAP.md`](RECAP.md):
 
-1. **Fase 4.1** (bug e polish Europe): tunnel a costo 0 non visibili (riquadro "ultime mosse" in TV), scelta della città della stazione con la mappa fuori schermo, «Colore: GREEN» non tradotto, etichetta «Paris» sul binario, bot E2E che non pagano mai un tunnel, costo dell'assegnazione stazioni
-2. Rotazione dei backup `.bak`; elenco dei ruleset dal server (oggi `rulesets.ts` è statico nel client)
+1. Rotazione dei backup `.bak`; elenco dei ruleset dal server (oggi `rulesets.ts` è statico nel client)
+2. Pulizia motore (colori e rotte gemelle risolti al caricamento) e polish TV/telefono
 
 Da confermare: il criterio di accettazione con 2–5 telefoni veri via QR (USA ed Europe).

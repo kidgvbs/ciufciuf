@@ -18,6 +18,7 @@ import type {
   TunnelReveal,
   TicketInfo,
   LegalMoves,
+  RecentMove,
 } from './proto';
 
 // ── Store pubblico ────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ class PublicStore {
   stations = $state<StationPlacement[]>([]);
   finalScores = $state<FinalScoreInfo[] | null>(null);
   longestPathPlayerIds = $state<string[] | null>(null);
+  /** Ultime mosse (la più vecchia per prima), dal server. */
+  recentMoves = $state<RecentMove[]>([]);
 
   apply(ps: PublicState): void {
     this.gameId = ps.game_id;
@@ -55,6 +58,7 @@ class PublicStore {
     this.stations = ps.stations;
     this.finalScores = ps.final_scores;
     this.longestPathPlayerIds = ps.longest_path_player_ids;
+    this.recentMoves = ps.recent_moves ?? [];
   }
 
   reset(): void {
@@ -72,6 +76,7 @@ class PublicStore {
     this.stations = [];
     this.finalScores = null;
     this.longestPathPlayerIds = null;
+    this.recentMoves = [];
   }
 }
 

@@ -4,6 +4,7 @@ import type { ClaimedRoute } from "./ClaimedRoute";
 import type { FinalScoreInfo } from "./FinalScoreInfo";
 import type { GameState } from "./GameState";
 import type { PlayerSummary } from "./PlayerSummary";
+import type { RecentMove } from "./RecentMove";
 import type { StationPlacement } from "./StationPlacement";
 import type { TunnelReveal } from "./TunnelReveal";
 
@@ -34,4 +35,10 @@ final_scores: Array<FinalScoreInfo> | null,
 /**
  * Vincitori del longest path: id giocatori, non indici.
  */
-longest_path_player_ids: Array<string> | null, };
+longest_path_player_ids: Array<string> | null, 
+/**
+ * Ultime mosse della partita, dalla più vecchia alla più recente (al più
+ * `RECENT_MOVES_MAX`), con sole informazioni pubbliche: niente carte pescate
+ * dal mazzo né biglietti. Il draft iniziale non compare.
+ */
+recent_moves: Array<RecentMove>, };

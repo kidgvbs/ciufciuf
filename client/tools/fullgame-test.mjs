@@ -159,13 +159,16 @@ function countInHand(hand, color) { return hand.filter((h) => h === color).lengt
 // Le rotte traghetto (`ferries`) richiedono almeno quelle locomotive nel pagamento.
 const COLORS = ['RED', 'ORANGE', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE', 'BLACK', 'WHITE'];
 
-function canPay(route, hand) {
+// Su un tunnel (Europe) il bot tenta solo con `spare` carte oltre la lunghezza
+// (colore o locomotive), così può pagare il costo extra rivelato.
+function canPay(route, hand, spare = 0) {
   const locos = countInHand(hand, 'LOCOMOTIVE');
   if (locos < (route.ferries || 0)) return false;
+  const need = route.len + (EUROPE && route.tunnel ? spare : 0);
   const rc = toCardColor(route.color);
-  if (rc) return countInHand(hand, rc) + locos >= route.len;
+  if (rc) return countInHand(hand, rc) + locos >= need;
   const bestN = COLORS.reduce((max, c) => Math.max(max, countInHand(hand, c)), 0);
-  return bestN + locos >= route.len;
+  return bestN + locos >= need;
 }
 
 function buildPayment(route, hand) {
@@ -409,8 +412,10 @@ async function main() {
       const claimable = (lm.routes || [])
         .filter((rid) => !failedClaims.has(`${cur.playerId}:${rid}`))
         .map((rid) => routes.get(rid))
-        .filter((r) => r && canPay(r, hand))
-        .sort((a, b) => b.len - a.len);
+        .filter((r) => r && canPay(r, hand, turns % 3 === 0 ? 2 : 1))
+        // I tunnel pagabili con le carte di scorta passano avanti: sono rari e il test
+        // deve esercitare il pagamento del costo extra.
+        .sort((a, b) => Number(!!b.tunnel) - Number(!!a.tunnel) || b.len - a.len);
 
       if (claimable.length > 0) {
         const route = claimable[0];
@@ -773,11 +778,21 @@ async function main() {
     console.log(`   Tunnel:              pagati=${tunnelsPaid}, rinunce=${tunnelsDeclined}`);
     assert((finalPub.stations?.length || 0) === stationsP1 + stationsP2, 'stazioni del server diverse da quelle costruite');
     assert(stationsP1 + stationsP2 > 0, 'nessuna stazione costruita');
+    assert(tunnelsPaid > 0, 'nessun tunnel pagato');
     for (const fs of finalPub.final_scores) {
       const mine = (finalPub.stations || []).filter((s) => s.player_id === fs.playerId).length;
       assert(fs.stationPoints === (3 - mine) * 4, `${fs.playerId}: stationPoints ${fs.stationPoints} con ${mine} stazioni`);
     }
   }
+
+  // Ultime mosse: presenti e senza carte pescate (nessun campo `card`).
+  const recent = finalPub.recent_moves;
+  assert(Array.isArray(recent) && recent.length > 0, 'recent_moves vuoto o assente');
+  assert(recent.length <= 8, `recent_moves oltre il massimo: ${recent.length}`);
+  const hasCardField = (v) => v !== null && typeof v === 'object'
+    && (Array.isArray(v) ? v.some(hasCardField) : Object.entries(v).some(([k, x]) => k === 'card' || hasCardField(x)));
+  assert(!hasCardField(recent), 'recent_moves espone un campo `card`');
+  console.log(`   Ultime mosse:        ${recent.length} (${recent.map((m) => m.kind).join(', ')})`);
 
   // WS ERROR detail
   if (totalErrors > 0) {
