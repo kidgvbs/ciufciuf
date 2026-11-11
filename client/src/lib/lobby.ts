@@ -223,6 +223,14 @@ export function clearIdentity(gameId?: string): void {
   if (readStorage(LAST_IDENTITY_KEY) === id) removeStorage(LAST_IDENTITY_KEY);
 }
 
+/**
+ * Smette la riconnessione automatica a `gameId` al caricamento della pagina (se è l'ultima partita
+ * usata) ma conserva l'identità della partita, così da poter rientrare scegliendola di nuovo.
+ */
+export function forgetLastIdentity(gameId: string): void {
+  if (readStorage(LAST_IDENTITY_KEY) === gameId) removeStorage(LAST_IDENTITY_KEY);
+}
+
 // ── Ultimo nome giocatore usato (prefill del JoinScreen) ────────────
 
 const NAME_KEY = 'ciufciuf-name';

@@ -70,6 +70,8 @@
   // Salvataggio di cui si chiede conferma di eliminazione e id di quello in corso di eliminazione.
   let confirmingDelete = $state<SavedGameItem | null>(null);
   let deletingSave = $state<string>('');
+  // Riassegnazione in partita avviata: nome in attesa di conferma (stacca il telefono attuale).
+  let confirmingReassign = $state<string | null>(null);
   const saveBusy = $derived(resumingSave !== '' || deletingSave !== '');
 
   const lobby = $derived(new LobbyClient(host));
@@ -410,6 +412,21 @@
   });
 </script>
 
+{#snippet rejoinAction(name: string, confirm: boolean)}
+  <button
+    class="btn"
+    onclick={() => (confirm ? (confirmingReassign = name) : reassign(name))}
+    disabled={reassigning !== '' || !effectiveHostToken}
+  >{rejoinLinks[name] ? 'Riassegna di nuovo' : 'Riassegna'}</button>
+  {#if rejoinLinks[name]}
+    <img
+      class="missing-qr"
+      src={qrDataUrl(rejoinLinks[name])}
+      alt="QR per {name}"
+    />
+  {/if}
+{/snippet}
+
 <div class="tv-root">
   <div class="tv-banners">
     {#if isDisconnected}
@@ -546,18 +563,7 @@
                   {#each missingPlayers as missing (missing)}
                     <div class="missing-row">
                       <span>{missing}</span>
-                      <button
-                        class="btn"
-                        onclick={() => reassign(missing)}
-                        disabled={reassigning !== '' || !effectiveHostToken}
-                      >{rejoinLinks[missing] ? 'Riassegna di nuovo' : 'Riassegna'}</button>
-                      {#if rejoinLinks[missing]}
-                        <img
-                          class="missing-qr"
-                          src={qrDataUrl(rejoinLinks[missing])}
-                          alt="QR per {missing}"
-                        />
-                      {/if}
+                      {@render rejoinAction(missing, false)}
                     </div>
                   {/each}
                   {#if !hostToken}
@@ -666,6 +672,9 @@
             </div>
             <div class="score-line"><span class="score-num">{p.score}</span><span class="score-label">punti</span></div>
             <div class="player-stats"><span>🚂 {p.trains_remaining}</span>{#if hasStations}<span title="Stazioni rimaste">🏠 {p.stations_remaining}</span>{/if}<span>🃏 {p.cards_hand_count}</span><span>🎫 {p.tickets_count}</span></div>
+            {#if hostToken && !p.connected}
+              <div class="rejoin-action">{@render rejoinAction(p.name, true)}</div>
+            {/if}
           </div>
         {/each}
         <!-- QR di rientro: qualcuno è caduto, il telefono ritrova la partita
@@ -721,6 +730,19 @@
     </div>
   {/if}
 
+  {#if confirmingReassign}
+    <ConfirmDialog
+      title="Riassegnare il posto?"
+      message={`Riassegnare il posto di ${confirmingReassign}? Il suo telefono attuale verrà scollegato.`}
+      confirmLabel="Riassegna"
+      onConfirm={() => {
+        const name = confirmingReassign;
+        confirmingReassign = null;
+        if (name) void reassign(name);
+      }}
+      onCancel={() => (confirmingReassign = null)}
+    />
+  {/if}
   {#if confirmingDelete}
     <ConfirmDialog
       title="Eliminare la partita salvata?"
@@ -910,6 +932,7 @@
   .missing-players { margin-top:1rem; }
   .missing-row { display:flex; align-items:center; gap:0.8rem; margin:0.4rem 0; }
   .missing-qr { width:120px; height:120px; border-radius:6px; background:#fff; }
+  .rejoin-action { display:flex; flex-wrap:wrap; align-items:center; gap:0.6rem; margin-top:0.5rem; }
   .missing-hint { color:var(--chrome-muted); font-size:0.85rem; }
 
   /* Tunnel (Europe): carte rivelate in primo piano sopra la mappa */

@@ -12,6 +12,8 @@ export const JOIN_TIMEOUT_MS = 10_000;
 
 export const SLOW_JOIN_MESSAGE = 'Connessione lenta…';
 export const NAME_ALREADY_JOINED_MESSAGE = 'Nome già in partita: chiedi all\'host di riassegnarlo';
+export const GAME_STARTED_MESSAGE =
+  'Partita già avviata: possono rientrare solo i giocatori già presenti. Chiedi all\'host di riassegnarti dalla TV';
 
 export interface JoinFlow {
   /** Esegue `attempt`; risolve `true` se il join è riuscito. */
@@ -128,6 +130,9 @@ export async function joinWithSavedIdentity(
     const mine = saved?.name !== undefined && sameName(saved.name, opts.name);
     if (saved && mine && !opts.isCancelled() && e instanceof LobbyError && e.code === 'NAME_TAKEN') {
       return { playerId: saved.playerId, token: saved.token };
+    }
+    if (e instanceof LobbyError && e.code === 'GAME_STARTED') {
+      throw new LobbyError(e.status, GAME_STARTED_MESSAGE, e.code);
     }
     throw e;
   }

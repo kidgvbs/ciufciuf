@@ -348,6 +348,40 @@ async fn finished_games_do_not_count_toward_limit() {
     assert_eq!(status, 201, "{body}");
 }
 
+/// A partita conclusa il reassign è rifiutato: il save già archiviato non rinasce.
+#[tokio::test]
+async fn reassign_on_finished_game_is_rejected_and_keeps_save_deleted() {
+    let server = TestServer::start().await;
+    let map = usa_map();
+
+    let g = create_game_with_seed(&server.base_url, "Conclusa", Some(42)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    let mut a = Player::new(WsClient::connect(&server, &g.game_id, &pa.player_id, &pa.token).await);
+    let mut b = Player::new(WsClient::connect(&server, &g.game_id, &pb.player_id, &pb.token).await);
+    let final_public = run_game(&mut a, &mut b, &map).await;
+    assert_eq!(final_public.state, ttr_proto::GameState::GameOver);
+
+    let (status, body) = post_json(
+        &server.base_url,
+        &format!("/api/games/{}/reassign", g.game_id),
+        serde_json::json!({ "hostToken": g.host_token, "name": "Alice" }),
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(body["error"], "BAD_REQUEST");
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(
+        !server
+            .saves_dir
+            .join(format!("{}.json", g.game_id))
+            .exists(),
+        "il save archiviato non deve rinascere"
+    );
+}
+
 #[tokio::test]
 async fn delete_game_with_host_token() {
     let server = TestServer::start().await;

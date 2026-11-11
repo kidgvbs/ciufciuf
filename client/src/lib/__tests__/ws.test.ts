@@ -11,6 +11,7 @@ import {
   saveIdentity,
   loadIdentity,
   clearIdentity,
+  forgetLastIdentity,
   saveLastGame,
   loadLastGame,
   clearLastGame,
@@ -621,6 +622,20 @@ describe('identità', () => {
 
     clearIdentity();
     expect(loadIdentity(undefined, env)).toBeNull();
+  });
+
+  it('forgetLastIdentity ferma la riconnessione automatica ma conserva l identità', () => {
+    saveIdentity(identity('A'));
+    saveIdentity(identity('B'));
+
+    // Un'altra partita non toglie il puntatore all'ultima usata.
+    forgetLastIdentity('A');
+    expect(loadIdentity(undefined, env)).toEqual(identity('B'));
+
+    forgetLastIdentity('B');
+    expect(loadIdentity(undefined, env)).toBeNull();
+    expect(loadIdentity('B', env)).toEqual(identity('B'));
+    expect(loadIdentity('A', env)).toEqual(identity('A'));
   });
 
   it('expired_identity_is_ignored', () => {

@@ -603,8 +603,9 @@ struct ReassignResponseBody {
     token: String,
 }
 
-/// POST /api/games/{id}/reassign — token nuovo per un giocatore di una
-/// partita ripresa, su richiesta dell'host.
+/// POST /api/games/{id}/reassign — token nuovo per un giocatore, su richiesta
+/// dell'host: nei nomi del save di una partita ripresa, e in una partita già
+/// avviata (anche non ripresa) per i giocatori del roster.
 pub async fn reassign_player(
     State(state): State<AppState>,
     Path(game_id): Path<String>,

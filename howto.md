@@ -101,6 +101,13 @@ Cose da ricordare:
 - Rientro: ogni giocatore fa join con **nome + token originale** (il telefono ce l'ha in `localStorage`) e riottiene lo stesso `playerId`/token. Solo nome → `401 RESUME_TOKEN_MISMATCH`.
 - Telefono senza token, o save di formato 1 (senza hash): serve `reassign` dall'host (sotto). Il vecchio token smette di funzionare. Sulla TV ci sono i pulsanti "Riassegna", che mostrano un QR con l'identità; il campo "Token host" compare solo se la TV non ha l'`hostToken` (resume da riga di comando).
 
+### Rientro in una partita avviata (anche non ripresa)
+
+- Dopo lo start nessun nuovo giocatore entra: un nome che non è nella partita dà `409 GAME_STARTED`.
+- Chi è già nella partita rientra col join (`POST /api/games/{id}/join {name, token}`): nome nel roster e token attuale → `200` con lo stesso `playerId` e token, nessuna modifica al roster. Nome presente ma token assente o sbagliato → `401 RESUME_TOKEN_MISMATCH`.
+- Sul telefono "Esci" in partita tiene l'identità: la partita avviata compare nell'elenco come "↩ rientra" (le altre avviate restano 🔒) e si rientra scegliendola di nuovo. Dopo "Esci" il telefono non si riconnette da solo al ricaricamento della pagina. "Non sono io", "Esci" in lobby e "Nuova partita" dimenticano l'identità.
+- Telefono senza identità (cache cancellata, altro telefono): dalla TV, nel segnapunti, "Riassegna" accanto a ogni giocatore offline (solo se la TV ha l'`hostToken`) mostra il QR di rientro. `reassign` su una partita avviata non ripresa vale solo per i giocatori del roster (nome sconosciuto → `409 NAME_NOT_IN_SAVE`); chiude le connessioni del giocatore e il vecchio token smette di funzionare.
+
 ---
 
 ## 5. API REST
@@ -117,7 +124,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 | `GET /api/games/{id}` | | `{gameId,name,rulesetId,players:[{playerId,name,color}],started,maxPlayers,missingPlayers}` |
 | `POST /api/games/{id}/join` | `{name, color?, token?}` | `{playerId, token, wsUrl}` |
 | `POST /api/games/{id}/start` | `{hostToken}` | `204` |
-| `POST /api/games/{id}/reassign` | `{hostToken, name}` | `{playerId, token}` (token nuovo) |
+| `POST /api/games/{id}/reassign` | `{hostToken, name}` | `{playerId, token}` (token nuovo); in lobby solo per partite riprese, a partita avviata per ogni giocatore del roster |
 | `DELETE /api/games/{id}` | `{hostToken}` | `204` (un save su disco resta) |
 | `GET /api/rulesets/{id}/map` | | Documento della mappa (`cities`, `routes`, `tickets`, con `lat`/`lon`) più `rulesetId` |
 | `GET /api/rulesets/{id}/layout` | | Layout schematico della mappa (`width`, `height`, `cities`, `labels`, `routes` con 2–3 punti) più `rulesetId` e `mapId`; mappa senza layout → `404 LAYOUT_NOT_FOUND` |
@@ -298,7 +305,7 @@ La CI (`.github/workflows/ci.yml`) esegue fmt, clippy, test, drift dei binding, 
 | Il server non parte | Dati incoerenti (guardo il messaggio, poi `ttr-validate`), porta occupata |
 | `429 TOO_MANY_GAMES` | 20 partite attive: chiudo le vecchie con `DELETE` o aspetto i TTL |
 | `NAME_TAKEN` inatteso | Nome "uguale a vista" a un altro, o giocatore rimasto registrato dopo un join annullato → `reassign` |
-| `401 RESUME_TOKEN_MISMATCH` | Manca il token originale: `reassign` dall'host |
+| `401 RESUME_TOKEN_MISMATCH` | Manca il token originale: `reassign` dall'host (anche a partita avviata, "Riassegna" nel segnapunti della TV) |
 | Resume: «partita già conclusa» | Il save era `completed`: è stato archiviato all'avvio, guardo `results.jsonl` |
 | Resume: «save creato con regole precedenti» | Save di una versione vecchia delle regole, non riproducibile |
 | TV senza `hostToken` | Chiusa la scheda prima dello start: "Crea una nuova partita" |

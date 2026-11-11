@@ -1,7 +1,7 @@
 <script lang="ts">
   // Schermata di join: nome giocatore + selezione partita (da lobby o manuale).
 
-  import { LobbyClient, loadPlayerName, type GameListItem } from '../lobby';
+  import { LobbyClient, loadIdentity, loadPlayerName, type GameListItem } from '../lobby';
   import { createJoinFlow, SLOW_JOIN_MESSAGE, type JoinFlow } from '../join-flow';
   import { PLAYER_COLOR_CSS } from '../colors';
   import type { PlayerColor } from '../proto';
@@ -33,6 +33,15 @@
   let slowJoin = $state(false);
 
   const lobby = $derived(new LobbyClient(host));
+
+  // Partita avviata scelta: ci si entra solo con l'identità salvata su questo telefono.
+  const rejoinIdentity = $derived.by(() => {
+    const gid = gameId.trim();
+    const selected = games.find((g) => g.gameId === gid);
+    return selected?.started ? loadIdentity(gid) : null;
+  });
+  // Il server riconosce chi rientra dal nome: quello dell'identità salvata, se noto.
+  const effectiveName = $derived((rejoinIdentity?.name ?? name).trim());
 
   async function loadGames() {
     loading = true;
@@ -112,7 +121,7 @@
   }
 
   async function join() {
-    const playerName = name.trim();
+    const playerName = effectiveName;
     const gid = gameId.trim();
     if (!playerName || !gid) return;
     joining = true;
@@ -120,7 +129,8 @@
     error = '';
     stopJoinTimer();
     joinFlow = createJoinFlow({
-      attempt: (isCancelled) => onJoin(playerName, gid, color === '' ? undefined : color, isCancelled),
+      attempt: (isCancelled) =>
+        onJoin(playerName, gid, rejoinIdentity || color === '' ? undefined : color, isCancelled),
       registeredNames: async () => (await lobby.getGame(gid)).players.map((p) => p.name),
       name: playerName,
       onSlow: () => { slowJoin = true; },
@@ -139,6 +149,9 @@
 
   <div class="join-form">
     <span class="form-label">Chi sei?</span>
+    {#if rejoinIdentity?.name}
+      <p class="rejoin-note">↩ Rientri come <strong>{rejoinIdentity.name}</strong></p>
+    {:else}
     {#if profiles.length > 0}
       <div class="profile-list">
         {#each profiles as p (p)}
@@ -168,6 +181,7 @@
         disabled={joining}
       />
     {/if}
+    {/if}
 
     <label for="game-select">Partita</label>
     {#if loading}
@@ -176,8 +190,9 @@
       <select id="game-select" bind:value={gameId} disabled={joining}>
         <option value="">— Scegli una partita —</option>
         {#each games as g}
-          {@const started = g.started ? ' 🔒' : ''}
-          <option value={g.gameId} disabled={g.started}>
+          {@const rejoinable = g.started && loadIdentity(g.gameId) !== null}
+          {@const started = g.started ? (rejoinable ? ' ↩ rientra' : ' 🔒') : ''}
+          <option value={g.gameId} disabled={g.started && !rejoinable}>
             {g.name} ({g.playersJoined}/{g.maxPlayers}){started}
           </option>
         {/each}
@@ -188,30 +203,32 @@
 
     <input bind:value={gameId} placeholder="o inserisci Game ID" disabled={joining} />
 
-    <span class="form-label">Colore trenini</span>
-    <div class="color-row">
-      <button
-        class="color-swatch auto"
-        class:selected={color === ''}
-        onclick={() => (color = '')}
-        disabled={joining}
-        title="Automatico"
-        aria-label="Colore automatico"
-        aria-pressed={color === ''}
-      >?</button>
-      {#each ALL_COLORS as c}
+    {#if !rejoinIdentity}
+      <span class="form-label">Colore trenini</span>
+      <div class="color-row">
         <button
-          class="color-swatch"
-          class:selected={color === c}
-          style="background:{PLAYER_COLOR_CSS[c]}"
-          onclick={() => (color = c)}
-          disabled={joining || takenColors.has(c)}
-          title={takenColors.has(c) ? 'Colore già preso' : c}
-          aria-label={takenColors.has(c) ? `Colore ${c} già preso` : `Colore ${c}`}
-          aria-pressed={color === c}
-        ></button>
-      {/each}
-    </div>
+          class="color-swatch auto"
+          class:selected={color === ''}
+          onclick={() => (color = '')}
+          disabled={joining}
+          title="Automatico"
+          aria-label="Colore automatico"
+          aria-pressed={color === ''}
+        >?</button>
+        {#each ALL_COLORS as c}
+          <button
+            class="color-swatch"
+            class:selected={color === c}
+            style="background:{PLAYER_COLOR_CSS[c]}"
+            onclick={() => (color = c)}
+            disabled={joining || takenColors.has(c)}
+            title={takenColors.has(c) ? 'Colore già preso' : c}
+            aria-label={takenColors.has(c) ? `Colore ${c} già preso` : `Colore ${c}`}
+            aria-pressed={color === c}
+          ></button>
+        {/each}
+      </div>
+    {/if}
 
     {#if slowJoin && !error}
       <p class="muted" role="status">{SLOW_JOIN_MESSAGE}</p>
@@ -224,7 +241,7 @@
     <button
       class="btn join-btn"
       onclick={join}
-      disabled={joining || !name.trim() || !gameId.trim()}
+      disabled={joining || !effectiveName || !gameId.trim()}
     >
       {joining ? 'Connessione...' : '🎮 Entra'}
     </button>
@@ -367,6 +384,10 @@
   .profile-chip:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  .rejoin-note {
+    margin: 0;
+    font-size: 0.95rem;
   }
   .muted {
     color: var(--chrome-faint);

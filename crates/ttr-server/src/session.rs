@@ -199,6 +199,16 @@ const COLOR_ORDER: [PlayerColor; 5] = [
     PlayerColor::Black,
 ];
 
+/// Il nome ricevuto da un join senza autenticazione non va normalizzato se supera ciò che può
+/// contenere un nome del roster: `MAX_PLAYER_NAME_CHARS`, o più se un save esistente ha nomi
+/// fuori limite (restano riprendibili). `name_key` costa per carattere.
+fn name_too_long<'a>(name: &str, roster_names: impl Iterator<Item = &'a str>) -> bool {
+    let limit = roster_names
+        .map(|n| n.chars().count())
+        .fold(MAX_PLAYER_NAME_CHARS, usize::max);
+    name.chars().nth(limit).is_some()
+}
+
 /// Primo colore libero in ordine, dato il roster attuale.
 fn first_free_color(players: &[SessionPlayer]) -> PlayerColor {
     COLOR_ORDER
@@ -546,7 +556,7 @@ impl GameSession {
         resume_token: Option<String>,
     ) -> Result<JoinResponse, LobbyError> {
         if self.started {
-            return Err(LobbyError::GameStarted);
+            return self.rejoin_started(&name, resume_token.as_deref());
         }
 
         // Resume: il nome deve essere nel save e il token è quello originale.
@@ -597,6 +607,33 @@ impl GameSession {
         })
     }
 
+    /// Join in una partita avviata: nessun nuovo giocatore, rientra solo chi è
+    /// già nel roster e conosce il proprio token. Idempotente, nessun broadcast.
+    fn rejoin_started(
+        &self,
+        name: &str,
+        resume_token: Option<&str>,
+    ) -> Result<JoinResponse, LobbyError> {
+        if name_too_long(name, self.players.iter().map(|p| p.name.as_str())) {
+            return Err(LobbyError::GameStarted);
+        }
+        let key = name_key(name);
+        let (player_id, player) = self
+            .player_index
+            .iter()
+            .map(|(id, &pos)| (id, &self.players[pos]))
+            .find(|(_, p)| name_key(&p.name) == key)
+            .ok_or(LobbyError::GameStarted)?;
+        match resume_token {
+            Some(t) if tokens_equal(t, &player.token) => Ok(JoinResponse {
+                player_id: player_id.clone(),
+                token: player.token.clone(),
+                name: player.name.clone(),
+            }),
+            _ => Err(LobbyError::ResumeTokenMismatch),
+        }
+    }
+
     /// Join in resume: riesce solo col token originale del giocatore salvato,
     /// che resta il suo token.
     fn join_resumed(
@@ -604,6 +641,9 @@ impl GameSession {
         name: &str,
         resume_token: Option<&str>,
     ) -> Result<JoinResponse, LobbyError> {
+        if name_too_long(name, self.saved_roster.values().map(|e| e.name.as_str())) {
+            return Err(LobbyError::NameNotInSave);
+        }
         let entry = self
             .saved_roster
             .get(&name_key(name))
@@ -653,8 +693,9 @@ impl GameSession {
         }
     }
 
-    /// Assegna un token nuovo a un giocatore del save, su richiesta dell'host.
-    /// Le connessioni aperte col token precedente vengono scollegate.
+    /// Assegna un token nuovo a un giocatore, su richiesta dell'host: in un
+    /// resume per i nomi del save, in una partita avviata per i giocatori del
+    /// roster. Le connessioni aperte col token precedente vengono scollegate.
     fn handle_reassign(
         &mut self,
         host_token: &str,
@@ -664,10 +705,16 @@ impl GameSession {
         if !tokens_equal(host_token, &self.host_token) {
             return Err(LobbyError::Unauthorized);
         }
+        if self.finished_at.is_some() {
+            return Err(LobbyError::BadRequest("La partita è conclusa.".to_string()));
+        }
         if self.saved_roster.is_empty() {
-            return Err(LobbyError::BadRequest(
-                "La partita non è stata ripresa da un save.".to_string(),
-            ));
+            if !self.started {
+                return Err(LobbyError::BadRequest(
+                    "La partita non è stata ripresa da un save.".to_string(),
+                ));
+            }
+            return self.reassign_started(name, new_token);
         }
         let entry = self
             .saved_roster
@@ -690,6 +737,33 @@ impl GameSession {
             player_id: entry.id,
             token: new_token,
             name: entry.name,
+        })
+    }
+
+    /// Reassign in una partita avviata non ripresa: il giocatore è già nel
+    /// roster, quindi si sostituisce solo il token.
+    fn reassign_started(
+        &mut self,
+        name: &str,
+        new_token: String,
+    ) -> Result<JoinResponse, LobbyError> {
+        let key = name_key(name);
+        let (player_id, pos) = self
+            .player_index
+            .iter()
+            .map(|(id, &pos)| (id.clone(), pos))
+            .find(|&(_, pos)| name_key(&self.players[pos].name) == key)
+            .ok_or(LobbyError::NameNotInSave)?;
+        self.players[pos].token = new_token.clone();
+        if let Some(conns) = self.connections.get_mut(&player_id) {
+            conns.clear();
+        }
+        self.write_save();
+        self.broadcast_public_state();
+        Ok(JoinResponse {
+            player_id,
+            token: new_token,
+            name: self.players[pos].name.clone(),
         })
     }
 

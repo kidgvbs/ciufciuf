@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createJoinFlow,
+  GAME_STARTED_MESSAGE,
   JOIN_TIMEOUT_MS,
   NAME_ALREADY_JOINED_MESSAGE,
   joinWithSavedIdentity,
@@ -226,5 +227,20 @@ describe('joinWithSavedIdentity', () => {
       saveIdentity,
     });
     await expect(other).rejects.toBeInstanceOf(LobbyError);
+  });
+
+  it('una partita avviata senza il tuo posto chiede la riassegnazione dalla TV', async () => {
+    const result = joinWithSavedIdentity({
+      gameId: 'g1',
+      host: 'http://h:1',
+      name: 'Carla',
+      isCancelled: () => false,
+      post: async () => {
+        throw new LobbyError(409, 'La partita è già avviata.', 'GAME_STARTED');
+      },
+      loadIdentity: () => null,
+      saveIdentity: vi.fn(),
+    });
+    await expect(result).rejects.toMatchObject({ message: GAME_STARTED_MESSAGE, code: 'GAME_STARTED' });
   });
 });

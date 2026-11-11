@@ -16,6 +16,7 @@
     saveIdentity,
     loadIdentity,
     clearIdentity,
+    forgetLastIdentity,
     savePlayerName,
   } from '../lib/lobby';
   import { gameMap } from '../lib/game-map.svelte.ts';
@@ -242,6 +243,17 @@
     notice = '';
   }
 
+  /**
+   * "Esci" dalla partita in corso: l'identità resta, così si può rientrare scegliendo la partita
+   * dalla JoinScreen, ma al prossimo caricamento non ci si riconnette in automatico.
+   */
+  function onLeaveKeepingSeat() {
+    confirmingLeave = false;
+    if (gameId) forgetLastIdentity(gameId);
+    leaveGame(false);
+    notice = '';
+  }
+
   /** Chiude la connessione e torna alla JoinScreen; `forget` cancella l'identità salvata. */
   function leaveGame(forget: boolean) {
     if (connection) {
@@ -406,9 +418,9 @@
   {#if confirmingLeave}
     <ConfirmDialog
       title="Uscire dalla partita?"
-      message="Perderai il tuo posto e non potrai rientrare."
+      message="Potrai rientrare finché la partita è in corso: scegli di nuovo la partita dall'elenco."
       confirmLabel="Esci"
-      onConfirm={onLeave}
+      onConfirm={onLeaveKeepingSeat}
       onCancel={() => (confirmingLeave = false)}
     />
   {/if}

@@ -6,6 +6,7 @@ mod common;
 
 use common::driver::*;
 use common::*;
+use futures_util::StreamExt;
 use ttr_proto::GameState;
 
 // ── Helper per estrarre colore da GET /api/games/{id} ────────────────
@@ -792,4 +793,224 @@ async fn nbsp_is_collapsed_and_accents_stay_valid() {
             );
         }
     }
+}
+
+// ── Rientro in una partita avviata ───────────────────────────────────
+
+/// Partita avviata a due giocatori (Alice, Bob).
+async fn started_game(base: &str) -> (CreatedGame, JoinedPlayer, JoinedPlayer) {
+    let g = create_game_with_seed(base, "Avviata", Some(7)).await;
+    let alice = join_game(base, &g.game_id, "Alice", None).await;
+    let bob = join_game(base, &g.game_id, "Bob", None).await;
+    start_game(base, &g.game_id, &g.host_token).await;
+    (g, alice, bob)
+}
+
+/// Dopo lo start nessun nuovo giocatore entra, nemmeno con un token.
+#[tokio::test]
+async fn started_game_rejects_new_names() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+    let (g, alice, _bob) = started_game(base).await;
+
+    let new = post_join(base, &g.game_id, serde_json::json!({ "name": "Carla" })).await;
+    assert_rejected(&new, 409, "GAME_STARTED");
+    let with_token = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "Carla", "token": alice.token }),
+    )
+    .await;
+    assert_rejected(&with_token, 409, "GAME_STARTED");
+}
+
+/// Chi è già nella partita rientra con nome (anche in forma diversa) e token:
+/// stesso playerId e stesso token, poi il WS dà lo snapshot privato.
+#[tokio::test]
+async fn started_game_lets_existing_player_rejoin_with_token() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+    let (g, alice, _bob) = started_game(base).await;
+
+    for name in ["Alice", "  alice "] {
+        let (status, body) = post_join(
+            base,
+            &g.game_id,
+            serde_json::json!({ "name": name, "token": alice.token }),
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+        assert_eq!(body["playerId"], alice.player_id.as_str());
+        assert_eq!(body["token"], alice.token.as_str());
+    }
+
+    let mut ws = WsClient::connect(&server, &g.game_id, &alice.player_id, &alice.token).await;
+    match ws.recv().await {
+        ttr_proto::ServerMessage::Snapshot(snap) => {
+            assert!(snap.private.is_some(), "lo snapshot ha lo stato privato");
+        }
+        other => panic!("atteso SNAPSHOT, trovato {other:?}"),
+    }
+}
+
+/// Nome esistente ma token assente o di un altro giocatore → 401.
+#[tokio::test]
+async fn started_game_rejects_rejoin_without_right_token() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+    let (g, _alice, bob) = started_game(base).await;
+
+    let none = post_join(base, &g.game_id, serde_json::json!({ "name": "Alice" })).await;
+    assert_rejected(&none, 401, "RESUME_TOKEN_MISMATCH");
+    let wrong = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "Alice", "token": bob.token }),
+    )
+    .await;
+    assert_rejected(&wrong, 401, "RESUME_TOKEN_MISMATCH");
+}
+
+/// L'host riassegna un giocatore di una partita avviata (non ripresa): il
+/// token nuovo apre il WS, quello vecchio no e non rientra più col join.
+#[tokio::test]
+async fn reassign_in_started_game_replaces_token() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+    let (g, alice, _bob) = started_game(base).await;
+    let path = format!("/api/games/{}/reassign", g.game_id);
+
+    let bad_host = post_json(
+        base,
+        &path,
+        serde_json::json!({ "hostToken": alice.token, "name": "Alice" }),
+    )
+    .await;
+    assert_rejected(&bad_host, 401, "UNAUTHORIZED");
+    let unknown = post_json(
+        base,
+        &path,
+        serde_json::json!({ "hostToken": g.host_token, "name": "Zoe" }),
+    )
+    .await;
+    assert_rejected(&unknown, 409, "NAME_NOT_IN_SAVE");
+
+    let mut old_ws = WsClient::connect(&server, &g.game_id, &alice.player_id, &alice.token).await;
+    assert!(matches!(
+        old_ws.recv().await,
+        ttr_proto::ServerMessage::Snapshot(_)
+    ));
+
+    let (status, body) = post_json(
+        base,
+        &path,
+        serde_json::json!({ "hostToken": g.host_token, "name": "alice" }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["playerId"], alice.player_id.as_str());
+    let new_token = body["token"].as_str().expect("token").to_string();
+    assert_ne!(new_token, alice.token);
+
+    // La connessione aperta col token vecchio viene chiusa dal server.
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            match old_ws.read.next().await {
+                None
+                | Some(Err(_))
+                | Some(Ok(tokio_tungstenite::tungstenite::Message::Close(_))) => return true,
+                Some(Ok(_)) => {}
+            }
+        }
+    })
+    .await;
+    assert_eq!(closed, Ok(true), "il vecchio WS va chiuso dopo il reassign");
+
+    let mut new_ws = WsClient::connect(&server, &g.game_id, &alice.player_id, &new_token).await;
+    match new_ws.recv().await {
+        ttr_proto::ServerMessage::Snapshot(snap) => assert!(snap.private.is_some()),
+        other => panic!("atteso SNAPSHOT, trovato {other:?}"),
+    }
+
+    let mut stale_ws = WsClient::connect(&server, &g.game_id, &alice.player_id, &alice.token).await;
+    match stale_ws.recv().await {
+        ttr_proto::ServerMessage::Error(e) => {
+            assert_eq!(e.reason, ttr_proto::ErrorReason::Unauthorized);
+        }
+        other => panic!("atteso ERROR, trovato {other:?}"),
+    }
+
+    let old_join = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "Alice", "token": alice.token }),
+    )
+    .await;
+    assert_rejected(&old_join, 401, "RESUME_TOKEN_MISMATCH");
+    let new_join = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "Alice", "token": new_token }),
+    )
+    .await;
+    assert_eq!(new_join.0, 200, "{}", new_join.1);
+}
+
+/// Un nome "uguale a vista" (omoglifo cirillico) mappa sulla stessa chiave del
+/// giocatore esistente: senza token è 401 e il roster non cambia, mai un posto nuovo.
+#[tokio::test]
+async fn started_game_homoglyph_name_never_gets_a_new_seat() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+    let (g, alice, _bob) = started_game(base).await;
+
+    let no_token = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "\u{410}lice" }),
+    )
+    .await;
+    assert_rejected(&no_token, 401, "RESUME_TOKEN_MISMATCH");
+    let wrong_token = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "\u{410}lice", "token": "altro" }),
+    )
+    .await;
+    assert_rejected(&wrong_token, 401, "RESUME_TOKEN_MISMATCH");
+    assert_eq!(
+        get_game_detail(base, &g.game_id).await["players"]
+            .as_array()
+            .map(Vec::len),
+        Some(2)
+    );
+
+    // Col token di Alice è comunque lei: stesso playerId, nessun posto nuovo.
+    let with_token = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": "\u{410}lice", "token": alice.token }),
+    )
+    .await;
+    assert_eq!(with_token.0, 200, "{}", with_token.1);
+    assert_eq!(with_token.1["playerId"], alice.player_id.as_str());
+}
+
+/// Un nome più lungo del massimo valido è rifiutato senza essere normalizzato.
+#[tokio::test]
+async fn started_game_overlong_name_is_rejected_fast() {
+    let server = TestServer::start().await;
+    let base = server.base_url.as_str();
+    let (g, alice, _bob) = started_game(base).await;
+
+    let started = std::time::Instant::now();
+    let long = "A".repeat(500_000);
+    let res = post_join(
+        base,
+        &g.game_id,
+        serde_json::json!({ "name": long, "token": alice.token }),
+    )
+    .await;
+    assert_rejected(&res, 409, "GAME_STARTED");
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
 }
