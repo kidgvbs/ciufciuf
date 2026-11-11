@@ -400,6 +400,34 @@ describe('createGameConnection', () => {
       expect(callbacks.onConnectionChange).toHaveBeenLastCalledWith(false);
     });
 
+    it('closing_socket_is_replaced_cleanly_on_visibility', () => {
+      const { callbacks } = connect();
+      const old = lastSocket();
+      old.open();
+      old.receive(snapshot(1));
+      expect(callbacks.onConnectionChange).toHaveBeenLastCalledWith(true);
+      old.readyState = 2;
+
+      vi.advanceTimersByTime(1_000);
+      doc.dispatch('visibilitychange');
+      expect(FakeSocket.instances).toHaveLength(2);
+      expect(callbacks.onConnectionChange).toHaveBeenLastCalledWith(false);
+
+      // Il nuovo socket cade subito: backoff 500 ms, poi sale a 1000 ms.
+      lastSocket().drop();
+      vi.advanceTimersByTime(500);
+      expect(FakeSocket.instances).toHaveLength(3);
+
+      // Il timer di stabilità del vecchio socket (scadenza a 10 s) non deve azzerare il backoff.
+      vi.advanceTimersByTime(10_000);
+      expect(FakeSocket.instances).toHaveLength(3);
+      lastSocket().drop();
+      vi.advanceTimersByTime(999);
+      expect(FakeSocket.instances).toHaveLength(3);
+      vi.advanceTimersByTime(1);
+      expect(FakeSocket.instances).toHaveLength(4);
+    });
+
     it('stuck_connecting_socket_is_replaced_on_visibility', () => {
       const { callbacks } = connect();
       const stuck = lastSocket();

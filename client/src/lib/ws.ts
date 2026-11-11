@@ -365,9 +365,7 @@ export function createGameConnection(config: GameConnectionConfig): GameConnecti
   function refresh(): void {
     if (closed) return;
     if (!ws || ws.readyState > READY_STATE_OPEN) {
-      reconnectTimer = clearTimer(reconnectTimer);
-      backoffMs = INITIAL_BACKOFF_MS;
-      connect();
+      forceReconnect();
       return;
     }
     if (
