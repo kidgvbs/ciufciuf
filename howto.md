@@ -126,7 +126,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 | `POST /api/games/{id}/start` | `{hostToken}` | `204` |
 | `POST /api/games/{id}/reassign` | `{hostToken, name}` | `{playerId, token}` (token nuovo); in lobby solo per partite riprese, a partita avviata per ogni giocatore del roster |
 | `DELETE /api/games/{id}` | `{hostToken}` | `204` (un save su disco resta) |
-| `GET /api/rulesets` | | `{rulesets:[{id,name,mapId,cities,routes,tickets,minPlayers,maxPlayers,bonusLabel,tunnels,ferries,stations}]}` per id: il catalogo del selettore mappe (`name` dal campo `name` di `data/rulesets/<id>.json`) |
+| `GET /api/rulesets` | | `{rulesets:[{id,name,mode,modeOrder,mapId,cities,routes,tickets,minPlayers,maxPlayers,bonuses:[{type,label,points}],bigCities,initialDealt,initialKeepMin,drawCount,drawKeepMin,tunnels,ferries,stations}]}` per (`mapId`, `modeOrder`, `id`): il catalogo del selettore mappe/modalità (`name`, `mode`, `modeOrder` dal ruleset `data/rulesets/<id>.json`; `tickets` = biglietti in gioco nel `ticketSet` del ruleset) |
 | `GET /api/rulesets/{id}/map` | | Documento della mappa (`cities`, `routes`, `tickets`, con `lat`/`lon`) più `rulesetId` |
 | `GET /api/rulesets/{id}/layout` | | Layout schematico della mappa (`width`, `height`, `cities`, `labels`, `routes` con 2–3 punti) più `rulesetId` e `mapId`; mappa senza layout → `404 LAYOUT_NOT_FOUND` |
 | `GET /api/saves` | | `{saves:[{gameId,name,rulesetId,players:[nome,…],createdAt,updatedAt}]}`: save `in_progress` riprendibili (regole attuali, ruleset noto) e non già attivi, dal più recente; i file illeggibili sono saltati con un warn |

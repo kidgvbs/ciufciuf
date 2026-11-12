@@ -148,7 +148,7 @@
   const offerId = $derived(offerKey(offered));
   let dismissedOfferId = $state('');
   const ticketDialogOpen = $derived(isDialogOpen(offerId, dismissedOfferId));
-  const ticketMinKeep = $derived(gameState === 'INITIAL_DRAFT' ? 2 : 1);
+  const ticketChoice = $derived(legalMoves?.ticket_choice ?? null);
   $effect(() => {
     dismissedOfferId = nextDismissedKey(offerId, dismissedOfferId);
   });
@@ -884,7 +884,7 @@
   {#if ticketDialogOpen}
     <TicketChoiceDialog
       offeredTickets={offered}
-      minKeep={ticketMinKeep}
+      choice={ticketChoice}
       onConfirm={confirmTicketChoice}
       onCancel={cancelTicketChoice}
     />

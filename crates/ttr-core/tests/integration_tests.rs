@@ -36,6 +36,7 @@ fn ticket(id: &str, from: &str, to: &str, points: u32) -> TicketDef {
         to: to.into(),
         points,
         deck: "regular".into(),
+        sets: vec!["mini".into()],
     }
 }
 
@@ -103,6 +104,9 @@ fn mini_ruleset() -> Ruleset {
     rp.insert("6".into(), 15);
     Ruleset {
         name: "Mini".into(),
+        mode: "Standard".into(),
+        mode_order: 0,
+        ticket_set: "mini".into(),
         map: "mini".into(),
         players: PlayersConfig { min: 2, max: 5 },
         trains_per_player: 45,
@@ -115,6 +119,7 @@ fn mini_ruleset() -> Ruleset {
             dealt: vec![TicketDealtEntry {
                 deck: "regular".into(),
                 count: 4,
+                keep_max: None,
             }],
             keep_min: 2,
         },
@@ -130,6 +135,7 @@ fn mini_ruleset() -> Ruleset {
             label: "Longest Path".into(),
             points: 10,
         }],
+        big_cities: vec![],
         double_route_min_players: 4,
         final_round_includes_trigger: true,
         stations: None,
@@ -2286,10 +2292,12 @@ fn ticket_decks_are_dealt_per_ruleset_and_draw_pile_is_draw_deck_only() {
         TicketDealtEntry {
             deck: "long".into(),
             count: 1,
+            keep_max: None,
         },
         TicketDealtEntry {
             deck: "regular".into(),
             count: 3,
+            keep_max: None,
         },
     ];
     rs.ticket_draw.deck = "regular".into();
@@ -2459,11 +2467,11 @@ fn init_rejects_non_canonical_route_color() {
 }
 
 #[test]
-fn init_rejects_missing_longest_path_bonus() {
+fn init_rejects_unknown_bonus_type() {
     let mut rs = mini_ruleset();
     rs.bonuses[0].bonus_type = "longestPath".into();
-    let expected = EngineInitError::MissingLongestPathBonus {
-        bonus_type: "longest_path",
+    let expected = EngineInitError::UnknownBonusType {
+        bonus_type: "longestPath".into(),
     };
     assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
     assert_eq!(rs.validate(&mini_map()), Err(expected));
@@ -2486,6 +2494,7 @@ fn init_rejects_dealt_deck_not_in_ticket_decks() {
     rs.initial_tickets.dealt = vec![TicketDealtEntry {
         deck: "long".into(),
         count: 4,
+        keep_max: None,
     }];
     let expected = EngineInitError::DealtTicketDeckUnknown {
         deck: "long".into(),
@@ -2744,8 +2753,8 @@ fn longest_path_bonus_is_found_by_type() {
     let mut rs = mini_ruleset();
     rs.bonuses = vec![
         Bonus {
-            bonus_type: "other".into(),
-            label: "Altro".into(),
+            bonus_type: "globetrotter".into(),
+            label: "Globetrotter".into(),
             points: 99,
         },
         Bonus {
@@ -2799,10 +2808,12 @@ fn two_deck_ruleset(order: [&str; 2]) -> Ruleset {
         TicketDealtEntry {
             deck: "long".into(),
             count: 1,
+            keep_max: None,
         },
         TicketDealtEntry {
             deck: "regular".into(),
             count: 3,
+            keep_max: None,
         },
     ];
     rs
@@ -3279,4 +3290,513 @@ fn setup_discards_of_other_ticket_decks_stay_out_of_draw_pile() {
         returned < 4,
         "il test deve scartare almeno un biglietto long"
     );
+}
+
+// ============================================================
+// Modalità: set di biglietti, keepMax, globetrotter, ticket_choice
+// ============================================================
+
+/// Mega-Europe in piccolo: 2 biglietti long (tenerne al massimo 1) + 5 regular, keepMin 3.
+fn mega_like() -> (Ruleset, MapData) {
+    let mut rs = mini_ruleset();
+    rs.players.max = 2;
+    rs.ticket_decks = vec!["long".into(), "regular".into()];
+    rs.initial_tickets = InitialTickets {
+        dealt: vec![
+            TicketDealtEntry {
+                deck: "long".into(),
+                count: 2,
+                keep_max: Some(1),
+            },
+            TicketDealtEntry {
+                deck: "regular".into(),
+                count: 5,
+                keep_max: None,
+            },
+        ],
+        keep_min: 3,
+    };
+    let mut map = mini_map();
+    for i in 0..4 {
+        let mut t = ticket(&format!("long_{i}"), "A", "F", 20);
+        t.deck = "long".into();
+        map.tickets.push(t);
+    }
+    (rs, map)
+}
+
+fn is_long(id: &str) -> bool {
+    id.starts_with("long_")
+}
+
+fn mega_engine(first_player: usize) -> Engine {
+    let (rs, map) = mega_like();
+    let (ids, names, colors) = two_players();
+    Engine::new(11, rs, map, ids, names, colors, first_player).unwrap()
+}
+
+/// Offerta di `pi`, divisa in (long, regular) nell'ordine di offerta.
+fn offer_split(eng: &Engine, pi: usize) -> (Vec<String>, Vec<String>) {
+    eng.initial_tickets_for(pi)
+        .unwrap()
+        .iter()
+        .cloned()
+        .partition(|id| is_long(id))
+}
+
+fn keep_of(long: &[String], regular: &[String], n_long: usize, n_regular: usize) -> Vec<String> {
+    long.iter()
+        .take(n_long)
+        .chain(regular.iter().take(n_regular))
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn initial_draft_enforces_keep_max_per_deck() {
+    let mut eng = mega_engine(0);
+    let (long, regular) = offer_split(&eng, 0);
+    assert_eq!((long.len(), regular.len()), (2, 5));
+
+    // 2 long + 1 regular = 3 tenuti (keepMin ok) ma 2 long superano keepMax 1.
+    let err = eng
+        .apply(Action::ChooseTickets {
+            player_index: 0,
+            keep: keep_of(&long, &regular, 2, 1),
+        })
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            EngineError::TicketChoiceAboveDeckMax { ref deck, kept: 2, max: 1 } if deck == "long"
+        ),
+        "{err:?}"
+    );
+    assert!(err.to_string().contains("massimo"), "{err}");
+    // Lo stato non cambia: la scelta è ancora da fare.
+    assert!(eng.legal_moves(0).ticket_choice.is_some());
+    assert_eq!(eng.initial_tickets_for(0).unwrap().len(), 7);
+
+    // 0 long + 2 regular: sotto keepMin 3.
+    let err = eng
+        .apply(Action::ChooseTickets {
+            player_index: 0,
+            keep: keep_of(&long, &regular, 0, 2),
+        })
+        .unwrap_err();
+    assert!(matches!(
+        err,
+        EngineError::TicketChoiceBelowMin { kept: 2, min: 3 }
+    ));
+
+    // 1 long + 2 regular: ok.
+    eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: keep_of(&long, &regular, 1, 2),
+    })
+    .unwrap();
+    assert_eq!(eng.player(0).unwrap().tickets.len(), 3);
+
+    // 0 long + 3 regular: ok.
+    let (long, regular) = offer_split(&eng, 1);
+    eng.apply(Action::ChooseTickets {
+        player_index: 1,
+        keep: keep_of(&long, &regular, 0, 3),
+    })
+    .unwrap();
+    assert_eq!(eng.phase(), GamePhase::PlayerTurn);
+}
+
+#[test]
+fn legal_moves_list_ticket_choice_to_every_player_who_has_not_drafted() {
+    // Il giocatore 1 è di turno: il giocatore 0 non lo è, ma sceglie comunque.
+    let mut eng = mega_engine(1);
+    assert_eq!(eng.phase(), GamePhase::InitialDraft);
+    for pi in 0..2 {
+        let (long, _) = offer_split(&eng, pi);
+        let lm = eng.legal_moves(pi);
+        let choice = lm.ticket_choice.expect("ticket_choice in InitialDraft");
+        assert_eq!(choice.keep_min, 3);
+        assert_eq!(choice.limits.len(), 1);
+        assert_eq!(choice.limits[0].ticket_ids, long);
+        assert_eq!(choice.limits[0].max, 1);
+        // Nessun'altra mossa è esposta.
+        assert!(lm.routes.is_empty() && lm.draw_face_up.is_empty());
+        assert!(!lm.can_draw_deck && !lm.can_draw_tickets);
+        assert!(lm.station_cities.is_empty() && lm.station_cost == 0 && lm.tunnel.is_none());
+    }
+    // Fuori dai giocatori: nulla.
+    assert!(eng.legal_moves(2).ticket_choice.is_none());
+
+    // La mossa elencata è accettata.
+    let (long, regular) = offer_split(&eng, 0);
+    let choice = eng.legal_moves(0).ticket_choice.unwrap();
+    eng.clone()
+        .apply(Action::ChooseTickets {
+            player_index: 0,
+            keep: keep_of(
+                &long,
+                &regular,
+                choice.limits[0].max as usize,
+                choice.keep_min as usize - 1,
+            ),
+        })
+        .unwrap();
+
+    // Dopo la scelta del giocatore 0 resta solo quella del giocatore 1.
+    eng.apply(Action::ChooseTickets {
+        player_index: 0,
+        keep: keep_of(&long, &regular, 1, 2),
+    })
+    .unwrap();
+    assert!(eng.legal_moves(0).ticket_choice.is_none());
+    assert!(eng.legal_moves(1).ticket_choice.is_some());
+}
+
+#[test]
+fn legal_moves_ticket_choice_without_limits_and_mid_game() {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(5, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
+    let choice = eng.legal_moves(1).ticket_choice.unwrap();
+    assert_eq!(choice.keep_min, 2);
+    assert!(choice.limits.is_empty());
+    complete_initial_draft(&mut eng);
+    assert!(eng.legal_moves(0).ticket_choice.is_none());
+
+    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    assert_eq!(eng.phase(), GamePhase::TicketChoice);
+    let lm = eng.legal_moves(0);
+    let choice = lm.ticket_choice.expect("ticket_choice in TicketChoice");
+    assert_eq!(choice.keep_min, 1);
+    assert!(choice.limits.is_empty());
+    assert!(!lm.can_draw_deck && lm.routes.is_empty());
+    assert!(eng.legal_moves(1).ticket_choice.is_none());
+}
+
+/// Mappa con biglietti fuori set mescolati a quelli in gioco.
+fn set_filter_map() -> MapData {
+    let mut map = mini_map();
+    let mut mixed: Vec<TicketDef> = Vec::new();
+    for i in 0..10 {
+        let mut t = ticket(&format!("off_{i}"), "A", "B", 1);
+        t.sets = vec!["other".into()];
+        mixed.push(t);
+    }
+    let mut both = ticket("both_0", "A", "B", 1);
+    both.sets = vec!["other".into(), "mini".into()];
+    mixed.push(both);
+    mixed.append(&mut map.tickets);
+    map.tickets = mixed;
+    map
+}
+
+#[test]
+fn ticket_set_filter_never_deals_an_out_of_set_ticket() {
+    let map = set_filter_map();
+    let in_play = 21; // 20 di mini_map + both_0
+    for seed in 0..20u64 {
+        let (ids, names, colors) = two_players();
+        let mut eng =
+            Engine::new(seed, mini_ruleset(), map.clone(), ids, names, colors, 0).unwrap();
+        let mut seen: Vec<String> = eng.ticket_pile().to_vec();
+        for pi in 0..2 {
+            seen.extend(eng.initial_tickets_for(pi).unwrap().iter().cloned());
+        }
+        assert_eq!(seen.len(), in_play, "seed {seed}");
+        assert!(seen.iter().all(|t| !t.starts_with("off_")), "seed {seed}");
+
+        complete_initial_draft(&mut eng);
+        eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+        assert!(
+            eng.pending_tickets().iter().all(|t| !t.starts_with("off_")),
+            "seed {seed}"
+        );
+    }
+}
+
+#[test]
+fn ticket_set_filter_drives_deck_validation() {
+    // Il set "other" ha 11 biglietti: bastano per 2 giocatori ma non per 5 (20 necessari).
+    let mut rs = mini_ruleset();
+    rs.ticket_set = "other".into();
+    let map = set_filter_map();
+    assert_eq!(
+        rs.validate(&map),
+        Err(EngineInitError::TicketDeckTooSmall {
+            deck: "regular".into(),
+            have: 11,
+            needed: 20
+        })
+    );
+
+    // Un set senza biglietti è un errore dedicato.
+    rs.ticket_set = "nessuno".into();
+    let expected = EngineInitError::EmptyTicketSet {
+        set: "nessuno".into(),
+    };
+    assert_eq!(rs.validate(&map), Err(expected.clone()));
+    assert_eq!(init_error(rs, map.clone(), 2, 0), expected);
+
+    // Un biglietto fuori set non può far fallire i controlli sui deck del set.
+    let mut map = mini_map();
+    let mut t = ticket("fuori", "A", "B", 1);
+    t.deck = "long".into();
+    t.sets = vec!["other".into()];
+    map.tickets.push(t);
+    mini_ruleset().validate(&map).unwrap();
+}
+
+#[test]
+fn init_validates_mode_sets_big_cities_and_keep_rules() {
+    let mut rs = mini_ruleset();
+    rs.mode = " ".into();
+    assert_eq!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::EmptyRulesetMode)
+    );
+
+    let mut map = mini_map();
+    map.tickets[2].sets = vec![];
+    let expected = EngineInitError::TicketSetsEmpty {
+        ticket_id: "B_D".into(),
+    };
+    assert_eq!(init_error(mini_ruleset(), map.clone(), 2, 0), expected);
+    assert_eq!(mini_ruleset().validate(&map), Err(expected));
+
+    let mut map = mini_map();
+    map.tickets[2].sets = vec!["mini".into(), "mini".into()];
+    let expected = EngineInitError::DuplicateTicketSet {
+        ticket_id: "B_D".into(),
+        set: "mini".into(),
+    };
+    assert_eq!(init_error(mini_ruleset(), map, 2, 0), expected);
+
+    let mut rs = mini_ruleset();
+    rs.big_cities = vec!["A".into(), "Z".into()];
+    let expected = EngineInitError::BigCityUnknown {
+        city_id: "Z".into(),
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    rs.big_cities = vec!["A".into(), "B".into(), "A".into()];
+    let expected = EngineInitError::DuplicateBigCity {
+        city_id: "A".into(),
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    rs.big_cities = vec!["A".into(), "B".into()];
+    rs.validate(&mini_map()).unwrap();
+
+    let mut rs = mini_ruleset();
+    rs.bonuses.push(rs.bonuses[0].clone());
+    let expected = EngineInitError::DuplicateBonusType {
+        bonus_type: "longest_path".into(),
+    };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    // Nessun bonus: ammesso.
+    rs.bonuses.clear();
+    rs.validate(&mini_map()).unwrap();
+
+    let (mut rs, map) = mega_like();
+    rs.validate(&map).unwrap();
+    rs.initial_tickets.dealt[0].keep_max = Some(3);
+    let expected = EngineInitError::DealtKeepMaxExceedsCount {
+        deck: "long".into(),
+        keep_max: 3,
+        count: 2,
+    };
+    assert_eq!(init_error(rs.clone(), map.clone(), 2, 0), expected);
+    assert!(expected.to_string().contains("keepMax"));
+    // 1 long tenibile + 5 regular = 6 < keepMin 7 (ma 7 sono distribuiti).
+    rs.initial_tickets.dealt[0].keep_max = Some(1);
+    rs.initial_tickets.keep_min = 7;
+    let expected = EngineInitError::InitialKeepMinUnreachable {
+        keep_min: 7,
+        max_keep: 6,
+    };
+    assert_eq!(init_error(rs.clone(), map.clone(), 2, 0), expected);
+    assert_eq!(rs.validate(&map), Err(expected));
+}
+
+/// Mini mappa con un biglietto B-C in più, per far completare un biglietto al giocatore 1.
+fn bonus_map() -> MapData {
+    let mut map = mini_map();
+    map.tickets.push(ticket("B_C_t", "B", "C", 3));
+    map
+}
+
+/// Gioca l'ultimo giro: il giocatore 0 prende A-B (innesca la fine), il 1 prende B-C.
+/// Restituisce l'evento `GameOver` con le tessere `tickets` assegnate ai due giocatori.
+fn finish_game(rs: Ruleset, tickets: [&[&str]; 2]) -> GameEvent {
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(57, rs, bonus_map(), ids, names, colors, 0).unwrap();
+    complete_initial_draft(&mut eng);
+    for (pi, ids) in tickets.iter().enumerate() {
+        eng.set_player_tickets(pi, ids);
+    }
+    eng.set_player_trains(0, 3);
+    eng.set_player_hand(0, vec![CardColor::Red]);
+    eng.set_player_hand(1, vec![CardColor::Blue, CardColor::Blue]);
+    let mut events = eng
+        .apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: "A_B_1".into(),
+            cards_discarded: vec![CardColor::Red],
+        })
+        .unwrap();
+    events.extend(
+        eng.apply(Action::ClaimRoute {
+            player_index: 1,
+            route_id: "B_C_1".into(),
+            cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+        })
+        .unwrap(),
+    );
+    while eng.phase() != GamePhase::GameOver {
+        events.extend(apply_events(&mut eng, DrawSource::Deck));
+    }
+    events
+        .into_iter()
+        .find(|e| matches!(e, GameEvent::GameOver { .. }))
+        .expect("evento GameOver")
+}
+
+fn globetrotter_ruleset(with_longest_path: bool) -> Ruleset {
+    let mut rs = mini_ruleset();
+    rs.bonuses = vec![Bonus {
+        bonus_type: "globetrotter".into(),
+        label: "Globetrotter".into(),
+        points: 15,
+    }];
+    if with_longest_path {
+        rs.bonuses.push(Bonus {
+            bonus_type: "longest_path".into(),
+            label: "Longest Path".into(),
+            points: 10,
+        });
+    }
+    rs
+}
+
+fn game_over_scores(event: &GameEvent) -> &[ttr_core::event::FinalScore] {
+    match event {
+        GameEvent::GameOver { final_scores, .. } => final_scores,
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn globetrotter_goes_to_the_player_with_most_completed_tickets() {
+    let event = finish_game(
+        globetrotter_ruleset(false),
+        [&["dummy_0", "dummy_1"], &["B_C_t"]],
+    );
+    let scores = game_over_scores(&event);
+    assert_eq!(
+        scores
+            .iter()
+            .map(|s| s.globetrotter_bonus)
+            .collect::<Vec<_>>(),
+        [15, 0]
+    );
+    for s in scores {
+        assert_eq!(
+            s.total,
+            s.route_points
+                + s.ticket_completed
+                + s.ticket_failed
+                + s.longest_path_bonus
+                + s.globetrotter_bonus
+                + s.station_points
+        );
+    }
+    assert!(scores[0].winner && !scores[1].winner);
+}
+
+#[test]
+fn globetrotter_tie_gives_the_bonus_to_everyone_tied() {
+    let event = finish_game(globetrotter_ruleset(false), [&["dummy_0"], &["B_C_t"]]);
+    let scores = game_over_scores(&event);
+    assert_eq!(
+        scores
+            .iter()
+            .map(|s| s.globetrotter_bonus)
+            .collect::<Vec<_>>(),
+        [15, 15]
+    );
+}
+
+#[test]
+fn globetrotter_is_not_awarded_when_nobody_completed_a_ticket() {
+    let event = finish_game(globetrotter_ruleset(false), [&["A_F"], &["A_D"]]);
+    let scores = game_over_scores(&event);
+    assert!(scores.iter().all(|s| s.globetrotter_bonus == 0));
+    // Un ruleset senza il bonus non lo assegna mai.
+    let event = finish_game(mini_ruleset(), [&["dummy_0"], &["A_D"]]);
+    assert!(
+        game_over_scores(&event)
+            .iter()
+            .all(|s| s.globetrotter_bonus == 0)
+    );
+}
+
+#[test]
+fn ruleset_without_longest_path_scores_no_path_bonus() {
+    let event = finish_game(globetrotter_ruleset(false), [&["dummy_0"], &["B_C_t"]]);
+    let GameEvent::GameOver {
+        final_scores,
+        longest_path_players,
+        longest_path_bonus,
+    } = &event
+    else {
+        unreachable!()
+    };
+    assert!(longest_path_players.is_empty());
+    assert_eq!(*longest_path_bonus, 0);
+    assert!(final_scores.iter().all(|s| s.longest_path_bonus == 0));
+
+    // Con il bonus, invece, entrambi i percorsi (1 e 2 treni) contano: vince il più lungo.
+    let event = finish_game(globetrotter_ruleset(true), [&["dummy_0"], &["B_C_t"]]);
+    let GameEvent::GameOver {
+        longest_path_players,
+        longest_path_bonus,
+        final_scores,
+    } = &event
+    else {
+        unreachable!()
+    };
+    assert_eq!(longest_path_players, &[1]);
+    assert_eq!(*longest_path_bonus, 10);
+    assert_eq!(final_scores[1].longest_path_bonus, 10);
+
+    // Senza alcun bonus il ruleset è ammesso e la partita finisce.
+    let mut rs = mini_ruleset();
+    rs.bonuses.clear();
+    let event = finish_game(rs, [&["dummy_0"], &["B_C_t"]]);
+    assert!(
+        game_over_scores(&event)
+            .iter()
+            .all(|s| { s.longest_path_bonus == 0 && s.globetrotter_bonus == 0 })
+    );
+}
+
+#[test]
+fn globetrotter_winners_handles_ties_and_zero() {
+    use ttr_core::scoring::{PlayerScore, globetrotter_winners};
+    let score = |completed_count: u32| PlayerScore {
+        route_points: 0,
+        completed_tickets: 0,
+        completed_count,
+        failed_tickets: 0,
+        longest_path: 0,
+        longest_path_exact: true,
+        longest_path_routes: Vec::new(),
+        borrowed_routes: Vec::new(),
+    };
+    let winners = |counts: &[u32]| {
+        let scores: Vec<PlayerScore> = counts.iter().map(|&c| score(c)).collect();
+        globetrotter_winners(&scores)
+    };
+    assert_eq!(winners(&[1, 3, 2]), [1]);
+    assert_eq!(winners(&[2, 3, 3]), [1, 2]);
+    assert!(winners(&[0, 0, 0]).is_empty());
+    assert!(winners(&[]).is_empty());
 }

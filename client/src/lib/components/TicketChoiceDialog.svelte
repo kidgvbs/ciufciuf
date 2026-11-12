@@ -3,6 +3,7 @@
   // selezionato appare sulla mappa con la linea tratteggiata del suo colore; deselezionato, sparisce.
 
   import type { TicketInfo } from '../proto';
+  import { canConfirmTicketChoice, ticketChoiceHint, type TicketChoiceRules } from '../ticket-offer';
   import { gameMap } from '../game-map.svelte.ts';
   import { offeredTicketPins, ticketPinColor } from '../map-utils';
   import MapSvg from './MapSvg.svelte';
@@ -17,9 +18,10 @@
     return cityMap.get(id)?.name ?? id;
   }
 
-  let { offeredTickets, minKeep, onConfirm, onCancel }: {
+  let { offeredTickets, choice, onConfirm, onCancel }: {
     offeredTickets: TicketInfo[];
-    minKeep: number;
+    /** Vincoli del server (`legal_moves.ticket_choice`); `null` finché non arrivano: nessuna conferma. */
+    choice: TicketChoiceRules | null;
     onConfirm: (keepIds: string[]) => void;
     onCancel: () => void;
   } = $props();
@@ -40,7 +42,7 @@
     selected = next;
   }
 
-  const canConfirm = $derived(selected.size >= minKeep);
+  const canConfirm = $derived(canConfirmTicketChoice(selected, choice));
 
   function confirm() {
     onConfirm([...selected]);
@@ -129,7 +131,7 @@
     <div class="dialog-head">
       <h2>Scegli i biglietti</h2>
       <p class="hint">
-        Tieni almeno {minKeep} {minKeep > 1 ? 'biglietti' : 'biglietto'}
+        {choice ? ticketChoiceHint(choice, (id) => ticketMap.get(id)?.deck) : 'Scegli i biglietti da tenere'}
         &mdash; selezionati: {selected.size}
       </p>
     </div>

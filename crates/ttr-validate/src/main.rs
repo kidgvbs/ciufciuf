@@ -237,6 +237,12 @@ fn main() {
         map.routes.len(),
         map.tickets.len()
     );
+    println!(
+        "Modalità: {} (set '{}'), biglietti in gioco: {}",
+        ruleset.mode,
+        ruleset.ticket_set,
+        map.tickets_in_play(&ruleset).count()
+    );
 
     let report = validate(&map, &ruleset);
 

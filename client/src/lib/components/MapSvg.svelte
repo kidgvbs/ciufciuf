@@ -5,6 +5,7 @@
   // Un errore di rendering di `MapBoard` mostra "Mappa non disponibile" con "Riprova".
 
   import { gameMap } from '../game-map.svelte.ts';
+  import { rulesetCatalog } from '../rulesets.svelte.ts';
   import MapBoard from './MapBoard.svelte';
 
   let props: {
@@ -29,7 +30,7 @@
 {:else if data && layout}
   {#key data}
     <svelte:boundary>
-      <MapBoard {...props} mapData={data} {layout} />
+      <MapBoard {...props} mapData={data} {layout} bigCities={rulesetCatalog.bigCities(gameMap.rulesetId)} />
       {#snippet failed(_error, reset)}
         <div class="map-status" role="alert">
           <p>Mappa non disponibile</p>

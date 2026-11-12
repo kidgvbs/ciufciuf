@@ -9,8 +9,8 @@ use crate::density::{RouteSpan, max_cyclomatic_number};
 use crate::error::EngineInitError;
 use crate::scoring::MAX_CYCLOMATIC_NUMBER;
 use crate::types::{
-    COLOR_COUNT, FACE_UP_COUNT, INITIAL_HAND_SIZE, LOCO_RESET_THRESHOLD, LONGEST_PATH_BONUS_TYPE,
-    MapData, Route, RouteColor, Ruleset, sister_route_id,
+    COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE, LOCO_RESET_THRESHOLD,
+    LONGEST_PATH_BONUS_TYPE, MapData, Route, RouteColor, Ruleset, sister_route_id,
 };
 
 /// A double route needs a `_1`/`_2` id and a sister route that is also double, with the
@@ -46,6 +46,9 @@ impl Ruleset {
         if self.name.trim().is_empty() {
             return Err(EngineInitError::EmptyRulesetName);
         }
+        if self.mode.trim().is_empty() {
+            return Err(EngineInitError::EmptyRulesetMode);
+        }
         if self.players.min == 0 || self.players.min > self.players.max {
             return Err(EngineInitError::InvalidPlayerRange {
                 min: self.players.min,
@@ -70,19 +73,53 @@ impl Ruleset {
 
         self.check_map(map)?;
 
-        if !self
-            .bonuses
-            .iter()
-            .any(|b| b.bonus_type == LONGEST_PATH_BONUS_TYPE)
-        {
-            return Err(EngineInitError::MissingLongestPathBonus {
-                bonus_type: LONGEST_PATH_BONUS_TYPE,
-            });
-        }
-
+        self.check_bonuses()?;
+        self.check_big_cities(map)?;
         self.check_train_deck(num_players)?;
         self.check_ticket_decks(map, num_players)?;
-        self.check_longest_path_budget(map)
+        // Senza il bonus il percorso più lungo non viene mai calcolato.
+        if self.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some() {
+            self.check_longest_path_budget(map)?;
+        }
+        Ok(())
+    }
+
+    /// Solo tipi di bonus noti, ciascuno al massimo una volta.
+    fn check_bonuses(&self) -> Result<(), EngineInitError> {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for bonus in &self.bonuses {
+            let known = [LONGEST_PATH_BONUS_TYPE, GLOBETROTTER_BONUS_TYPE];
+            if !known.contains(&bonus.bonus_type.as_str()) {
+                return Err(EngineInitError::UnknownBonusType {
+                    bonus_type: bonus.bonus_type.clone(),
+                });
+            }
+            if !seen.insert(bonus.bonus_type.as_str()) {
+                return Err(EngineInitError::DuplicateBonusType {
+                    bonus_type: bonus.bonus_type.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// `bigCities`: città esistenti e senza ripetizioni.
+    fn check_big_cities(&self, map: &MapData) -> Result<(), EngineInitError> {
+        let cities: BTreeSet<&str> = map.cities.iter().map(|c| c.id.as_str()).collect();
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for city in &self.big_cities {
+            if !cities.contains(city.as_str()) {
+                return Err(EngineInitError::BigCityUnknown {
+                    city_id: city.clone(),
+                });
+            }
+            if !seen.insert(city.as_str()) {
+                return Err(EngineInitError::DuplicateBigCity {
+                    city_id: city.clone(),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Ids, cities, route lengths, ticket endpoints and double-route pairs of the map.
@@ -181,6 +218,20 @@ impl Ruleset {
                     city_id: ticket.from.clone(),
                 });
             }
+            if ticket.sets.is_empty() {
+                return Err(EngineInitError::TicketSetsEmpty {
+                    ticket_id: ticket.id.clone(),
+                });
+            }
+            let mut sets: BTreeSet<&str> = BTreeSet::new();
+            for set in &ticket.sets {
+                if !sets.insert(set.as_str()) {
+                    return Err(EngineInitError::DuplicateTicketSet {
+                        ticket_id: ticket.id.clone(),
+                        set: set.clone(),
+                    });
+                }
+            }
         }
 
         if let Some(stations) = &self.stations {
@@ -271,6 +322,12 @@ impl Ruleset {
     }
 
     fn check_ticket_decks(&self, map: &MapData, num_players: usize) -> Result<(), EngineInitError> {
+        if map.tickets_in_play(self).next().is_none() {
+            return Err(EngineInitError::EmptyTicketSet {
+                set: self.ticket_set.clone(),
+            });
+        }
+
         let mut listed: BTreeSet<&str> = BTreeSet::new();
         for deck in &self.ticket_decks {
             if !listed.insert(deck.as_str()) {
@@ -297,7 +354,7 @@ impl Ruleset {
         }
 
         let mut deck_sizes: BTreeMap<&str, usize> = BTreeMap::new();
-        for ticket in &map.tickets {
+        for ticket in map.tickets_in_play(self) {
             if !listed.contains(ticket.deck.as_str()) {
                 return Err(EngineInitError::TicketDeckNotListed {
                     ticket_id: ticket.id.clone(),
@@ -322,6 +379,26 @@ impl Ruleset {
             return Err(EngineInitError::InitialKeepMinExceedsDealt {
                 keep_min: self.initial_tickets.keep_min,
                 dealt: dealt_total,
+            });
+        }
+        for entry in &self.initial_tickets.dealt {
+            if let Some(keep_max) = entry.keep_max
+                && keep_max > entry.count
+            {
+                return Err(EngineInitError::DealtKeepMaxExceedsCount {
+                    deck: entry.deck.clone(),
+                    keep_max,
+                    count: entry.count,
+                });
+            }
+        }
+        let max_keep = self.initial_deck_rules().iter().fold(0u32, |acc, rule| {
+            acc.saturating_add(rule.max.map_or(rule.count, |max| max.min(rule.count)))
+        });
+        if self.initial_tickets.keep_min > max_keep {
+            return Err(EngineInitError::InitialKeepMinUnreachable {
+                keep_min: self.initial_tickets.keep_min,
+                max_keep,
             });
         }
         if self.ticket_draw.count == 0 {

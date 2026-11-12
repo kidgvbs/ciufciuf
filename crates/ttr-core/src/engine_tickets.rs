@@ -138,6 +138,32 @@ impl Engine {
         }
     }
 
+    /// Per ogni deck con `keepMax`, i biglietti tenuti (già verificati tra gli offerti)
+    /// non possono superarlo.
+    fn check_initial_deck_max(&self, keep: &[TicketId]) -> Result<(), EngineError> {
+        for rule in self.ruleset.initial_deck_rules() {
+            let Some(max) = rule.max else {
+                continue;
+            };
+            let kept = keep
+                .iter()
+                .filter(|tid| {
+                    self.tickets_by_id
+                        .get(*tid)
+                        .is_some_and(|t| t.deck == rule.deck)
+                })
+                .count();
+            if kept > max as usize {
+                return Err(EngineError::TicketChoiceAboveDeckMax {
+                    deck: rule.deck,
+                    kept,
+                    max,
+                });
+            }
+        }
+        Ok(())
+    }
+
     fn handle_initial_draft_choice(
         &mut self,
         player_index: usize,
@@ -160,6 +186,7 @@ impl Engine {
         };
 
         let discarded = validate_keep(keep, offered, self.ruleset.initial_tickets.keep_min)?;
+        self.check_initial_deck_max(keep)?;
 
         self.add_kept_tickets(player_index, keep);
 

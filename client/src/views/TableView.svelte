@@ -30,7 +30,8 @@
   import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations } from '../lib/scores';
   import { formatSavedAt } from '../lib/saves';
   import { rulesetCatalog } from '../lib/rulesets.svelte.ts';
-  import { defaultRulesetId } from '../lib/rulesets';
+  import { defaultRulesetId, groupByMap } from '../lib/rulesets';
+  import ModePicker from '../lib/components/ModePicker.svelte';
   import MapSvg from '../lib/components/MapSvg.svelte';
   import MapCard from '../lib/components/MapCard.svelte';
   import TrainCard from '../lib/components/TrainCard.svelte';
@@ -433,6 +434,21 @@
     if (!catalog.some((r) => r.id === rulesetId)) rulesetId = defaultRulesetId(catalog) ?? '';
   });
 
+  // Selettore «Nuova partita»: una card per mappa, le modalità della mappa scelta sotto le card.
+  const mapGroups = $derived(groupByMap(rulesetCatalog.items));
+  const selectedMapId = $derived(rulesetCatalog.items.find((r) => r.id === rulesetId)?.mapId ?? '');
+  const selectedGroup = $derived(mapGroups.find((g) => g.mapId === selectedMapId));
+
+  // Colonne e righe di fine partita: solo i bonus che il ruleset prevede.
+  const showLongestPath = $derived(rulesetCatalog.hasLongestPath(gameMap.rulesetId));
+  const showGlobetrotter = $derived(rulesetCatalog.hasGlobetrotter(gameMap.rulesetId));
+  const globetrotterIds = $derived(
+    (publicStore.finalScores ?? []).filter((fs) => fs.globetrotterBonus > 0).map((fs) => fs.playerId),
+  );
+  function namesOf(ids: string[]): string {
+    return ids.map((pid) => publicStore.playersSummary.find((ps) => ps.player_id === pid)?.name ?? pid).join(', ');
+  }
+
   // QR di rientro: la voce di un giocatore sparisce quando torna connesso o esce dal roster.
   $effect(() => {
     const pruned = pruneRejoinLinks(rejoinLinks, publicStore.playersSummary, missingPlayers);
@@ -545,15 +561,21 @@
             <div class="create-game">
               <h2 tabindex="-1" bind:this={newGameHeading}>Nuova partita</h2>
               <div class="map-cards">
-                {#each rulesetCatalog.items as rs (rs.id)}
+                {#each mapGroups as group (group.mapId)}
+                  {@const standard = group.rulesets[0]!}
                   <MapCard
                     {host}
-                    ruleset={rs}
-                    selected={rulesetId === rs.id}
-                    onSelect={(id) => (rulesetId = id)}
+                    ruleset={standard}
+                    selected={selectedMapId === group.mapId}
+                    onSelect={() => {
+                      if (selectedMapId !== group.mapId) rulesetId = standard.id;
+                    }}
                   />
                 {/each}
               </div>
+              {#if selectedGroup}
+                <ModePicker modes={selectedGroup.rulesets} value={rulesetId} onSelect={(id) => (rulesetId = id)} />
+              {/if}
               {#if rulesetCatalog.status === 'loading'}
                 <p class="hint" role="status">Caricamento mappe…</p>
               {:else if rulesetCatalog.status === 'error'}
@@ -578,7 +600,7 @@
                     <div class="game-row-info">
                       <strong>{g.name}</strong>
                       <span class="game-meta">
-                        {g.rulesetId} · {g.playersJoined}/{g.maxPlayers} giocatori
+                        {rulesetCatalog.title(g.rulesetId) ?? g.rulesetId} · {g.playersJoined}/{g.maxPlayers} giocatori
                         · {g.started ? 'in corso' : 'in lobby'}
                       </span>
                     </div>
@@ -595,7 +617,7 @@
                     <div class="game-row-info">
                       <strong>{s.name}</strong>
                       <span class="game-meta">
-                        {s.players.join(', ')} · {formatSavedAt(s.updatedAt)}
+                        {#if rulesetCatalog.title(s.rulesetId)}{rulesetCatalog.title(s.rulesetId)} · {/if}{s.players.join(', ')} · {formatSavedAt(s.updatedAt)}
                       </span>
                     </div>
                     <div class="game-row-actions">
@@ -692,7 +714,7 @@
         {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
         {#if winners}<div class="winner-line">🥇 Vince {winners}!</div>{/if}
         <table>
-          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th><th>Bonus</th>{#if hasStations}<th>Stazioni</th>{/if}<th>Totale</th></tr></thead>
+          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}<th>Totale</th></tr></thead>
           <tbody>
             {#each rankedScores(publicStore.finalScores) as fs}
               {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
@@ -700,7 +722,8 @@
                 <td><span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span> {fs.winner ? '🥇 ' : ''}{p?.name ?? fs.playerId}</td>
                 <td>{fs.routePoints}</td><td>+{fs.ticketCompleted}</td>
                 <td>{fs.ticketFailed < 0 ? fs.ticketFailed : '0'}</td>
-                <td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>
+                {#if showLongestPath}<td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>{/if}
+                {#if showGlobetrotter}<td>{fs.globetrotterBonus > 0 ? `🌍 +${fs.globetrotterBonus}` : '0'}</td>{/if}
                 {#if hasStations}<td>{fs.stationPoints > 0 ? `+${fs.stationPoints}` : '0'}</td>{/if}
                 <td class="total">{fs.total}</td>
               </tr>
@@ -722,8 +745,11 @@
             {/each}
           </div>
         {/if}
-        {#if publicStore.longestPathPlayerIds}
-          <div class="longest-path">🏆 {rulesetCatalog.bonusLabel(gameMap.rulesetId)}: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
+        {#if showLongestPath && publicStore.longestPathPlayerIds}
+          <div class="longest-path">🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}: {namesOf(publicStore.longestPathPlayerIds)}</div>
+        {/if}
+        {#if showGlobetrotter && globetrotterIds.length > 0}
+          <div class="longest-path">🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}: {namesOf(globetrotterIds)}</div>
         {/if}
       {/if}
       <!-- Mappa a fine partita: il percorso più lungo è evidenziato (glow dorato). -->

@@ -1,6 +1,15 @@
 // Catalogo dei ruleset del server, condiviso dalle viste (selettore mappe, nome del bonus).
 
-import { bonusLabel, loadRulesets, type RulesetInfo } from './rulesets';
+import {
+  bigCities,
+  globetrotterLabel,
+  hasGlobetrotter,
+  hasLongestPath,
+  loadRulesets,
+  longestPathLabel,
+  rulesetTitleById,
+  type RulesetInfo,
+} from './rulesets';
 
 export type RulesetCatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -32,8 +41,33 @@ class RulesetCatalogStore {
   }
 
   /** Nome del bonus percorso più lungo per `rulesetId` ('Longest Path' se il catalogo non lo conosce). */
-  bonusLabel(rulesetId: string | null | undefined): string {
-    return bonusLabel(this.items, rulesetId);
+  longestPathLabel(rulesetId: string | null | undefined): string {
+    return longestPathLabel(this.items, rulesetId);
+  }
+
+  /** Nome del bonus Globetrotter per `rulesetId` ('Globetrotter' se il catalogo non lo conosce). */
+  globetrotterLabel(rulesetId: string | null | undefined): string {
+    return globetrotterLabel(this.items, rulesetId);
+  }
+
+  /** Il ruleset prevede il bonus percorso più lungo (catalogo non pronto o ruleset ignoto → sì). */
+  hasLongestPath(rulesetId: string | null | undefined): boolean {
+    return hasLongestPath(this.items, rulesetId);
+  }
+
+  /** Il ruleset prevede il bonus Globetrotter. */
+  hasGlobetrotter(rulesetId: string | null | undefined): boolean {
+    return hasGlobetrotter(this.items, rulesetId);
+  }
+
+  /** Ids delle grandi città del ruleset (vuoto se nessuna o ruleset ignoto). */
+  bigCities(rulesetId: string | null | undefined): string[] {
+    return bigCities(this.items, rulesetId);
+  }
+
+  /** Titolo del ruleset («USA · 1910») o `null` se il catalogo non lo conosce. */
+  title(rulesetId: string | null | undefined): string | null {
+    return rulesetTitleById(this.items, rulesetId);
   }
 }
 

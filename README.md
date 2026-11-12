@@ -7,7 +7,7 @@ Gioco in stile *Ticket to Ride* per la **LAN di casa**: la TV mostra la mappa co
 
 ## Stato
 
-Giocabile dall'inizio alla fine sulle mappe **USA** (`usa_v2`) ed **Europe** (`europe`: tunnel, traghetti, stazioni, European Express, regolamento 2026), da 2 a 5 giocatori, con **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Il bot non c'è ancora.
+Giocabile dall'inizio alla fine sulle mappe **USA** (`usa_v2`) ed **Europe** (`europe`: tunnel, traghetti, stazioni, European Express, regolamento 2026), ciascuna con le modalità dei pacchetti biglietti (USA: 1910, Grandi Città, Mega; Europe: Estesa, 1912, Grandi Città, Mega), da 2 a 5 giocatori, con **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Il bot non c'è ancora.
 
 Per orientarsi nel dettaglio:
 

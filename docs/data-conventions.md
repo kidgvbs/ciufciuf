@@ -38,10 +38,19 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 - Ogni mazzo compare una sola volta in `ticketDecks`; `initialTickets.dealt[].deck` e `ticketDraw.deck` devono essere elencati in `ticketDecks`, e un mazzo elencato in `dealt` deve contenere almeno `giocatori × count` biglietti.
 - `initialTickets.keepMin` non supera il totale dei biglietti distribuiti e `ticketDraw.keepMin` non supera `ticketDraw.count`; `ticketDraw.count` è almeno 1.
 - Con `setupDiscards: "reshuffleBottom"` tornano in fondo alla pila di pesca solo gli scarti del setup appartenenti a `ticketDraw.deck`; gli scarti degli altri mazzi escono dalla partita.
+- `initialTickets.dealt[].keepMax` (opzionale) limita i biglietti di quel mazzo tenibili nel draft iniziale (Europe Mega: al massimo 1 lungo); `keepMax <= count` e `keepMin` deve restare raggiungibile.
+
+## Modalità e set di biglietti
+
+- Ogni ruleset è una modalità di una mappa: `name` (nome della mappa), `mode` (nome della modalità, non vuoto), `modeOrder` (ordine nel selettore; 0 = Standard).
+- Ogni biglietto ha `sets` (non vuoto, senza duplicati): le modalità in cui è in gioco. Il ruleset sceglie il proprio con `ticketSet`; i biglietti in gioco sono quelli il cui `sets` lo contiene, nell'ordine del file, e il set non può essere vuoto.
+- Un biglietto con valori diversi tra modalità è un biglietto distinto (i 4 rivisti del 1910 hanno id `<a>_<b>_1910`).
+- I biglietti nuovi si aggiungono in coda: l'ordine dei biglietti in gioco è parte del replay dei ruleset esistenti.
+- `bigCities` (opzionale) elenca le città da evidenziare sulla mappa nelle modalità Grandi Città; solo visualizzazione, città esistenti e senza duplicati.
 
 ## Bonus
 
-- Il bonus del percorso più lungo è la voce di `bonuses` con `"type": "longest_path"`; se manca, il ruleset non è valido.
+- Tipi ammessi in `bonuses`: `"longest_path"` (percorso più lungo, parità a tutti) e `"globetrotter"` (più biglietti completati, parità a tutti, nessuno se il massimo è 0). Un tipo sconosciuto o ripetuto rende il ruleset non valido; la lista può essere vuota (USA Grandi Città). Senza `longest_path` il percorso più lungo non viene calcolato.
 
 ## Validazione
 

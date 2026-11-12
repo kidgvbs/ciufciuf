@@ -13,9 +13,9 @@ use crate::event::GameEvent;
 use crate::rng::SeededRng;
 use crate::scoring::PlayerConnectivity;
 use crate::types::{
-    CityId, ClaimedRouteInfo, FACE_UP_COUNT, INITIAL_HAND_SIZE, LONGEST_PATH_BONUS_TYPE, MapData,
-    PendingTunnel, PlayerState, Route, RouteColor, RouteId, Ruleset, TicketDef, TicketId,
-    sister_route_id,
+    CityId, ClaimedRouteInfo, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
+    LONGEST_PATH_BONUS_TYPE, MapData, PendingTunnel, PlayerState, Route, RouteColor, RouteId,
+    Ruleset, TicketDef, TicketId, sister_route_id,
 };
 
 /// Dati di una rotta risolti al caricamento della mappa.
@@ -66,8 +66,11 @@ pub struct Engine {
     pub(crate) route_info: BTreeMap<RouteId, RouteInfo>,
     pub(crate) tickets_by_id: BTreeMap<TicketId, TicketDef>,
 
-    /// Punti del bonus del percorso più lungo, letti dal ruleset in `new`.
-    pub(crate) longest_path_bonus_points: u32,
+    /// Punti del bonus del percorso più lungo, letti dal ruleset in `new`; `None` se
+    /// il ruleset non lo prevede.
+    pub(crate) longest_path_bonus_points: Option<u32>,
+    /// Punti del bonus globetrotter (più biglietti completati); `None` se assente.
+    pub(crate) globetrotter_bonus_points: Option<u32>,
     /// Giocatori il cui percorso più lungo non è esatto (budget di ricerca esaurito),
     /// calcolati a fine partita; vuoto sulle mappe validate.
     pub(crate) longest_path_inexact: Vec<usize>,
@@ -143,16 +146,8 @@ impl Engine {
             }
         }
         ruleset.check_setup(&map, num_players)?;
-        let Some(longest_path_bonus_points) = ruleset
-            .bonuses
-            .iter()
-            .find(|b| b.bonus_type == LONGEST_PATH_BONUS_TYPE)
-            .map(|b| b.points)
-        else {
-            return Err(EngineInitError::MissingLongestPathBonus {
-                bonus_type: LONGEST_PATH_BONUS_TYPE,
-            });
-        };
+        let longest_path_bonus_points = ruleset.bonus_points(LONGEST_PATH_BONUS_TYPE);
+        let globetrotter_bonus_points = ruleset.bonus_points(GLOBETROTTER_BONUS_TYPE);
 
         let mut rng = SeededRng::new(seed);
 
@@ -180,8 +175,7 @@ impl Engine {
         let mut ticket_piles: BTreeMap<String, Vec<TicketId>> = BTreeMap::new();
         for deck_name in &ruleset.ticket_decks {
             let mut ids: Vec<TicketId> = map
-                .tickets
-                .iter()
+                .tickets_in_play(&ruleset)
                 .filter(|t| &t.deck == deck_name)
                 .map(|t| t.id.clone())
                 .collect();
@@ -203,7 +197,10 @@ impl Engine {
                     let Some(tid) = pile.pop() else {
                         return Err(EngineInitError::TicketDeckTooSmall {
                             deck: entry.deck.clone(),
-                            have: map.tickets.iter().filter(|t| t.deck == entry.deck).count(),
+                            have: map
+                                .tickets_in_play(&ruleset)
+                                .filter(|t| t.deck == entry.deck)
+                                .count(),
                             needed: num_players.saturating_mul(entry.count as usize),
                         });
                     };
@@ -288,6 +285,7 @@ impl Engine {
             route_info,
             tickets_by_id,
             longest_path_bonus_points,
+            globetrotter_bonus_points,
             longest_path_inexact: Vec::new(),
             longest_path_routes: Vec::new(),
             action_log: Vec::new(),

@@ -1,5 +1,8 @@
 {
   "name": "Europe",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "base",
   "map": "europe",
   "players": {
     "min": 2,

@@ -8,7 +8,7 @@ use crate::engine::Engine;
 use crate::engine_deck::reveal_from_deck;
 use crate::error::{EngineError, GamePhase};
 use crate::event::{FinalScore, GameEvent};
-use crate::scoring::{UnionFind, compute_final_scores, evaluate_tickets};
+use crate::scoring::{UnionFind, compute_final_scores, evaluate_tickets, globetrotter_winners};
 use crate::types::{
     ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
     RouteColor, points_to_score,
@@ -438,6 +438,11 @@ impl Engine {
             self.longest_path_bonus_points,
         );
 
+        let globetrotter = match self.globetrotter_bonus_points {
+            Some(points) => (globetrotter_winners(&scores), points_to_score(points)),
+            None => (Vec::new(), 0),
+        };
+
         self.longest_path_inexact = scores
             .iter()
             .enumerate()
@@ -460,12 +465,18 @@ impl Engine {
                 } else {
                     0
                 };
+                let globetrotter_bonus = if globetrotter.0.contains(&i) {
+                    globetrotter.1
+                } else {
+                    0
+                };
                 let station_points = self.unbuilt_station_points(i);
                 let total = p
                     .score
                     .saturating_add(s.completed_tickets)
                     .saturating_add(s.failed_tickets)
                     .saturating_add(bonus_val)
+                    .saturating_add(globetrotter_bonus)
                     .saturating_add(station_points);
                 FinalScore {
                     player_index: i,
@@ -473,6 +484,7 @@ impl Engine {
                     ticket_completed: s.completed_tickets,
                     ticket_failed: s.failed_tickets,
                     longest_path_bonus: bonus_val,
+                    globetrotter_bonus,
                     total,
                     station_points,
                     borrowed_routes: s.borrowed_routes.clone(),

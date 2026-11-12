@@ -58,18 +58,35 @@ pub async fn api_not_found() -> axum::response::Response {
 struct RulesetListItem {
     id: String,
     name: String,
+    /// Modalità del ruleset (es. "Standard", "Mega") e sua posizione sulla mappa.
+    mode: String,
+    #[serde(rename = "modeOrder")]
+    mode_order: u32,
     #[serde(rename = "mapId")]
     map_id: String,
     cities: usize,
     routes: usize,
+    /// Biglietti in gioco con il `ticketSet` del ruleset.
     tickets: usize,
     #[serde(rename = "minPlayers")]
     min_players: u32,
     #[serde(rename = "maxPlayers")]
     max_players: u32,
-    /// Etichetta del bonus del percorso più lungo.
-    #[serde(rename = "bonusLabel")]
-    bonus_label: String,
+    /// Bonus di fine partita del ruleset.
+    bonuses: Vec<ttr_core::types::Bonus>,
+    /// Città «grandi» della modalità Grandi Città (vuoto altrove).
+    #[serde(rename = "bigCities")]
+    big_cities: Vec<String>,
+    /// Biglietti distribuiti a ogni giocatore nel draft iniziale.
+    #[serde(rename = "initialDealt")]
+    initial_dealt: u32,
+    #[serde(rename = "initialKeepMin")]
+    initial_keep_min: u32,
+    /// Biglietti offerti a ogni pesca di metà partita.
+    #[serde(rename = "drawCount")]
+    draw_count: u32,
+    #[serde(rename = "drawKeepMin")]
+    draw_keep_min: u32,
     /// La mappa ha almeno una rotta tunnel.
     tunnels: bool,
     /// La mappa ha almeno una rotta con traghetti.
@@ -84,33 +101,38 @@ struct ListRulesetsResponse {
 }
 
 /// GET /api/rulesets — i ruleset caricati con i dati per sceglierli in lobby,
-/// ordinati per id.
+/// ordinati per mappa, ordine della modalità e id.
 pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
-    let rulesets = state
+    let mut rulesets: Vec<RulesetListItem> = state
         .rulesets
         .iter()
         .filter_map(|(id, ruleset)| {
             let map = state.map(&ruleset.map)?;
-            let bonus = ruleset
-                .bonuses
-                .iter()
-                .find(|b| b.bonus_type == ttr_core::types::LONGEST_PATH_BONUS_TYPE)?;
             Some(RulesetListItem {
                 id: id.clone(),
                 name: ruleset.name.clone(),
+                mode: ruleset.mode.clone(),
+                mode_order: ruleset.mode_order,
                 map_id: ruleset.map.clone(),
                 cities: map.cities.len(),
                 routes: map.routes.len(),
-                tickets: map.tickets.len(),
+                tickets: map.tickets_in_play(ruleset).count(),
                 min_players: ruleset.players.min,
                 max_players: ruleset.players.max,
-                bonus_label: bonus.label.clone(),
+                bonuses: ruleset.bonuses.clone(),
+                big_cities: ruleset.big_cities.clone(),
+                initial_dealt: ruleset.initial_tickets.dealt.iter().map(|d| d.count).sum(),
+                initial_keep_min: ruleset.initial_tickets.keep_min,
+                draw_count: ruleset.ticket_draw.count,
+                draw_keep_min: ruleset.ticket_draw.keep_min,
                 tunnels: map.routes.iter().any(|r| r.tunnel),
                 ferries: map.routes.iter().any(|r| r.ferries > 0),
                 stations: ruleset.stations.is_some(),
             })
         })
         .collect();
+    rulesets
+        .sort_by(|a, b| (&a.map_id, a.mode_order, &a.id).cmp(&(&b.map_id, b.mode_order, &b.id)));
     Json(ListRulesetsResponse { rulesets })
 }
 

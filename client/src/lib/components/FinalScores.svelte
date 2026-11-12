@@ -8,15 +8,17 @@
   import type { MapData } from '../map-utils';
   import type { FinalScoreInfo, PlayerSummary } from '../proto';
 
-  let { scores, players, playerId, longestPathPlayerIds, bonusName, mapData, children }: {
+  let { scores, players, playerId, longestPathPlayerIds, longestPathName, globetrotterName, mapData, children }: {
     scores: FinalScoreInfo[];
     players: PlayerSummary[];
     /** Giocatore del telefono: la sua scheda è evidenziata. */
     playerId: string;
     /** Chi ha il bonus del percorso più lungo (`null` finché non è noto). */
     longestPathPlayerIds: string[] | null;
-    /** Nome del bonus per il percorso più lungo (varia per mappa). */
-    bonusName: string;
+    /** Nome del bonus per il percorso più lungo (varia per mappa); `null` se il ruleset non lo prevede. */
+    longestPathName: string | null;
+    /** Nome del bonus Globetrotter; `null` se il ruleset non lo prevede. */
+    globetrotterName: string | null;
     /** Mappa della partita (nomi delle città); `null` finché non è caricata. */
     mapData: MapData | null;
     /** Contenuto mostrato fra la riga del vincitore e la classifica (es. la mappa). */
@@ -24,6 +26,11 @@
   } = $props();
 
   const winners = $derived(winnerNames(scores, players));
+  const globetrotterIds = $derived(scores.filter((fs) => fs.globetrotterBonus > 0).map((fs) => fs.playerId));
+
+  function namesOf(ids: string[]): string {
+    return ids.map((pid) => players.find((ps) => ps.player_id === pid)?.name ?? pid).join(', ');
+  }
 </script>
 
 {#if winners}<p class="winner-line">🥇 Vince {winners}!</p>{/if}
@@ -41,7 +48,8 @@
       <div class="score-detail">
         Rotte {fs.routePoints} · Biglietti +{fs.ticketCompleted}
         {#if fs.ticketFailed < 0} · {fs.ticketFailed}{/if}
-        {#if fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
+        {#if longestPathName !== null && fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
+        {#if fs.globetrotterBonus > 0} · 🌍 +{fs.globetrotterBonus}{/if}
         {#if (fs.stationPoints ?? 0) > 0} · 🏠 +{fs.stationPoints}{/if}
       </div>
       {#if borrowed.length > 0}
@@ -53,12 +61,14 @@
     </div>
   {/each}
 </div>
-{#if longestPathPlayerIds}
+{#if longestPathName !== null && longestPathPlayerIds}
   <div class="longest-banner">
-    🏆 {bonusName}:
-    {longestPathPlayerIds
-      .map((pid) => players.find((ps) => ps.player_id === pid)?.name ?? pid)
-      .join(', ')}
+    🏆 {longestPathName}: {namesOf(longestPathPlayerIds)}
+  </div>
+{/if}
+{#if globetrotterName !== null && globetrotterIds.length > 0}
+  <div class="longest-banner">
+    🌍 {globetrotterName}: {namesOf(globetrotterIds)}
   </div>
 {/if}
 

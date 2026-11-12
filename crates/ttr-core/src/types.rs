@@ -47,6 +47,21 @@ pub struct TicketDef {
     pub to: String,
     pub points: u32,
     pub deck: String, // "regular" | "long" (future)
+    /// Modalità (`Ruleset::ticket_set`) in cui il biglietto è in gioco; non vuoto,
+    /// senza duplicati.
+    pub sets: Vec<String>,
+}
+
+impl MapData {
+    /// Biglietti in gioco con il ruleset (`ticket_set`), nell'ordine del file.
+    pub fn tickets_in_play<'a>(
+        &'a self,
+        ruleset: &'a Ruleset,
+    ) -> impl Iterator<Item = &'a TicketDef> {
+        self.tickets
+            .iter()
+            .filter(|t| t.sets.contains(&ruleset.ticket_set))
+    }
 }
 
 // ── Ruleset descriptor ───────────────────────────────────────────────
@@ -56,6 +71,15 @@ pub struct TicketDef {
 pub struct Ruleset {
     /// Nome mostrato nell'elenco dei ruleset; obbligatorio e non vuoto.
     pub name: String,
+    /// Modalità di gioco mostrata nell'elenco dei ruleset (es. "Standard", "Mega");
+    /// obbligatoria e non vuota.
+    pub mode: String,
+    /// Posizione della modalità tra quelle della stessa mappa.
+    #[serde(rename = "modeOrder", default)]
+    pub mode_order: u32,
+    /// Insieme di biglietti in gioco: i `MapData::tickets` il cui `sets` lo contiene.
+    #[serde(rename = "ticketSet")]
+    pub ticket_set: String,
     pub map: String,
     pub players: PlayersConfig,
     #[serde(rename = "trainsPerPlayer")]
@@ -72,6 +96,9 @@ pub struct Ruleset {
     #[serde(rename = "routePoints")]
     pub route_points: BTreeMap<String, u32>,
     pub bonuses: Vec<Bonus>,
+    /// Città «grandi» della modalità Grandi Città: solo visualizzazione.
+    #[serde(rename = "bigCities", default)]
+    pub big_cities: Vec<CityId>,
     #[serde(rename = "doubleRouteMinPlayers")]
     pub double_route_min_players: u32,
     #[serde(rename = "finalRoundIncludesTrigger")]
@@ -123,6 +150,9 @@ pub struct InitialTickets {
 pub struct TicketDealtEntry {
     pub deck: String,
     pub count: u32,
+    /// Massimo di biglietti di questo deck tenibili nel draft iniziale.
+    #[serde(rename = "keepMax", default)]
+    pub keep_max: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -139,6 +169,52 @@ pub struct Bonus {
     pub bonus_type: String,
     pub label: String,
     pub points: u32,
+}
+
+/// Regola di scelta del draft iniziale per un deck: biglietti distribuiti a ogni
+/// giocatore e massimo tenibile (`None` = nessun limite oltre a quelli distribuiti).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeckKeepRule {
+    pub deck: String,
+    pub count: u32,
+    pub max: Option<u32>,
+}
+
+impl Ruleset {
+    /// Regole del draft iniziale per deck, nell'ordine di prima comparsa in
+    /// `initialTickets.dealt`; le voci dello stesso deck si sommano.
+    #[must_use]
+    pub fn initial_deck_rules(&self) -> Vec<DeckKeepRule> {
+        let mut rules: Vec<DeckKeepRule> = Vec::new();
+        for entry in &self.initial_tickets.dealt {
+            let Some(rule) = rules.iter_mut().find(|r| r.deck == entry.deck) else {
+                rules.push(DeckKeepRule {
+                    deck: entry.deck.clone(),
+                    count: entry.count,
+                    max: entry.keep_max,
+                });
+                continue;
+            };
+            // Voce senza `keepMax`: tutti i suoi biglietti sono tenibili.
+            let unlimited = rule.max.is_none() && entry.keep_max.is_none();
+            let kept = rule
+                .max
+                .unwrap_or(rule.count)
+                .saturating_add(entry.keep_max.unwrap_or(entry.count));
+            rule.count = rule.count.saturating_add(entry.count);
+            rule.max = (!unlimited).then_some(kept);
+        }
+        rules
+    }
+
+    /// Punti del bonus del tipo dato, se il ruleset lo prevede.
+    #[must_use]
+    pub fn bonus_points(&self, bonus_type: &str) -> Option<u32> {
+        self.bonuses
+            .iter()
+            .find(|b| b.bonus_type == bonus_type)
+            .map(|b| b.points)
+    }
 }
 
 /// Cosa fare degli scarti di setup (piano §4.1).
@@ -244,6 +320,9 @@ pub const TRAIN_COLORS: [CardColor; COLOR_COUNT] = [
 
 /// Valore di `Bonus::bonus_type` per il bonus del percorso più lungo.
 pub const LONGEST_PATH_BONUS_TYPE: &str = "longest_path";
+
+/// Valore di `Bonus::bonus_type` per il bonus di chi completa più biglietti.
+pub const GLOBETROTTER_BONUS_TYPE: &str = "globetrotter";
 
 /// Valore canonico di `Route::color` per le rotte grigie.
 pub const GRAY_ROUTE_COLOR: &str = "Gray";

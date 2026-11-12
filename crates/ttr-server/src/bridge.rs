@@ -6,8 +6,8 @@ use ttr_core::error::{EngineError, GamePhase};
 use ttr_core::{Action, ActionRecord, GameEvent};
 use ttr_proto::{
     BorrowedRoute, CardColor, ClaimedRoute, ErrorReason, FinalScoreInfo, GameState, LegalMoves,
-    PlayerSummary, RECENT_MOVES_MAX, RecentMove, StationPlacement, TicketInfo, TunnelDecisionMoves,
-    TunnelOutcome, TunnelReveal,
+    PlayerSummary, RECENT_MOVES_MAX, RecentMove, StationPlacement, TicketChoiceMoves, TicketInfo,
+    TicketKeepLimit, TunnelDecisionMoves, TunnelOutcome, TunnelReveal,
 };
 
 use crate::session::{GameSession, SessionPlayer};
@@ -434,6 +434,17 @@ pub(crate) fn build_private_state(
                 color: t.color,
                 can_pay: t.can_pay,
             }),
+            ticket_choice: lm.ticket_choice.map(|c| TicketChoiceMoves {
+                keep_min: c.keep_min,
+                limits: c
+                    .limits
+                    .into_iter()
+                    .map(|l| TicketKeepLimit {
+                        ticket_ids: l.ticket_ids,
+                        max: l.max,
+                    })
+                    .collect(),
+            }),
         }
     };
 
@@ -532,6 +543,7 @@ pub(crate) fn build_final_scores(
                 ticket_completed: fs.ticket_completed,
                 ticket_failed: fs.ticket_failed,
                 longest_path_bonus: fs.longest_path_bonus,
+                globetrotter_bonus: fs.globetrotter_bonus,
                 station_points: fs.station_points,
                 total: fs.total,
                 winner: fs.winner,
@@ -563,6 +575,7 @@ pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
         | EngineError::InsufficientTunnelCards { .. } => ErrorReason::InsufficientCards,
         EngineError::TicketChoiceBelowMin { .. }
         | EngineError::TicketChoiceTooMany { .. }
+        | EngineError::TicketChoiceAboveDeckMax { .. }
         | EngineError::TicketNotOffered { .. } => ErrorReason::TicketChoiceOutOfRange,
         EngineError::FaceUpIndexOutOfRange { .. }
         | EngineError::CardNotAvailable { .. }
@@ -601,6 +614,7 @@ pub(crate) fn error_action_ref(err: &EngineError) -> Option<String> {
         }
         EngineError::TicketChoiceBelowMin { .. }
         | EngineError::TicketChoiceTooMany { .. }
+        | EngineError::TicketChoiceAboveDeckMax { .. }
         | EngineError::TicketNotOffered { .. } => Some("CHOOSE_TICKETS".into()),
         _ => None,
     }
@@ -688,6 +702,22 @@ mod tests {
                 available: 3
             }),
             ErrorReason::TicketChoiceOutOfRange
+        );
+        assert_eq!(
+            engine_error_to_reason(&EngineError::TicketChoiceAboveDeckMax {
+                deck: "long".into(),
+                kept: 2,
+                max: 1
+            }),
+            ErrorReason::TicketChoiceOutOfRange
+        );
+        assert_eq!(
+            error_action_ref(&EngineError::TicketChoiceAboveDeckMax {
+                deck: "long".into(),
+                kept: 2,
+                max: 1
+            }),
+            Some("CHOOSE_TICKETS".into())
         );
         assert_eq!(
             engine_error_to_reason(&EngineError::TicketNotOffered {

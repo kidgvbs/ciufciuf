@@ -770,7 +770,8 @@ pub struct PlayerScore {
 /// - Biglietti: ±valore in base alla connettività Union-Find, con la migliore
 ///   assegnazione delle stazioni (D32, `stations` per giocatore)
 /// - Longest Continuous Path: +bonus a chi ha il percorso più lungo
-///   (parità → bonus a tutti i pari merito)
+///   (parità → bonus a tutti i pari merito); con `bonus_points = None` il bonus
+///   non esiste e il percorso più lungo non viene calcolato
 pub fn compute_final_scores(
     claimed_routes: &[Vec<ClaimedRouteInfo>], // per giocatore
     routes_map: &BTreeMap<RouteId, Route>,
@@ -778,7 +779,7 @@ pub fn compute_final_scores(
     player_tickets: &[BTreeMap<String, bool>], // ticket_id → kept
     stations: &[Vec<StationCandidates>],       // per giocatore, in ordine di costruzione
     connectivity: &mut PlayerConnectivity,
-    bonus_points: u32,
+    bonus_points: Option<u32>,
 ) -> (Vec<PlayerScore>, Vec<usize>, u32) {
     let num_players = claimed_routes.len();
     let mut scores: Vec<PlayerScore> = (0..num_players)
@@ -794,9 +795,14 @@ pub fn compute_final_scores(
         })
         .collect();
 
-    // Calcola longest path per ogni giocatore
+    // Calcola longest path per ogni giocatore, solo se il bonus esiste
     let mut longest_paths: Vec<u32> = vec![0; num_players];
-    for (pi, routes) in claimed_routes.iter().enumerate() {
+    let path_routes: &[Vec<ClaimedRouteInfo>] = if bonus_points.is_some() {
+        claimed_routes
+    } else {
+        &[]
+    };
+    for (pi, routes) in path_routes.iter().enumerate() {
         let cri_refs: Vec<&ClaimedRouteInfo> = routes.iter().collect();
         let trail = longest_path_trail(&cri_refs, routes_map);
         longest_paths[pi] = trail.path.length;
@@ -841,7 +847,23 @@ pub fn compute_final_scores(
         scores[pi].borrowed_routes = eval.borrowed;
     }
 
-    (scores, bonus_winners, bonus_points)
+    (scores, bonus_winners, bonus_points.unwrap_or(0))
+}
+
+/// Indici dei giocatori con più biglietti completati (parità → tutti i pari merito);
+/// nessuno se il massimo è 0 (bonus globetrotter).
+#[must_use]
+pub fn globetrotter_winners(scores: &[PlayerScore]) -> Vec<usize> {
+    let max = scores.iter().map(|s| s.completed_count).max().unwrap_or(0);
+    if max == 0 {
+        return Vec::new();
+    }
+    scores
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.completed_count == max)
+        .map(|(i, _)| i)
+        .collect()
 }
 
 #[cfg(test)]

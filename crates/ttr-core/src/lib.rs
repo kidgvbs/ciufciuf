@@ -38,7 +38,7 @@ pub use action::{Action, DrawSource};
 pub use engine::{ActionRecord, Engine};
 pub use error::{EngineError, EngineInitError, GamePhase};
 pub use event::GameEvent;
-pub use legal::{LegalMoves, TunnelMoves};
+pub use legal::{LegalMoves, TicketChoiceMoves, TicketKeepLimit, TunnelMoves};
 pub use types::{MapData, RouteColor, Ruleset};
 
 /// Versione delle regole del motore, registrata nei save.

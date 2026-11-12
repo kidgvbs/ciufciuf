@@ -1301,322 +1301,808 @@
       "from": "amsterdam",
       "to": "pamplona",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "amsterdam_wilno",
       "from": "amsterdam",
       "to": "wilno",
       "points": 12,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "angora_athina",
       "from": "angora",
       "to": "athina",
       "points": 5,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "angora_kharkov",
       "from": "angora",
       "to": "kharkov",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "athina_edinburgh",
       "from": "athina",
       "to": "edinburgh",
       "points": 21,
-      "deck": "long"
+      "deck": "long",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "athina_wilno",
       "from": "athina",
       "to": "wilno",
       "points": 11,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "barcelona_bruxelles",
       "from": "barcelona",
       "to": "bruxelles",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "barcelona_munchen",
       "from": "barcelona",
       "to": "munchen",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "berlin_bucuresti",
       "from": "berlin",
       "to": "bucuresti",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "berlin_london",
       "from": "berlin",
       "to": "london",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "berlin_moskva",
       "from": "berlin",
       "to": "moskva",
       "points": 12,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "berlin_roma",
       "from": "berlin",
       "to": "roma",
       "points": 9,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "brest_marseille",
       "from": "brest",
       "to": "marseille",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "brest_petrograd",
       "from": "brest",
       "to": "petrograd",
       "points": 20,
-      "deck": "long"
+      "deck": "long",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "brest_venezia",
       "from": "brest",
       "to": "venezia",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "brindisi_zagrab",
       "from": "brindisi",
       "to": "zagrab",
       "points": 6,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "brindisi_zurich",
       "from": "brindisi",
       "to": "zurich",
       "points": 6,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "bruxelles_danzig",
       "from": "bruxelles",
       "to": "danzig",
       "points": 9,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "bucuresti_riga",
       "from": "bucuresti",
       "to": "riga",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "budapest_sofia",
       "from": "budapest",
       "to": "sofia",
       "points": 5,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "budapest_zurich",
       "from": "budapest",
       "to": "zurich",
       "points": 6,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "cadiz_stockholm",
       "from": "cadiz",
       "to": "stockholm",
       "points": 21,
-      "deck": "long"
+      "deck": "long",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "constantinople_palermo",
       "from": "constantinople",
       "to": "palermo",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "constantinople_venezia",
       "from": "constantinople",
       "to": "venezia",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "danzig_lisboa",
       "from": "danzig",
       "to": "lisboa",
       "points": 20,
-      "deck": "long"
+      "deck": "long",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "dieppe_madrid",
       "from": "dieppe",
       "to": "madrid",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "edinburgh_paris",
       "from": "edinburgh",
       "to": "paris",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "erzurum_kobenhavn",
       "from": "erzurum",
       "to": "kobenhavn",
       "points": 21,
-      "deck": "long"
+      "deck": "long",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "erzurum_rostov",
       "from": "erzurum",
       "to": "rostov",
       "points": 5,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "essen_kyiv",
       "from": "essen",
       "to": "kyiv",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "essen_marseille",
       "from": "essen",
       "to": "marseille",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "frankfurt_kobenhavn",
       "from": "frankfurt",
       "to": "kobenhavn",
       "points": 5,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "frankfurt_smolensk",
       "from": "frankfurt",
       "to": "smolensk",
       "points": 13,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "kyiv_petrograd",
       "from": "kyiv",
       "to": "petrograd",
       "points": 6,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "kyiv_sochi",
       "from": "kyiv",
       "to": "sochi",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "london_wien",
       "from": "london",
       "to": "wien",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "madrid_zurich",
       "from": "madrid",
       "to": "zurich",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "moskva_palermo",
       "from": "moskva",
       "to": "palermo",
       "points": 20,
-      "deck": "long"
+      "deck": "long",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "paris_wien",
       "from": "paris",
       "to": "wien",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "paris_zagrab",
       "from": "paris",
       "to": "zagrab",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "roma_smyrna",
       "from": "roma",
       "to": "smyrna",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
     },
     {
       "id": "rostov_smolensk",
       "from": "rostov",
       "to": "smolensk",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "sarajevo_sevastopol",
       "from": "sarajevo",
       "to": "sevastopol",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "smolensk_warszawa",
       "from": "smolensk",
       "to": "warszawa",
       "points": 6,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "smyrna_sofia",
       "from": "smyrna",
       "to": "sofia",
       "points": 5,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega"]
     },
     {
       "id": "stockholm_wien",
       "from": "stockholm",
       "to": "wien",
       "points": 11,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["base", "expanded", "mega", "big_cities"]
+    },
+    {
+      "id": "amsterdam_rostov",
+      "from": "amsterdam",
+      "to": "rostov",
+      "points": 19,
+      "deck": "long",
+      "sets": ["1912", "mega"]
+    },
+    {
+      "id": "angora_essen",
+      "from": "angora",
+      "to": "essen",
+      "points": 16,
+      "deck": "long",
+      "sets": ["1912", "mega"]
+    },
+    {
+      "id": "london_sochi",
+      "from": "london",
+      "to": "sochi",
+      "points": 20,
+      "deck": "long",
+      "sets": ["1912", "mega"]
+    },
+    {
+      "id": "kyiv_pamplona",
+      "from": "kyiv",
+      "to": "pamplona",
+      "points": 18,
+      "deck": "long",
+      "sets": ["1912", "mega"]
+    },
+    {
+      "id": "paris_sevastopol",
+      "from": "paris",
+      "to": "sevastopol",
+      "points": 17,
+      "deck": "long",
+      "sets": ["1912", "mega"]
+    },
+    {
+      "id": "brindisi_riga",
+      "from": "brindisi",
+      "to": "riga",
+      "points": 17,
+      "deck": "long",
+      "sets": ["1912", "mega"]
+    },
+    {
+      "id": "amsterdam_venezia",
+      "from": "amsterdam",
+      "to": "venezia",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "bucuresti_erzurum",
+      "from": "bucuresti",
+      "to": "erzurum",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "bruxelles_stockholm",
+      "from": "bruxelles",
+      "to": "stockholm",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "cadiz_frankfurt",
+      "from": "cadiz",
+      "to": "frankfurt",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "budapest_danzig",
+      "from": "budapest",
+      "to": "danzig",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "dieppe_kobenhavn",
+      "from": "dieppe",
+      "to": "kobenhavn",
+      "points": 9,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "dieppe_marseille",
+      "from": "dieppe",
+      "to": "marseille",
+      "points": 5,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "edinburgh_essen",
+      "from": "edinburgh",
+      "to": "essen",
+      "points": 9,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "cadiz_lisboa",
+      "from": "cadiz",
+      "to": "lisboa",
+      "points": 2,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "munchen_petrograd",
+      "from": "munchen",
+      "to": "petrograd",
+      "points": 14,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "munchen_sarajevo",
+      "from": "munchen",
+      "to": "sarajevo",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "palermo_pamplona",
+      "from": "palermo",
+      "to": "pamplona",
+      "points": 12,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "kharkov_riga",
+      "from": "kharkov",
+      "to": "riga",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "smyrna_sochi",
+      "from": "smyrna",
+      "to": "sochi",
+      "points": 9,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "kyiv_sofia",
+      "from": "kyiv",
+      "to": "sofia",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "stockholm_wilno",
+      "from": "stockholm",
+      "to": "wilno",
+      "points": 12,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "venezia_warszawa",
+      "from": "venezia",
+      "to": "warszawa",
+      "points": 8,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "budapest_warszawa",
+      "from": "budapest",
+      "to": "warszawa",
+      "points": 5,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "sevastopol_warszawa",
+      "from": "sevastopol",
+      "to": "warszawa",
+      "points": 12,
+      "deck": "regular",
+      "sets": ["expanded", "1912", "mega"]
+    },
+    {
+      "id": "angora_berlin",
+      "from": "angora",
+      "to": "berlin",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_berlin",
+      "from": "athina",
+      "to": "berlin",
+      "points": 11,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "berlin_wien",
+      "from": "berlin",
+      "to": "wien",
+      "points": 3,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "angora_london",
+      "from": "angora",
+      "to": "london",
+      "points": 20,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_london",
+      "from": "athina",
+      "to": "london",
+      "points": 16,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "london_madrid",
+      "from": "london",
+      "to": "madrid",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "london_moskva",
+      "from": "london",
+      "to": "moskva",
+      "points": 19,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "london_paris",
+      "from": "london",
+      "to": "paris",
+      "points": 3,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "london_roma",
+      "from": "london",
+      "to": "roma",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "angora_madrid",
+      "from": "angora",
+      "to": "madrid",
+      "points": 21,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_madrid",
+      "from": "athina",
+      "to": "madrid",
+      "points": 16,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "berlin_madrid",
+      "from": "berlin",
+      "to": "madrid",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "madrid_moskva",
+      "from": "madrid",
+      "to": "moskva",
+      "points": 25,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "madrid_roma",
+      "from": "madrid",
+      "to": "roma",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "madrid_wien",
+      "from": "madrid",
+      "to": "wien",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "angora_moskva",
+      "from": "angora",
+      "to": "moskva",
+      "points": 14,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_moskva",
+      "from": "athina",
+      "to": "moskva",
+      "points": 14,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "angora_paris",
+      "from": "angora",
+      "to": "paris",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_paris",
+      "from": "athina",
+      "to": "paris",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "berlin_paris",
+      "from": "berlin",
+      "to": "paris",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "madrid_paris",
+      "from": "madrid",
+      "to": "paris",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "moskva_paris",
+      "from": "moskva",
+      "to": "paris",
+      "points": 18,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "paris_roma",
+      "from": "paris",
+      "to": "roma",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "angora_roma",
+      "from": "angora",
+      "to": "roma",
+      "points": 11,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_roma",
+      "from": "athina",
+      "to": "roma",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "moskva_roma",
+      "from": "moskva",
+      "to": "roma",
+      "points": 17,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "angora_wien",
+      "from": "angora",
+      "to": "wien",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "athina_wien",
+      "from": "athina",
+      "to": "wien",
+      "points": 8,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "moskva_wien",
+      "from": "moskva",
+      "to": "wien",
+      "points": 12,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
+    },
+    {
+      "id": "roma_wien",
+      "from": "roma",
+      "to": "wien",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["1912", "mega", "big_cities"]
     }
   ]
 }

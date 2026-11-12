@@ -6,6 +6,10 @@ import type { BorrowedRoute } from "./BorrowedRoute";
  */
 export type FinalScoreInfo = { playerId: string, routePoints: number, ticketCompleted: number, ticketFailed: number, longestPathBonus: number, 
 /**
+ * Modalità con `globetrotter`: bonus di chi ha completato più biglietti.
+ */
+globetrotterBonus: number, 
+/**
  * Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
  */
 stationPoints: number, total: number, 

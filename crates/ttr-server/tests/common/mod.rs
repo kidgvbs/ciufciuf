@@ -419,6 +419,7 @@ impl Default for PlayerView {
                 station_cities: Vec::new(),
                 station_cost: 0,
                 tunnel: None,
+                ticket_choice: None,
             },
             public: None,
             last_error: None,

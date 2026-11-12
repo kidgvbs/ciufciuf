@@ -6,7 +6,7 @@ use ttr_proto::CardColor;
 
 use crate::engine::{Engine, RouteInfo};
 use crate::error::GamePhase;
-use crate::types::{CityId, Route, RouteColor, RouteId};
+use crate::types::{CityId, Route, RouteColor, RouteId, TicketId};
 
 /// Mosse legali per un giocatore.
 #[derive(Debug, Clone)]
@@ -21,6 +21,24 @@ pub struct LegalMoves {
     pub station_cost: u32,
     /// Decisione sul tunnel pendente (solo in `TunnelResolution`).
     pub tunnel: Option<TunnelMoves>,
+    /// Scelta dei biglietti offerti (draft iniziale o `TicketChoice` di turno).
+    pub ticket_choice: Option<TicketChoiceMoves>,
+}
+
+/// Vincoli della scelta dei biglietti offerti al giocatore.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketChoiceMoves {
+    /// Minimo di biglietti da tenere.
+    pub keep_min: u32,
+    /// Un limite per ogni gruppo di biglietti offerti con un massimo.
+    pub limits: Vec<TicketKeepLimit>,
+}
+
+/// Al massimo `max` biglietti tra `ticket_ids` (nell'ordine di offerta).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketKeepLimit {
+    pub ticket_ids: Vec<TicketId>,
+    pub max: u32,
 }
 
 /// Decisione sul tunnel rivelato.
@@ -46,6 +64,7 @@ impl LegalMoves {
             station_cities: vec![],
             station_cost: 0,
             tunnel: None,
+            ticket_choice: None,
         }
     }
 }
@@ -55,7 +74,14 @@ impl Engine {
     /// rifiuterebbe con `WrongState` o `NotYourTurn`.
     #[must_use]
     pub fn legal_moves(&self, player_index: usize) -> LegalMoves {
-        if player_index >= self.players.len() || player_index != self.current_player_index {
+        if player_index >= self.players.len() {
+            return LegalMoves::empty();
+        }
+        // Il draft iniziale è simultaneo: la scelta spetta a chi non l'ha ancora fatta.
+        if self.phase == GamePhase::InitialDraft {
+            return self.legal_moves_initial_draft(player_index);
+        }
+        if player_index != self.current_player_index {
             return LegalMoves::empty();
         }
 
@@ -65,9 +91,51 @@ impl Engine {
             }
             GamePhase::SecondCardDraw => self.legal_moves_second_draw(),
             GamePhase::TunnelResolution => self.legal_moves_tunnel(player_index),
-            GamePhase::InitialDraft | GamePhase::TicketChoice | GamePhase::GameOver => {
-                LegalMoves::empty()
-            }
+            GamePhase::TicketChoice => LegalMoves {
+                ticket_choice: Some(TicketChoiceMoves {
+                    keep_min: self.ruleset.ticket_draw.keep_min,
+                    limits: Vec::new(),
+                }),
+                ..LegalMoves::empty()
+            },
+            GamePhase::InitialDraft | GamePhase::GameOver => LegalMoves::empty(),
+        }
+    }
+
+    /// Nel draft iniziale l'unica mossa è la scelta dei biglietti offerti, finché non
+    /// è stata fatta.
+    fn legal_moves_initial_draft(&self, player_index: usize) -> LegalMoves {
+        let offered = self
+            .pending_initial_tickets
+            .get(player_index)
+            .map_or(&[][..], Vec::as_slice);
+        if self.players[player_index].initial_draft_done || offered.is_empty() {
+            return LegalMoves::empty();
+        }
+        let limits = self
+            .ruleset
+            .initial_deck_rules()
+            .into_iter()
+            .filter_map(|rule| {
+                let max = rule.max?;
+                let ticket_ids = offered
+                    .iter()
+                    .filter(|tid| {
+                        self.tickets_by_id
+                            .get(*tid)
+                            .is_some_and(|t| t.deck == rule.deck)
+                    })
+                    .cloned()
+                    .collect();
+                Some(TicketKeepLimit { ticket_ids, max })
+            })
+            .collect();
+        LegalMoves {
+            ticket_choice: Some(TicketChoiceMoves {
+                keep_min: self.ruleset.initial_tickets.keep_min,
+                limits,
+            }),
+            ..LegalMoves::empty()
         }
     }
 
@@ -91,6 +159,7 @@ impl Engine {
             station_cities: self.station_cities(player_index),
             station_cost: self.next_station_cost(player_index).unwrap_or(0),
             tunnel: None,
+            ticket_choice: None,
         }
     }
 
@@ -112,6 +181,7 @@ impl Engine {
             station_cities: vec![],
             station_cost: 0,
             tunnel: None,
+            ticket_choice: None,
         }
     }
 

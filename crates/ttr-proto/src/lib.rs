@@ -207,6 +207,8 @@ pub struct TunnelDecisionPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[serde(tag = "type", content = "payload")]
 #[ts(export)]
+// Gli snapshot sono rari rispetto agli stati pubblici: il box cambierebbe il tipo senza benefici.
+#[allow(clippy::large_enum_variant)]
 pub enum ServerMessage {
     /// Broadcast pubblico a tutti i client (giocatori e spettatori).
     #[serde(rename = "PUBLIC_STATE")]
@@ -366,6 +368,9 @@ pub struct FinalScoreInfo {
     pub ticket_completed: i32,
     pub ticket_failed: i32,
     pub longest_path_bonus: i32,
+    /// Modalità con `globetrotter`: bonus di chi ha completato più biglietti.
+    #[serde(default)]
+    pub globetrotter_bonus: i32,
     /// Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
     #[serde(default)]
     pub station_points: i32,
@@ -424,6 +429,28 @@ pub struct LegalMoves {
     pub station_cost: u32,
     /// Europe: decisione richiesta in `TUNNEL_RESOLUTION`, solo al giocatore di turno.
     pub tunnel: Option<TunnelDecisionMoves>,
+    /// Scelta dei biglietti offerti: nel draft iniziale (ogni giocatore che non ha
+    /// ancora scelto) e in `TICKET_CHOICE` per il giocatore di turno.
+    #[serde(default)]
+    pub ticket_choice: Option<TicketChoiceMoves>,
+}
+
+/// Vincoli della scelta dei biglietti offerti.
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TicketChoiceMoves {
+    /// Minimo di biglietti da tenere.
+    pub keep_min: u32,
+    /// Limiti per gruppo di biglietti offerti (oggi: lunghi in Mega Europe).
+    pub limits: Vec<TicketKeepLimit>,
+}
+
+/// Al massimo `max` biglietti tra `ticket_ids` (nell'ordine di offerta).
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TicketKeepLimit {
+    pub ticket_ids: Vec<TicketId>,
+    pub max: u32,
 }
 
 /// Europe: cosa può fare il giocatore di turno davanti a un tunnel rivelato.
@@ -771,8 +798,9 @@ mod tests {
                 ticket_completed: 30,
                 ticket_failed: -10,
                 longest_path_bonus: 10,
+                globetrotter_bonus: 15,
                 station_points: 4,
-                total: 76,
+                total: 91,
                 winner: true,
                 borrowed_routes: vec![BorrowedRoute {
                     city_id: "paris".into(),
@@ -786,7 +814,8 @@ mod tests {
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
         let scores = back.final_scores.unwrap();
-        assert_eq!(scores[0].total, 76);
+        assert_eq!(scores[0].total, 91);
+        assert_eq!(scores[0].globetrotter_bonus, 15);
         assert_eq!(scores[0].station_points, 4);
         assert_eq!(scores[0].borrowed_routes[0].route_id, "dieppe_paris_1");
         assert_eq!(back.longest_path_player_ids.unwrap(), vec!["p1"]);
@@ -843,10 +872,24 @@ mod tests {
                     color: CardColor::Black,
                     can_pay: true,
                 }),
+                ticket_choice: Some(TicketChoiceMoves {
+                    keep_min: 3,
+                    limits: vec![TicketKeepLimit {
+                        ticket_ids: vec!["a_b".into()],
+                        max: 1,
+                    }],
+                }),
             },
         };
         let json = serde_json::to_string(&state).unwrap();
+        assert!(
+            json.contains(
+                r#""ticket_choice":{"keep_min":3,"limits":[{"ticket_ids":["a_b"],"max":1}]}"#
+            ),
+            "{json}"
+        );
         let back: PrivateState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.legal_moves.ticket_choice.unwrap().limits[0].max, 1);
         assert_eq!(back.seq, 42);
         assert_eq!(back.hand.len(), 3);
         assert!(back.legal_moves.can_draw_deck);
@@ -962,6 +1005,7 @@ mod tests {
                     station_cities: vec![],
                     station_cost: 0,
                     tunnel: None,
+                    ticket_choice: None,
                 },
             }),
         });

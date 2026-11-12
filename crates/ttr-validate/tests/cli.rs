@@ -56,6 +56,11 @@ fn ttr_validate_accepts_shipped_data() {
         "{}",
         stdout(&output)
     );
+    assert!(
+        stdout(&output).contains("Modalità: Standard (set 'standard'), biglietti in gioco: 33"),
+        "{}",
+        stdout(&output)
+    );
 }
 
 #[test]
@@ -78,7 +83,7 @@ fn ttr_validate_rejects_bad_ruleset() {
     let output = run(&map, &dir.write("ruleset.json", &ruleset));
     assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
     assert!(
-        stdout(&output).contains("longest_path"),
+        stdout(&output).contains("'longestPath' sconosciuto"),
         "{}",
         stdout(&output)
     );
@@ -214,6 +219,46 @@ const CASES: &[Case] = &[
             ruleset["ticketDraw"]["keepMin"] = Value::from(0);
         },
         expected: "ticketDraw.count",
+    },
+    Case {
+        name: "empty-ruleset-mode",
+        mutate: |_, ruleset| ruleset["mode"] = Value::from(""),
+        expected: "modalità del ruleset",
+    },
+    Case {
+        name: "empty-ticket-set",
+        mutate: |_, ruleset| ruleset["ticketSet"] = Value::from("nessuno"),
+        expected: "nessun biglietto della mappa è nel set 'nessuno'",
+    },
+    Case {
+        name: "ticket-without-sets",
+        mutate: |map, _| map["tickets"][0]["sets"] = Value::Array(vec![]),
+        expected: "sets è vuoto",
+    },
+    Case {
+        name: "ticket-duplicate-set",
+        mutate: |map, _| map["tickets"][0]["sets"] = serde_json::json!(["standard", "standard"]),
+        expected: "ripetuto in sets",
+    },
+    Case {
+        name: "big-city-unknown",
+        mutate: |_, ruleset| ruleset["bigCities"] = serde_json::json!(["atlantis"]),
+        expected: "bigCities",
+    },
+    Case {
+        name: "duplicate-bonus-type",
+        mutate: |_, ruleset| {
+            let bonus = ruleset["bonuses"][0].clone();
+            ruleset["bonuses"].as_array_mut().unwrap().push(bonus);
+        },
+        expected: "ripetuto nel ruleset",
+    },
+    Case {
+        name: "keep-max-above-count",
+        mutate: |_, ruleset| {
+            ruleset["initialTickets"]["dealt"][0]["keepMax"] = Value::from(5);
+        },
+        expected: "keepMax 5",
     },
     Case {
         name: "too-many-locomotives",

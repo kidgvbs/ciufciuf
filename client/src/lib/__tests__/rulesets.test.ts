@@ -1,13 +1,23 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import realCatalog from './rulesets-catalog.fixture.json';
 import {
   DEFAULT_RULESET_ID,
-  FALLBACK_BONUS_LABEL,
-  bonusLabel,
+  FALLBACK_GLOBETROTTER_LABEL,
+  FALLBACK_LONGEST_PATH_LABEL,
+  bigCities,
   defaultRulesetId,
+  globetrotterLabel,
+  groupByMap,
+  hasGlobetrotter,
+  hasLongestPath,
   isRulesetInfo,
   loadRulesets,
+  longestPathLabel,
+  modeBlurb,
   parseRulesetCatalog,
   rulesetBlurb,
+  rulesetTitle,
+  rulesetTitleById,
   type RulesetInfo,
 } from '../rulesets';
 
@@ -15,27 +25,73 @@ const usa: RulesetInfo = {
   id: 'usa_v2',
   name: 'USA',
   mapId: 'usa',
+  mode: 'Standard',
+  modeOrder: 0,
   cities: 36,
   routes: 100,
   tickets: 33,
   minPlayers: 2,
   maxPlayers: 5,
-  bonusLabel: 'Longest Path',
+  bonuses: [{ type: 'longest_path', label: 'Longest Path', points: 10 }],
+  bigCities: [],
+  initialDealt: 4,
+  initialKeepMin: 2,
+  drawCount: 3,
+  drawKeepMin: 1,
   tunnels: false,
   ferries: false,
   stations: false,
+};
+
+const usa1910: RulesetInfo = {
+  ...usa,
+  id: 'usa_1910',
+  mode: '1910',
+  modeOrder: 1,
+  bonuses: [{ type: 'globetrotter', label: 'Globetrotter', points: 15 }],
+};
+
+const usaBig: RulesetInfo = {
+  ...usa,
+  id: 'usa_big_cities',
+  mode: 'Grandi Città',
+  modeOrder: 2,
+  bonuses: [],
+  bigCities: ['seattle', 'denver'],
+  drawCount: 4,
+};
+
+const usaMega: RulesetInfo = {
+  ...usa,
+  id: 'usa_mega',
+  mode: 'Mega',
+  modeOrder: 3,
+  initialDealt: 5,
+  initialKeepMin: 3,
+  drawCount: 4,
+  bonuses: [
+    { type: 'longest_path', label: 'Longest Path', points: 10 },
+    { type: 'globetrotter', label: 'Globetrotter', points: 15 },
+  ],
 };
 
 const europe: RulesetInfo = {
   id: 'europe',
   name: 'Europe',
   mapId: 'europe',
+  mode: 'Standard',
+  modeOrder: 0,
   cities: 47,
   routes: 101,
   tickets: 46,
   minPlayers: 2,
   maxPlayers: 5,
-  bonusLabel: 'European Express',
+  bonuses: [{ type: 'longest_path', label: 'European Express', points: 10 }],
+  bigCities: [],
+  initialDealt: 4,
+  initialKeepMin: 2,
+  drawCount: 3,
+  drawKeepMin: 1,
   tunnels: true,
   ferries: true,
   stations: true,
@@ -54,9 +110,22 @@ describe('isRulesetInfo', () => {
     expect(isRulesetInfo({ ...usa, routes: -1 })).toBe(false);
     expect(isRulesetInfo({ ...usa, tickets: 1.5 })).toBe(false);
     expect(isRulesetInfo({ ...usa, tunnels: 'no' })).toBe(false);
-    expect(isRulesetInfo({ ...usa, bonusLabel: 7 })).toBe(false);
+    expect(isRulesetInfo({ ...usa, mode: '' })).toBe(false);
+    expect(isRulesetInfo({ ...usa, modeOrder: -1 })).toBe(false);
+    expect(isRulesetInfo({ ...usa, bonuses: 'longest_path' })).toBe(false);
+    expect(isRulesetInfo({ ...usa, bonuses: [{ type: 'longest_path', label: 'x' }] })).toBe(false);
+    expect(isRulesetInfo({ ...usa, bigCities: 'seattle' })).toBe(false);
+    expect(isRulesetInfo({ ...usa, bigCities: [''] })).toBe(false);
+    expect(isRulesetInfo({ ...usa, initialDealt: 4.5 })).toBe(false);
+    expect(isRulesetInfo({ ...usa, drawKeepMin: -1 })).toBe(false);
+    expect(isRulesetInfo({ ...usa, bonusLabel: 'Longest Path', bonuses: undefined })).toBe(false);
     expect(isRulesetInfo(null)).toBe(false);
     expect(isRulesetInfo('usa_v2')).toBe(false);
+  });
+
+  it('accetta bonus vuoti e tipi di bonus sconosciuti', () => {
+    expect(isRulesetInfo(usaBig)).toBe(true);
+    expect(isRulesetInfo({ ...usa, bonuses: [{ type: 'futuro', label: 'Boh', points: 3 }] })).toBe(true);
   });
 
   it('rifiuta un intervallo di giocatori incoerente', () => {
@@ -82,6 +151,50 @@ describe('parseRulesetCatalog', () => {
     ['id duplicati', { rulesets: [usa, usa] }],
   ])('rifiuta una risposta %s con «Risposta inattesa dal server»', (_label, body) => {
     expect(() => parseRulesetCatalog(body)).toThrow('Risposta inattesa dal server');
+  });
+});
+
+describe('risposta reale di GET /api/rulesets (fixture catturata dal server)', () => {
+  const catalog = parseRulesetCatalog(realCatalog);
+
+  it('viene accettata e il suo ordine è quello del server', () => {
+    expect(catalog.map((r) => r.id)).toEqual([
+      'europe',
+      'europe_expanded',
+      'europe_1912',
+      'europe_big_cities',
+      'europe_mega',
+      'usa_v2',
+      'usa_1910',
+      'usa_big_cities',
+      'usa_mega',
+    ]);
+  });
+
+  it('i ruleset USA si raggruppano in una mappa con le modalità in ordine', () => {
+    const groups = groupByMap(catalog);
+    expect(groups.map((g) => g.mapId)).toEqual(['europe', 'usa']);
+    expect(groups[1]!.rulesets.map((r) => rulesetTitle(r))).toEqual([
+      'USA',
+      'USA · 1910',
+      'USA · Grandi Città',
+      'USA · Mega',
+    ]);
+  });
+
+  it('bonus e grandi città derivano dal catalogo', () => {
+    expect(hasLongestPath(catalog, 'usa_1910')).toBe(false);
+    expect(hasGlobetrotter(catalog, 'usa_1910')).toBe(true);
+    expect(hasLongestPath(catalog, 'usa_mega') && hasGlobetrotter(catalog, 'usa_mega')).toBe(true);
+    expect(longestPathLabel(catalog, 'europe')).toBe('European Express');
+    expect(bigCities(catalog, 'usa_big_cities')).toHaveLength(7);
+    expect(bigCities(catalog, 'europe_big_cities')).toHaveLength(9);
+    expect(modeBlurb(catalog.find((r) => r.id === 'europe_mega')!)).toBe(
+      '101 biglietti in gioco · ricevi 7, tieni 3 · pesca 3, tieni 1 · European Express +10',
+    );
+    expect(modeBlurb(catalog.find((r) => r.id === 'usa_mega')!)).toBe(
+      '69 biglietti in gioco · ricevi 5, tieni 3 · pesca 4, tieni 1 · Longest Path +10 · Globetrotter +15',
+    );
   });
 });
 
@@ -146,18 +259,117 @@ describe('rulesetBlurb', () => {
   });
 });
 
-describe('bonusLabel', () => {
-  it('prende il nome del bonus dal catalogo', () => {
-    expect(bonusLabel([usa, europe], 'europe')).toBe('European Express');
-    expect(bonusLabel([usa, europe], 'usa_v2')).toBe('Longest Path');
+describe('etichette dei bonus', () => {
+  const catalog = [usa, usa1910, europe, usaMega];
+
+  it('longestPathLabel prende il nome dal catalogo', () => {
+    expect(longestPathLabel(catalog, 'europe')).toBe('European Express');
+    expect(longestPathLabel(catalog, 'usa_v2')).toBe('Longest Path');
   });
 
-  it('ripiega su "Longest Path" se il ruleset non c è, è vuoto o il catalogo è vuoto', () => {
-    expect(bonusLabel([usa, europe], 'sconosciuto')).toBe(FALLBACK_BONUS_LABEL);
-    expect(bonusLabel([usa, europe], '')).toBe(FALLBACK_BONUS_LABEL);
-    expect(bonusLabel([usa, europe], null)).toBe(FALLBACK_BONUS_LABEL);
-    expect(bonusLabel([usa, europe], undefined)).toBe('Longest Path');
-    expect(bonusLabel([], 'europe')).toBe('Longest Path');
+  it('longestPathLabel ripiega su "Longest Path" se ruleset ignoto, vuoto, null o senza il bonus', () => {
+    expect(longestPathLabel(catalog, 'sconosciuto')).toBe(FALLBACK_LONGEST_PATH_LABEL);
+    expect(longestPathLabel(catalog, '')).toBe(FALLBACK_LONGEST_PATH_LABEL);
+    expect(longestPathLabel(catalog, null)).toBe(FALLBACK_LONGEST_PATH_LABEL);
+    expect(longestPathLabel(catalog, undefined)).toBe('Longest Path');
+    expect(longestPathLabel([], 'europe')).toBe('Longest Path');
+    expect(longestPathLabel(catalog, 'usa_1910')).toBe('Longest Path');
+  });
+
+  it('globetrotterLabel con fallback "Globetrotter"', () => {
+    const custom = { ...usa1910, bonuses: [{ type: 'globetrotter', label: 'Giramondo', points: 15 }] };
+    expect(globetrotterLabel([custom], 'usa_1910')).toBe('Giramondo');
+    expect(globetrotterLabel(catalog, 'usa_1910')).toBe('Globetrotter');
+    expect(globetrotterLabel(catalog, 'usa_v2')).toBe(FALLBACK_GLOBETROTTER_LABEL);
+    expect(globetrotterLabel([], null)).toBe('Globetrotter');
+  });
+
+  it('hasLongestPath / hasGlobetrotter seguono i bonus del ruleset', () => {
+    expect(hasLongestPath(catalog, 'usa_v2')).toBe(true);
+    expect(hasLongestPath(catalog, 'usa_1910')).toBe(false);
+    expect(hasLongestPath([usaBig], 'usa_big_cities')).toBe(false);
+    expect(hasLongestPath(catalog, 'usa_mega')).toBe(true);
+    expect(hasGlobetrotter(catalog, 'usa_1910')).toBe(true);
+    expect(hasGlobetrotter(catalog, 'usa_v2')).toBe(false);
+    expect(hasGlobetrotter(catalog, 'usa_mega')).toBe(true);
+  });
+
+  it('con ruleset ignoto: percorso più lungo sì (storico), Globetrotter no', () => {
+    expect(hasLongestPath([], 'usa_v2')).toBe(true);
+    expect(hasLongestPath(catalog, null)).toBe(true);
+    expect(hasGlobetrotter([], 'usa_v2')).toBe(false);
+    expect(hasGlobetrotter(catalog, undefined)).toBe(false);
+  });
+});
+
+describe('bigCities', () => {
+  it('restituisce le grandi città del ruleset', () => {
+    expect(bigCities([usa, usaBig], 'usa_big_cities')).toEqual(['seattle', 'denver']);
+  });
+
+  it('vuoto se il ruleset non ne ha, è ignoto o assente', () => {
+    expect(bigCities([usa, usaBig], 'usa_v2')).toEqual([]);
+    expect(bigCities([usa, usaBig], 'boh')).toEqual([]);
+    expect(bigCities([usa, usaBig], null)).toEqual([]);
+  });
+});
+
+describe('rulesetTitle', () => {
+  it('«Nome · Modalità», solo il nome per Standard', () => {
+    expect(rulesetTitle(usa)).toBe('USA');
+    expect(rulesetTitle(usa1910)).toBe('USA · 1910');
+    expect(rulesetTitle(usaBig)).toBe('USA · Grandi Città');
+  });
+
+  it('rulesetTitleById: dal catalogo, null se ignoto', () => {
+    expect(rulesetTitleById([usa, usa1910], 'usa_1910')).toBe('USA · 1910');
+    expect(rulesetTitleById([usa, usa1910], 'usa_v2')).toBe('USA');
+    expect(rulesetTitleById([usa], 'x')).toBeNull();
+    expect(rulesetTitleById([usa], '')).toBeNull();
+    expect(rulesetTitleById([usa], undefined)).toBeNull();
+  });
+});
+
+describe('groupByMap', () => {
+  it('raggruppa per mappa nell ordine di prima comparsa e ordina le modalità per modeOrder', () => {
+    const groups = groupByMap([usaMega, europe, usa1910, usa, usaBig]);
+    expect(groups.map((g) => g.mapId)).toEqual(['usa', 'europe']);
+    expect(groups[0]!.rulesets.map((r) => r.id)).toEqual(['usa_v2', 'usa_1910', 'usa_big_cities', 'usa_mega']);
+    expect(groups[1]!.rulesets.map((r) => r.id)).toEqual(['europe']);
+  });
+
+  it('non modifica il catalogo e a pari modeOrder resta l ordine del catalogo', () => {
+    const catalog = [usa1910, usa, { ...usaBig, modeOrder: 1 }];
+    const before = catalog.map((r) => r.id);
+    expect(groupByMap(catalog)[0]!.rulesets.map((r) => r.id)).toEqual(['usa_v2', 'usa_1910', 'usa_big_cities']);
+    expect(catalog.map((r) => r.id)).toEqual(before);
+  });
+
+  it('catalogo vuoto → nessun gruppo', () => {
+    expect(groupByMap([])).toEqual([]);
+  });
+});
+
+describe('modeBlurb', () => {
+  it('Standard: percorso più lungo', () => {
+    expect(modeBlurb(usa)).toBe('33 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · Longest Path +10');
+  });
+
+  it('1910: Globetrotter', () => {
+    expect(modeBlurb(usa1910)).toBe('33 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · Globetrotter +15');
+  });
+
+  it('senza bonus', () => {
+    expect(modeBlurb(usaBig)).toBe('33 biglietti in gioco · ricevi 4, tieni 2 · pesca 4, tieni 1 · nessun bonus');
+  });
+
+  it('più bonus nell ordine del catalogo; i tipi sconosciuti sono ignorati', () => {
+    expect(modeBlurb(usaMega)).toBe(
+      '33 biglietti in gioco · ricevi 5, tieni 3 · pesca 4, tieni 1 · Longest Path +10 · Globetrotter +15',
+    );
+    expect(modeBlurb({ ...usa, bonuses: [{ type: 'futuro', label: 'Boh', points: 3 }] })).toBe(
+      '33 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · nessun bonus',
+    );
   });
 });
 

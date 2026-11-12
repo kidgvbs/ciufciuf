@@ -105,6 +105,9 @@ pub struct FinalScore {
     pub ticket_completed: i32,
     pub ticket_failed: i32,
     pub longest_path_bonus: i32,
+    /// Bonus di chi ha completato più biglietti (modalità con `globetrotter`).
+    #[serde(default)]
+    pub globetrotter_bonus: i32,
     pub total: i32,
     /// Punti delle stazioni non costruite (Europe).
     #[serde(default)]

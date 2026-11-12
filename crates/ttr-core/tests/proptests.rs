@@ -8,7 +8,9 @@ use std::sync::LazyLock;
 
 use proptest::prelude::*;
 use ttr_core::error::GamePhase;
-use ttr_core::types::{MapData, Ruleset, TRAIN_COLORS};
+use ttr_core::types::{
+    GLOBETROTTER_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Ruleset, SetupDiscards, TRAIN_COLORS,
+};
 use ttr_core::{Action, DrawSource, Engine, GameEvent, RouteColor, default_player_colors};
 use ttr_proto::CardColor;
 
@@ -23,10 +25,24 @@ const MAX_STEPS: usize = 400;
 enum Game {
     Usa,
     Europe,
+    /// USA Mega: 5 biglietti tieni 3, pesca 4, due bonus.
+    UsaMega,
+    /// USA Grandi Città: nessun bonus.
+    UsaBigCities,
+    /// Europe Mega: 2 lunghi (al massimo 1) + 5 regolari, tieni 3.
+    EuropeMega,
+    /// Europe Grandi Città: solo regolari, pesca 4.
+    EuropeBigCities,
 }
 
 static USA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_v2", "usa"));
 static EUROPE: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("europe", "europe"));
+static USA_MEGA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_mega", "usa"));
+static USA_BIG_CITIES: LazyLock<(Ruleset, MapData)> =
+    LazyLock::new(|| load("usa_big_cities", "usa"));
+static EUROPE_MEGA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("europe_mega", "europe"));
+static EUROPE_BIG_CITIES: LazyLock<(Ruleset, MapData)> =
+    LazyLock::new(|| load("europe_big_cities", "europe"));
 
 fn load(ruleset: &str, map: &str) -> (Ruleset, MapData) {
     let ruleset = std::fs::read_to_string(format!("../../data/rulesets/{ruleset}.json")).unwrap();
@@ -41,8 +57,20 @@ fn data(game: Game) -> &'static (Ruleset, MapData) {
     match game {
         Game::Usa => &USA,
         Game::Europe => &EUROPE,
+        Game::UsaMega => &USA_MEGA,
+        Game::UsaBigCities => &USA_BIG_CITIES,
+        Game::EuropeMega => &EUROPE_MEGA,
+        Game::EuropeBigCities => &EUROPE_BIG_CITIES,
     }
 }
+
+/// Modalità diverse dallo standard coperte dai test property-based.
+const MODE_GAMES: [Game; 4] = [
+    Game::UsaMega,
+    Game::UsaBigCities,
+    Game::EuropeMega,
+    Game::EuropeBigCities,
+];
 
 fn new_engine(game: Game, seed: u64, players: usize) -> Engine {
     let (ruleset, map) = data(game);
@@ -108,6 +136,32 @@ fn tunnel_payment(hand: &[CardColor], color: CardColor, extra: usize) -> Option<
     (payment.len() == extra).then_some(payment)
 }
 
+/// Fino a `want` biglietti tra gli offerti, nell'ordine di offerta, rispettando i
+/// limiti di `ticket_choice` di `legal_moves`.
+fn keep_within_limits(eng: &Engine, pi: usize, offered: &[String], want: usize) -> Vec<String> {
+    let limits = eng
+        .legal_moves(pi)
+        .ticket_choice
+        .map(|c| c.limits)
+        .unwrap_or_default();
+    let mut left: Vec<u32> = limits.iter().map(|l| l.max).collect();
+    let mut keep = Vec::new();
+    for id in offered {
+        if keep.len() == want {
+            break;
+        }
+        let group = limits.iter().position(|l| l.ticket_ids.contains(id));
+        if let Some(g) = group {
+            if left[g] == 0 {
+                continue;
+            }
+            left[g] -= 1;
+        }
+        keep.push(id.clone());
+    }
+    keep
+}
+
 /// Azioni sensate per la fase corrente, usate per far avanzare la partita.
 fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
     let (ruleset, _) = data(game);
@@ -123,7 +177,7 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
                 for k in [keep_min, offered.len()] {
                     actions.push(Action::ChooseTickets {
                         player_index: pi,
-                        keep: offered[..k].to_vec(),
+                        keep: keep_within_limits(eng, pi, offered, k),
                     });
                 }
             }
@@ -136,7 +190,7 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
                 .into_iter()
                 .map(|k| Action::ChooseTickets {
                     player_index: eng.current_player(),
-                    keep: pending[..k].to_vec(),
+                    keep: keep_within_limits(eng, eng.current_player(), pending, k),
                 })
                 .collect()
         }
@@ -450,7 +504,8 @@ fn check_conservation(
     players: usize,
     choices: &[u16],
 ) -> Result<(), TestCaseError> {
-    let (_, map) = data(game);
+    let (ruleset, map) = data(game);
+    let in_play: BTreeSet<&String> = map.tickets_in_play(ruleset).map(|t| &t.id).collect();
     let mut previous_total = FULL_DECK;
     play(game, seed, players, choices, |eng, _| {
         let total = total_train_cards(eng);
@@ -469,10 +524,13 @@ fn check_conservation(
             ids.extend(eng.initial_tickets_for(p).unwrap());
         }
         let unique: BTreeSet<&String> = ids.iter().copied().collect();
-        match game {
-            Game::Usa => prop_assert_eq!(ids.len(), map.tickets.len(), "biglietti persi o creati"),
-            // Europe: i biglietti scartati al setup escono dalla partita.
-            Game::Europe => prop_assert!(ids.len() <= map.tickets.len(), "biglietti creati"),
+        prop_assert!(unique.is_subset(&in_play), "biglietto fuori dalla modalità");
+        match ruleset.setup_discards {
+            SetupDiscards::ReshuffleBottom if ruleset.ticket_decks.len() == 1 => {
+                prop_assert_eq!(ids.len(), in_play.len(), "biglietti persi o creati");
+            }
+            // Scarti di setup fuori dalla partita (Europe) o mazzi non pescabili (lunghi).
+            _ => prop_assert!(ids.len() <= in_play.len(), "biglietti creati"),
         }
         prop_assert_eq!(unique.len(), ids.len(), "biglietto duplicato");
         Ok(())
@@ -521,11 +579,45 @@ fn check_legal_moves_agree_with_apply(
                     && lm.tunnel.is_none(),
                 "mosse per il giocatore {other} non di turno"
             );
+            // Il draft iniziale è simultaneo: la scelta spetta a chi non l'ha ancora fatta.
+            let drafting = eng.phase() == GamePhase::InitialDraft
+                && !eng.player(other).unwrap().initial_draft_done;
+            prop_assert_eq!(
+                lm.ticket_choice.is_some(),
+                drafting,
+                "ticket_choice di {}",
+                other
+            );
         }
         if eng.phase() == GamePhase::GameOver {
             return Ok(());
         }
         let lm = eng.legal_moves(pi);
+
+        // La scelta dei biglietti è elencata nel draft iniziale e in `TicketChoice`; la
+        // scelta che rispetta i limiti elencati deve riuscire.
+        let offered: Vec<String> = match eng.phase() {
+            GamePhase::InitialDraft => eng.initial_tickets_for(pi).unwrap().to_vec(),
+            GamePhase::TicketChoice => eng.pending_tickets().to_vec(),
+            _ => Vec::new(),
+        };
+        prop_assert_eq!(
+            lm.ticket_choice.is_some(),
+            !offered.is_empty(),
+            "ticket_choice"
+        );
+        if let Some(choice) = &lm.ticket_choice {
+            let keep = keep_within_limits(eng, pi, &offered, choice.keep_min as usize);
+            prop_assert!(
+                eng.clone()
+                    .apply(Action::ChooseTickets {
+                        player_index: pi,
+                        keep
+                    })
+                    .is_ok(),
+                "scelta biglietti elencata rifiutata"
+            );
+        }
 
         // Una mossa elencata deve riuscire (su una copia); una non elencata
         // deve fallire sul motore reale senza modificarlo.
@@ -856,6 +948,29 @@ fn check_full_game_invariants(
         finished.final_scores.iter().any(|fs| fs.winner),
         "nessun vincitore"
     );
+    let ruleset = &data(game).0;
+    let globetrotter_points = ruleset
+        .bonuses
+        .iter()
+        .find(|b| b.bonus_type == GLOBETROTTER_BONUS_TYPE)
+        .map(|b| i32::try_from(b.points).unwrap());
+    let completed_counts: Vec<usize> = (0..players)
+        .map(|p| {
+            let tickets = &eng.player(p).unwrap().tickets;
+            tickets
+                .values()
+                .filter(|t| t.completed == Some(true))
+                .count()
+        })
+        .collect();
+    let most_completed = completed_counts.iter().copied().max().unwrap_or(0);
+    if !ruleset
+        .bonuses
+        .iter()
+        .any(|b| b.bonus_type == LONGEST_PATH_BONUS_TYPE)
+    {
+        prop_assert!(finished.longest_path_players.is_empty());
+    }
     for fs in &finished.final_scores {
         let state = eng.player(fs.player_index).unwrap();
         // L'esito live dei biglietti coincide con quello finale (stesse stazioni e rotte).
@@ -883,12 +998,22 @@ fn check_full_game_invariants(
         prop_assert_eq!(fs.ticket_failed, -failed);
         prop_assert_eq!(fs.longest_path_bonus, bonus);
         prop_assert_eq!(fs.station_points, unbuilt * unbuilt_points);
+        let globetrotter = match globetrotter_points {
+            Some(points)
+                if most_completed > 0 && completed_counts[fs.player_index] == most_completed =>
+            {
+                points
+            }
+            _ => 0,
+        };
+        prop_assert_eq!(fs.globetrotter_bonus, globetrotter);
         prop_assert_eq!(
             fs.total,
             fs.route_points
                 + fs.ticket_completed
                 + fs.ticket_failed
                 + fs.longest_path_bonus
+                + fs.globetrotter_bonus
                 + fs.station_points
         );
         if fs.winner {
@@ -949,6 +1074,32 @@ proptest! {
         choices in prop::collection::vec(any::<u16>(), 64..256),
     ) {
         check_full_game_invariants(Game::Europe, seed, players, &choices)?;
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 16, ..ProptestConfig::default() })]
+
+    /// Modalità con setup e bonus diversi dallo standard (biglietti per set, keep 3,
+    /// pesca 4, Globetrotter, nessun bonus): stesse invarianti delle mappe base.
+    #[test]
+    fn modes_keep_engine_invariants(
+        game in prop::sample::select(MODE_GAMES.to_vec()),
+        (seed, players, choices) in game_inputs(),
+    ) {
+        check_conservation(game, seed, players, &choices)?;
+        check_legal_moves_agree_with_apply(game, seed, players, &choices)?;
+        check_replay_reproduces_state(game, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn modes_full_game_invariants(
+        game in prop::sample::select(MODE_GAMES.to_vec()),
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(game, seed, players, &choices)?;
     }
 }
 

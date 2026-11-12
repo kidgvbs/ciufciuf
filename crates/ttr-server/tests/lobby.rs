@@ -549,47 +549,117 @@ async fn ruleset_map_endpoint_serves_the_map_document() {
     assert_eq!(body["error"], "RULESET_NOT_FOUND");
 }
 
-/// GET /api/rulesets elenca i ruleset caricati, ordinati per id, con i conteggi
+/// Riassunto di una voce del catalogo: (id, mode, biglietti in gioco, distribuiti, tieni,
+/// pescati, tipi di bonus, grandi città).
+type CatalogRow = (String, String, u64, u64, u64, u64, Vec<String>, usize);
+
+/// GET /api/rulesets elenca i ruleset caricati, ordinati per (mapId, modeOrder, id), con i conteggi
 /// della mappa e le funzioni di Europe (tunnel, traghetti, stazioni).
 #[tokio::test]
 async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     let server = TestServer::start().await;
     let (status, body) = get_json(&server.base_url, "/api/rulesets").await;
     assert_eq!(status, 200, "{body}");
+    let rulesets = body["rulesets"].as_array().expect("rulesets");
+    let summary: Vec<CatalogRow> = rulesets
+        .iter()
+        .map(|r| {
+            (
+                r["id"].as_str().unwrap().to_owned(),
+                r["mode"].as_str().unwrap().to_owned(),
+                r["tickets"].as_u64().unwrap(),
+                r["initialDealt"].as_u64().unwrap(),
+                r["initialKeepMin"].as_u64().unwrap(),
+                r["drawCount"].as_u64().unwrap(),
+                r["bonuses"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|b| b["type"].as_str().unwrap().to_owned())
+                    .collect(),
+                r["bigCities"].as_array().unwrap().len(),
+            )
+        })
+        .collect();
+    let row = |id: &str, mode: &str, t, d, k, dr, b: &[&str], big| {
+        (
+            id.to_owned(),
+            mode.to_owned(),
+            t,
+            d,
+            k,
+            dr,
+            b.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>(),
+            big,
+        )
+    };
+    let lp = "longest_path";
+    let gt = "globetrotter";
     assert_eq!(
-        body,
-        serde_json::json!({
-            "rulesets": [
-                {
+        summary,
+        vec![
+            row("europe", "Standard", 46, 4, 2, 3, &[lp], 0),
+            row("europe_expanded", "Estesa", 65, 4, 2, 3, &[lp], 0),
+            row("europe_1912", "1912", 55, 4, 2, 3, &[lp], 0),
+            row("europe_big_cities", "Grandi Città", 45, 5, 2, 4, &[lp], 9),
+            row("europe_mega", "Mega", 101, 7, 3, 3, &[lp], 0),
+            row("usa_v2", "Standard", 33, 4, 2, 3, &[lp], 0),
+            row("usa_1910", "1910", 35, 4, 2, 3, &[gt], 0),
+            row("usa_big_cities", "Grandi Città", 35, 4, 2, 4, &[], 7),
+            row("usa_mega", "Mega", 69, 5, 3, 4, &[lp, gt], 0),
+        ]
+    );
+    let by_id = |id: &str| rulesets.iter().find(|r| r["id"] == id).unwrap().clone();
+    assert_eq!(
+        [by_id("europe"), by_id("usa_v2")],
+        [
+            serde_json::json!({
                     "id": "europe",
                     "name": "Europe",
+                    "mode": "Standard",
+                    "modeOrder": 0,
                     "mapId": "europe",
                     "cities": 47,
                     "routes": 101,
                     "tickets": 46,
                     "minPlayers": 2,
                     "maxPlayers": 5,
-                    "bonusLabel": "European Express",
+                    "bonuses": [
+                        { "type": "longest_path", "label": "European Express", "points": 10 }
+                    ],
+                    "bigCities": [],
+                    "initialDealt": 4,
+                    "initialKeepMin": 2,
+                    "drawCount": 3,
+                    "drawKeepMin": 1,
                     "tunnels": true,
                     "ferries": true,
                     "stations": true
-                },
-                {
+            }),
+            serde_json::json!({
                     "id": "usa_v2",
                     "name": "USA",
+                    "mode": "Standard",
+                    "modeOrder": 0,
                     "mapId": "usa",
                     "cities": 36,
                     "routes": 100,
                     "tickets": 33,
                     "minPlayers": 2,
                     "maxPlayers": 5,
-                    "bonusLabel": "Longest Path",
+                    "bonuses": [
+                        { "type": "longest_path", "label": "Longest Path", "points": 10 }
+                    ],
+                    "bigCities": [],
+                    "initialDealt": 4,
+                    "initialKeepMin": 2,
+                    "drawCount": 3,
+                    "drawKeepMin": 1,
                     "tunnels": false,
                     "ferries": false,
                     "stations": false
-                }
-            ]
-        })
+            }),
+        ]
     );
 }
 

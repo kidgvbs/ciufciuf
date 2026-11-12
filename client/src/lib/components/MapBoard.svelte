@@ -42,6 +42,7 @@
     selectableCityIds = [],
     selectedCityId = null,
     onCityTap,
+    bigCities = [],
   }: {
     /** Mappa già caricata; il wrapper `MapSvg` rimonta il componente se cambia. */
     mapData: MapDataType;
@@ -61,6 +62,8 @@
     selectedCityId?: string | null;
     /** Tap/click su una città selezionabile. */
     onCityTap?: (cityId: string) => void;
+    /** Modalità «Grandi Città»: città marcate con un anello (solo visualizzazione, non interattive). */
+    bigCities?: string[];
   } = $props();
   // Id unici per istanza: nel dialog biglietti due mappe coesistono (quella di sfondo
   // può essere `display:none`, e i gradienti lì dentro non vengono risolti).
@@ -76,6 +79,9 @@
   const interactive = $derived(onRouteTap !== undefined);
   const highlightSet = $derived(new Set(highlightRouteIds));
   const selectableCitySet = $derived(new Set(selectableCityIds));
+  const bigCitySet = $derived(new Set(bigCities));
+  const cityLabel = (city: { id: string; name: string }) =>
+    bigCitySet.has(city.id) ? `${city.name}, grande città` : city.name;
   const cityInteractive = $derived(onCityTap !== undefined && selectableCityIds.length > 0);
 
   // Nel compact gli stroke pensati per il full sembrano il doppio
@@ -673,7 +679,7 @@
             {@const pos = cityPositions.get(city.id)}
             {#if pos && selectableCitySet.has(city.id)}
               <g class="city-tappable" role="button" tabindex="0"
-                aria-label={city.name} aria-pressed={city.id === selectedCityId}
+                aria-label={cityLabel(city)} aria-pressed={city.id === selectedCityId}
                 onkeydown={(e) => onCityKey(e, city.id)}>
                 <circle cx={pos.x} cy={pos.y} r={cityDotR + 14} fill="none" stroke="#2a1d0c"
                   stroke-width={7 * swFactor} class="city-focus" pointer-events="none" />
@@ -710,7 +716,7 @@
             {@const hub = (cityDegree.get(city.id) ?? 0) >= 6}
             {@const exposedAsButton = cityInteractive && selectableCitySet.has(city.id)}
             <g role={exposedAsButton ? undefined : 'img'}
-              aria-label={exposedAsButton ? undefined : city.name}
+              aria-label={exposedAsButton ? undefined : cityLabel(city)}
               aria-hidden={exposedAsButton ? 'true' : undefined}>
               <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
                 fill="#2a1d0c" opacity="0.25" />
@@ -718,6 +724,10 @@
                 stroke="#453416" stroke-width="2" />
               {#if hub}
                 <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
+              {/if}
+              {#if bigCitySet.has(city.id)}
+                <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0) + 3.5} fill="none"
+                  class="big-city-ring" stroke-width={2.4 * swFactor} pointer-events="none" />
               {/if}
             </g>
           {/if}
@@ -913,6 +923,7 @@
   }
   /* Percorso più lungo (fine partita): alone dorato, sempre visibile; pulsa solo senza
      preferenza di movimento ridotto. Colori dai token (--gold*). */
+  .big-city-ring { stroke: var(--gold-deep); }
   .longest-halo { stroke: var(--gold); opacity: 0.28; }
   .longest-mid { stroke: var(--gold-bright); opacity: 0.5; }
   .longest-core { stroke: var(--gold-bright); opacity: 0.95; }

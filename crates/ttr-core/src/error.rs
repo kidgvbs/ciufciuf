@@ -40,6 +40,9 @@ pub enum EngineError {
     #[error("scelta biglietti: tenuti {kept} > disponibili {available}")]
     TicketChoiceTooMany { kept: usize, available: usize },
 
+    #[error("scelta biglietti: tenuti {kept} del deck '{deck}', ma il massimo è {max}")]
+    TicketChoiceAboveDeckMax { deck: String, kept: usize, max: u32 },
+
     #[error("biglietto '{ticket_id}' non tra quelli offerti")]
     TicketNotOffered { ticket_id: String },
 
@@ -109,8 +112,43 @@ pub enum EngineInitError {
     #[error("colore non valido '{color}' nella rotta '{route_id}'")]
     InvalidRouteColor { route_id: String, color: String },
 
-    #[error("bonus '{bonus_type}' mancante nel ruleset")]
-    MissingLongestPathBonus { bonus_type: &'static str },
+    #[error("tipo di bonus '{bonus_type}' sconosciuto")]
+    UnknownBonusType { bonus_type: String },
+
+    #[error("bonus '{bonus_type}' ripetuto nel ruleset")]
+    DuplicateBonusType { bonus_type: String },
+
+    #[error("modalità del ruleset vuota")]
+    EmptyRulesetMode,
+
+    #[error("nessun biglietto della mappa è nel set '{set}'")]
+    EmptyTicketSet { set: String },
+
+    #[error("biglietto '{ticket_id}': sets è vuoto")]
+    TicketSetsEmpty { ticket_id: String },
+
+    #[error("biglietto '{ticket_id}': il set '{set}' è ripetuto in sets")]
+    DuplicateTicketSet { ticket_id: String, set: String },
+
+    #[error("bigCities: la città '{city_id}' non esiste")]
+    BigCityUnknown { city_id: String },
+
+    #[error("bigCities: la città '{city_id}' è ripetuta")]
+    DuplicateBigCity { city_id: String },
+
+    #[error(
+        "initialTickets.dealt: keepMax {keep_max} maggiore di count {count} per il deck '{deck}'"
+    )]
+    DealtKeepMaxExceedsCount {
+        deck: String,
+        keep_max: u32,
+        count: u32,
+    },
+
+    #[error(
+        "initialTickets.keepMin {keep_min} non raggiungibile: con i keepMax si possono tenere al massimo {max_keep} biglietti"
+    )]
+    InitialKeepMinUnreachable { keep_min: u32, max_keep: u32 },
 
     #[error("deck biglietti '{deck}' ripetuto in ticketDecks")]
     DuplicateTicketDeck { deck: String },

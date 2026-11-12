@@ -11,6 +11,7 @@ function fs(playerId: string, total: number, winner: boolean): FinalScoreInfo {
     ticketCompleted: 0,
     ticketFailed: 0,
     longestPathBonus: 0,
+    globetrotterBonus: 0,
     stationPoints: 0,
     total,
     winner,

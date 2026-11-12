@@ -849,12 +849,14 @@ fn no_route_is_borrowed_when_the_ticket_is_complete_without_one() {
 fn europe_setup_deals_one_long_and_three_regular_tickets() {
     let (ruleset, map) = europe();
     let long_ids: Vec<String> = map
-        .tickets
-        .iter()
+        .tickets_in_play(&ruleset)
         .filter(|t| t.deck == "long")
         .map(|t| t.id.clone())
         .collect();
-    let regular = map.tickets.iter().filter(|t| t.deck == "regular").count();
+    let regular = map
+        .tickets_in_play(&ruleset)
+        .filter(|t| t.deck == "regular")
+        .count();
     let mut eng = Engine::new(
         11,
         ruleset,

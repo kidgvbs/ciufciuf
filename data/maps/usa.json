@@ -1025,231 +1025,584 @@
       "from": "boston",
       "to": "miami",
       "points": 12,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "calgary_phoenix",
       "from": "calgary",
       "to": "phoenix",
       "points": 13,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "calgary_salt_lake_city",
       "from": "calgary",
       "to": "salt_lake_city",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "chicago_new_orleans",
       "from": "chicago",
       "to": "new_orleans",
       "points": 7,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "chicago_santa_fe",
       "from": "chicago",
       "to": "santa_fe",
       "points": 9,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "dallas_new_york",
       "from": "dallas",
       "to": "new_york",
       "points": 11,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "denver_el_paso",
       "from": "denver",
       "to": "el_paso",
       "points": 4,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "denver_pittsburgh",
       "from": "denver",
       "to": "pittsburgh",
       "points": 11,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "duluth_el_paso",
       "from": "duluth",
       "to": "el_paso",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "duluth_houston",
       "from": "duluth",
       "to": "houston",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "helena_los_angeles",
       "from": "helena",
       "to": "los_angeles",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "houston_kansas_city",
       "from": "houston",
       "to": "kansas_city",
       "points": 5,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "chicago_los_angeles",
       "from": "chicago",
       "to": "los_angeles",
       "points": 16,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "los_angeles_miami",
       "from": "los_angeles",
       "to": "miami",
       "points": 20,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard"]
     },
     {
       "id": "los_angeles_new_york",
       "from": "los_angeles",
       "to": "new_york",
       "points": 21,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard"]
     },
     {
       "id": "atlanta_montreal",
       "from": "atlanta",
       "to": "montreal",
       "points": 9,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "montreal_new_orleans",
       "from": "montreal",
       "to": "new_orleans",
       "points": 13,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "atlanta_new_york",
       "from": "atlanta",
       "to": "new_york",
       "points": 6,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "nashville_portland",
       "from": "nashville",
       "to": "portland",
       "points": 17,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "phoenix_portland",
       "from": "phoenix",
       "to": "portland",
       "points": 11,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "atlanta_san_francisco",
       "from": "atlanta",
       "to": "san_francisco",
       "points": 17,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "nashville_sault_st_marie",
       "from": "nashville",
       "to": "sault_st_marie",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "oklahoma_city_sault_st_marie",
       "from": "oklahoma_city",
       "to": "sault_st_marie",
       "points": 9,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard"]
     },
     {
       "id": "los_angeles_seattle",
       "from": "los_angeles",
       "to": "seattle",
       "points": 9,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "new_york_seattle",
       "from": "new_york",
       "to": "seattle",
       "points": 22,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard"]
     },
     {
       "id": "miami_toronto",
       "from": "miami",
       "to": "toronto",
       "points": 10,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "montreal_vancouver",
       "from": "montreal",
       "to": "vancouver",
       "points": 20,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "santa_fe_vancouver",
       "from": "santa_fe",
       "to": "vancouver",
       "points": 13,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "houston_winnipeg",
       "from": "houston",
       "to": "winnipeg",
       "points": 12,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega", "big_cities"]
     },
     {
       "id": "little_rock_winnipeg",
       "from": "little_rock",
       "to": "winnipeg",
       "points": 11,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "mega"]
     },
     {
       "id": "atlanta_washington",
       "from": "atlanta",
       "to": "washington",
       "points": 4,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "1910", "mega"]
     },
     {
       "id": "new_orleans_omaha",
       "from": "new_orleans",
       "to": "omaha",
       "points": 8,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "1910", "mega"]
     },
     {
       "id": "san_francisco_washington",
       "from": "san_francisco",
       "to": "washington",
       "points": 21,
-      "deck": "regular"
+      "deck": "regular",
+      "sets": ["standard", "1910", "mega"]
+    },
+    {
+      "id": "los_angeles_miami_1910",
+      "from": "los_angeles",
+      "to": "miami",
+      "points": 19,
+      "deck": "regular",
+      "sets": ["mega", "big_cities"]
+    },
+    {
+      "id": "los_angeles_new_york_1910",
+      "from": "los_angeles",
+      "to": "new_york",
+      "points": 20,
+      "deck": "regular",
+      "sets": ["mega", "big_cities"]
+    },
+    {
+      "id": "new_york_seattle_1910",
+      "from": "new_york",
+      "to": "seattle",
+      "points": 20,
+      "deck": "regular",
+      "sets": ["mega", "big_cities"]
+    },
+    {
+      "id": "oklahoma_city_sault_st_marie_1910",
+      "from": "oklahoma_city",
+      "to": "sault_st_marie",
+      "points": 8,
+      "deck": "regular",
+      "sets": ["mega"]
+    },
+    {
+      "id": "calgary_nashville",
+      "from": "calgary",
+      "to": "nashville",
+      "points": 14,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "atlanta_chicago",
+      "from": "atlanta",
+      "to": "chicago",
+      "points": 5,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "boston_chicago",
+      "from": "boston",
+      "to": "chicago",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "chicago_new_york",
+      "from": "chicago",
+      "to": "new_york",
+      "points": 5,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "denver_saint_louis",
+      "from": "denver",
+      "to": "saint_louis",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "dallas_duluth",
+      "from": "dallas",
+      "to": "duluth",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "houston_washington",
+      "from": "houston",
+      "to": "washington",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "boston_kansas_city",
+      "from": "boston",
+      "to": "kansas_city",
+      "points": 11,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "las_vegas_miami",
+      "from": "las_vegas",
+      "to": "miami",
+      "points": 21,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "las_vegas_new_york",
+      "from": "las_vegas",
+      "to": "new_york",
+      "points": 19,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "atlanta_los_angeles",
+      "from": "atlanta",
+      "to": "los_angeles",
+      "points": 15,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "calgary_los_angeles",
+      "from": "calgary",
+      "to": "los_angeles",
+      "points": 12,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "los_angeles_oklahoma_city",
+      "from": "los_angeles",
+      "to": "oklahoma_city",
+      "points": 9,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "dallas_montreal",
+      "from": "dallas",
+      "to": "montreal",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "montreal_raleigh",
+      "from": "montreal",
+      "to": "raleigh",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "nashville_new_york",
+      "from": "nashville",
+      "to": "new_york",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "miami_new_york",
+      "from": "miami",
+      "to": "new_york",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "boston_phoenix",
+      "from": "boston",
+      "to": "phoenix",
+      "points": 19,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "new_orleans_pittsburgh",
+      "from": "new_orleans",
+      "to": "pittsburgh",
+      "points": 8,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "houston_portland",
+      "from": "houston",
+      "to": "portland",
+      "points": 16,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "pittsburgh_portland",
+      "from": "pittsburgh",
+      "to": "portland",
+      "points": 19,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "miami_saint_louis",
+      "from": "miami",
+      "to": "saint_louis",
+      "points": 8,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "chicago_salt_lake_city",
+      "from": "chicago",
+      "to": "salt_lake_city",
+      "points": 11,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "kansas_city_salt_lake_city",
+      "from": "kansas_city",
+      "to": "salt_lake_city",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "san_francisco_sault_st_marie",
+      "from": "san_francisco",
+      "to": "sault_st_marie",
+      "points": 17,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "miami_sault_st_marie",
+      "from": "miami",
+      "to": "sault_st_marie",
+      "points": 12,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "las_vegas_seattle",
+      "from": "las_vegas",
+      "to": "seattle",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "oklahoma_city_seattle",
+      "from": "oklahoma_city",
+      "to": "seattle",
+      "points": 14,
+      "deck": "regular",
+      "sets": ["1910", "mega", "big_cities"]
+    },
+    {
+      "id": "charleston_toronto",
+      "from": "charleston",
+      "to": "toronto",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "denver_vancouver",
+      "from": "denver",
+      "to": "vancouver",
+      "points": 11,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "duluth_vancouver",
+      "from": "duluth",
+      "to": "vancouver",
+      "points": 13,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "santa_fe_winnipeg",
+      "from": "santa_fe",
+      "to": "winnipeg",
+      "points": 10,
+      "deck": "regular",
+      "sets": ["1910", "mega"]
+    },
+    {
+      "id": "boston_washington",
+      "from": "boston",
+      "to": "washington",
+      "points": 4,
+      "deck": "regular",
+      "sets": ["mega"]
+    },
+    {
+      "id": "chicago_montreal",
+      "from": "chicago",
+      "to": "montreal",
+      "points": 7,
+      "deck": "regular",
+      "sets": ["mega", "big_cities"]
+    },
+    {
+      "id": "omaha_winnipeg",
+      "from": "omaha",
+      "to": "winnipeg",
+      "points": 6,
+      "deck": "regular",
+      "sets": ["mega"]
+    },
+    {
+      "id": "portland_vancouver",
+      "from": "portland",
+      "to": "vancouver",
+      "points": 2,
+      "deck": "regular",
+      "sets": ["mega"]
     }
   ]
 }
