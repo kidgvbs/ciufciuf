@@ -64,7 +64,7 @@ Limiti e durate:
 | `--bind` | `0.0.0.0` | Indirizzo IP su cui ascoltare |
 | `--data-dir` | `data` | Mappe e ruleset |
 | `--saves-dir` | `saves` | Save delle partite in corso, profili e risultati |
-| `--client-dist` | `../client/dist` | Il default vale solo se si parte da una sottocartella: dalla radice va passato `./client/dist` |
+| `--client-dist` | `client/dist` | File statici del client, relativo alla cartella di avvio come `data` e `saves` |
 | `--resume <file>` | | Ripristina una partita salvata |
 | `--allow-client-seed` | spento | Ammette il seed scelto dal client in `POST /api/games` |
 | `--deleted-saves-retention-days <N>` | 30 | Giorni di conservazione dei `*.deleted-*.bak` prima della rimozione all'avvio; `0` la disattiva |

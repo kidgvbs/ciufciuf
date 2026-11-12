@@ -2,6 +2,7 @@
   // Vista di gioco per il controller (telefono).
   // Mostra: mano, biglietti, azioni legali, scelta biglietti.
 
+  import { tick } from 'svelte';
   import { publicStore, privateStore, connectionStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
   import { errorMessage } from '../errors';
@@ -9,8 +10,15 @@
   import { offerKey, isDialogOpen, nextDismissedKey } from '../ticket-offer';
   import { routePoints } from '../map-utils';
   import { mostCommonColor, paymentCards, paymentCovered, suggestLocos } from '../payment';
-  import { borrowedRouteLabel, rulesetHasStations } from '../scores';
-  import { bonusLabel } from '../rulesets';
+  import { rulesetHasStations } from '../scores';
+  import {
+    addedColors,
+    countByColor,
+    flyCard,
+    isFreshDrawSource,
+    rectOf,
+    type DrawSource,
+  } from '../draw-animation';
   import type { InboundAction, CardColor, TunnelReveal } from '../proto';
   import TicketChoiceDialog from './TicketChoiceDialog.svelte';
   import MapSvg from './MapSvg.svelte';
@@ -185,23 +193,58 @@
   });
 
   // ── Azioni ─────────────────────────────────────────────────────
-  function drawDeck() {
-    sendAction({
+  function drawDeck(source: HTMLElement) {
+    const rect = rectOf(source);
+    const sent = sendAction({
       actionType: 'DRAW_TRAIN_CARD',
       player_id: playerId,
       source: 'deck',
       client_seq: nextClientSeq(playerId),
     });
+    if (sent) drawSource = { rect, at: Date.now() };
   }
 
-  function drawFaceUp(index: number) {
-    sendAction({
+  function drawFaceUp(index: number, source: HTMLElement) {
+    const rect = rectOf(source);
+    const sent = sendAction({
       actionType: 'DRAW_TRAIN_CARD',
       player_id: playerId,
       source: { faceUp: { index } },
       client_seq: nextClientSeq(playerId),
     });
+    if (sent) drawSource = { rect, at: Date.now() };
   }
+
+  // ── Animazione pesca (§8.2) ────────────────────────────────────
+  // Il diff della mano (dal server) dice quale carta è entrata; la posizione di partenza è quella
+  // del bottone toccato. Nessuna regola di gioco: se la mano cresce senza una pesca appena
+  // inviata da qui (snapshot, reconnect) non si anima nulla.
+  let drawSource: DrawSource | null = null;
+  let handFanEl = $state<HTMLDivElement>();
+  let rootEl = $state<HTMLDivElement>();
+  let prevHandCounts: Map<CardColor, number> | null = null;
+  $effect(() => {
+    const counts = countByColor(hand);
+    const prev = prevHandCounts;
+    prevHandCounts = counts;
+    if (prev === null) return;
+    const added = addedColors(prev, counts);
+    const source = drawSource;
+    if (added.length === 0 || !source) return;
+    drawSource = null;
+    if (!isFreshDrawSource(source, Date.now())) return;
+    void tick().then(() => {
+      for (const color of added) {
+        const card = handFanEl?.querySelector<HTMLElement>(`[data-card-color="${color}"]`);
+        if (card && rootEl) flyCard(source.rect, card, rootEl);
+      }
+    });
+  });
+
+  // Pesca rifiutata dal server (errore dopo l'invio): niente animazione per una carta che non arriva.
+  $effect(() => {
+    if (connectionStore.lastError) drawSource = null;
+  });
 
   function drawTickets() {
     sendAction({
@@ -447,17 +490,9 @@
         gameState === 'LAST_ROUND' ||
         gameState === 'SECOND_CARD_DRAW'),
   );
-
-  const showMyScore = $derived(
-    gameState === 'GAME_OVER' && publicStore.finalScores,
-  );
-
-  function myFinalScore() {
-    return publicStore.finalScores?.find((fs) => fs.playerId === playerId);
-  }
 </script>
 
-<div class="cv-game">
+<div class="cv-game" bind:this={rootEl}>
   <!-- Sfondo inerte mentre il dialog dei biglietti è aperto. -->
   <div class="cv-bg" inert={ticketDialogOpen || tunnelMove !== null}>
   <!-- Header -->
@@ -495,38 +530,6 @@
     <button class="btn reopen-tickets" onclick={() => (dismissedOfferId = '')}>
       🎫 Devi scegliere i biglietti ({offered.length})
     </button>
-  {/if}
-
-  <!-- Game over score -->
-  {#if showMyScore}
-    {@const fs = myFinalScore()}
-    {#if fs}
-      <div class="section my-score">
-        <h3>Il tuo punteggio</h3>
-        <div class="score-grid">
-          <div class="score-row"><span>Rotte</span><span>{fs.routePoints}</span></div>
-          <div class="score-row"><span>Biglietti completati</span><span>+{fs.ticketCompleted}</span></div>
-          <div class="score-row"><span>Biglietti falliti</span><span>{fs.ticketFailed}</span></div>
-          {#if fs.stationPoints > 0}
-            <div class="score-row bonus"><span>🏠 Stazioni non costruite</span><span>+{fs.stationPoints}</span></div>
-          {/if}
-          {#if fs.longestPathBonus > 0}
-            <div class="score-row bonus"><span>🏆 {bonusLabel(gameMap.rulesetId)}</span><span>+{fs.longestPathBonus}</span></div>
-          {/if}
-          <div class="score-row total"><span>Totale</span><span>{fs.total}</span></div>
-        </div>
-        {#if fs.borrowedRoutes.length > 0}
-          <div class="borrowed">
-            <h4>Rotte in prestito (stazioni)</h4>
-            <ul>
-              {#each fs.borrowedRoutes as b (b.cityId + b.routeId)}
-                <li>{borrowedRouteLabel(b, mapData)}</li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-      </div>
-    {/if}
   {/if}
 
   <!-- Toggle mappa: solo portrait (in landscape la plancia è sempre visibile) -->
@@ -590,7 +593,7 @@
       <h3>Azioni</h3>
 
       {#if legalMoves.can_draw_deck}
-        <button onclick={drawDeck} class="btn action-btn draw-deck" disabled={drawBusy}>
+        <button onclick={(e) => drawDeck(e.currentTarget)} class="btn action-btn draw-deck" disabled={drawBusy}>
           🃏 Pesca dal mazzo
         </button>
       {/if}
@@ -600,7 +603,7 @@
           {#each legalMoves.draw_face_up as idx}
             {@const card = publicStore.visibleDeck[idx]}
             <button
-              onclick={() => drawFaceUp(idx)}
+              onclick={(e) => drawFaceUp(idx, e.currentTarget)}
               class="btn action-btn face-up"
               disabled={drawBusy}
               aria-label={card ? `Pesca carta ${CARD_COLOR_NAME[card]}` : 'Pesca carta scoperta'}
@@ -804,12 +807,13 @@
     {#if hand.length > 0}
       {@const hbc = getHandByColor()}
       {#if hbc.length > 0}
-        <div class="hand-fan">
+        <div class="hand-fan" bind:this={handFanEl}>
           {#each hbc as [color, count], i}
             {@const rot = (i - (hbc.length - 1) / 2) * 6}
             <button
               type="button"
               class="fan-card"
+              data-card-color={color}
               class:focused={focusedColor === color}
               style="--rot:{rot}deg"
               aria-label="{CARD_COLOR_NAME[color]}: {count} in mano"
@@ -1203,33 +1207,6 @@
     padding: 0.5rem;
   }
 
-  /* My score (game over) */
-  .my-score {
-    border: 2px solid var(--gold);
-  }
-  .score-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-  }
-  .score-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.25rem 0.5rem;
-    font-size: 0.9rem;
-  }
-  .score-row.total {
-    font-weight: bold;
-    font-size: 1.1rem;
-    color: var(--gold);
-    border-top: 1px solid var(--chrome-line);
-    margin-top: 4px;
-    padding-top: 6px;
-  }
-  .score-row.bonus {
-    color: #2ecc71;
-  }
-
   /* Empty / waiting */
   .empty {
     color: var(--chrome-faint);
@@ -1548,18 +1525,6 @@
     gap: 6px;
     max-height: 40vh;
     overflow-y: auto;
-  }
-  .borrowed {
-    margin-top: 0.5rem;
-    font-size: 0.85rem;
-  }
-  .borrowed h4 {
-    margin: 0 0 0.25rem;
-  }
-  .borrowed ul {
-    margin: 0;
-    padding-left: 1.1rem;
-    color: var(--chrome-muted);
   }
 
   /* Dialog tunnel (Europe): blocca la schermata finché si decide */

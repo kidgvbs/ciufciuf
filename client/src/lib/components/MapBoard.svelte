@@ -415,6 +415,13 @@
     pz = { ...PZ.IDENTITY };
   }
 
+  /** Enter/Spazio su una città selezionabile = tap (la mappa è usabile anche da tastiera). */
+  function onCityKey(e: KeyboardEvent, cityId: string) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    onCityTap?.(cityId);
+  }
+
   // wheel non passivo (preventDefault per non scrollare la pagina)
   $effect(() => {
     const el = containerEl;
@@ -425,6 +432,11 @@
 
   const claimedMap = $derived(
     new Map(publicStore.claimedRoutes.map(cr => [cr.route_id, cr.claimed_by_player_id]))
+  );
+
+  // Fine partita: rotte del percorso più lungo (scelte dal server), da mettere in risalto.
+  const longestSet = $derived(
+    new Set(publicStore.state === 'GAME_OVER' ? (publicStore.longestPathRouteIds ?? []) : []),
   );
 
   // Layer multipli — un pin + una dashed line per OGNI
@@ -559,6 +571,20 @@
         {/each}
       </g>
 
+      <!-- 3b. Percorso più lungo (fine partita): alone dorato a tre strati, sotto i vagoni -->
+      <g class="layer-longest" aria-hidden="true">
+        {#each routeGeos as g (g.route.id)}
+          {#if longestSet.has(g.route.id)}
+            <path d={g.d} fill="none" class="longest-halo"
+              stroke-width={g.sw + 20 * swFactor} stroke-linecap="round" stroke-linejoin="round" />
+            <path d={g.d} fill="none" class="longest-mid"
+              stroke-width={g.sw + 12 * swFactor} stroke-linecap="round" stroke-linejoin="round" />
+            <path d={g.d} fill="none" class="longest-core"
+              stroke-width={g.sw + 5 * swFactor} stroke-linecap="round" stroke-linejoin="round" />
+          {/if}
+        {/each}
+      </g>
+
       <!-- 4. Tasselli liberi / vagoni reclamati -->
       <g class="layer-slots">
         {#each routeGeos as g (g.route.id)}
@@ -639,14 +665,23 @@
         </g>
       {/if}
 
-      <!-- 5b. Aree di tap delle città selezionabili (sopra quelle delle rotte) -->
+      <!-- 5b. Aree di tap delle città selezionabili (sopra quelle delle rotte): raggiungibili anche
+           da tastiera (Tab, Enter/Spazio); l'anello di focus compare solo con la tastiera. -->
       {#if cityInteractive}
         <g class="layer-hit">
           {#each mapData.cities as city (city.id)}
             {@const pos = cityPositions.get(city.id)}
             {#if pos && selectableCitySet.has(city.id)}
-              <circle cx={pos.x} cy={pos.y} r={cityDotR + 10} data-city-id={city.id}
-                class="city-tappable" fill="#000" fill-opacity="0" pointer-events="all" />
+              <g class="city-tappable" role="button" tabindex="0"
+                aria-label={city.name} aria-pressed={city.id === selectedCityId}
+                onkeydown={(e) => onCityKey(e, city.id)}>
+                <circle cx={pos.x} cy={pos.y} r={cityDotR + 14} fill="none" stroke="#2a1d0c"
+                  stroke-width={7 * swFactor} class="city-focus" pointer-events="none" />
+                <circle cx={pos.x} cy={pos.y} r={cityDotR + 14} fill="none" stroke="#fdf7e6"
+                  stroke-width={3.5 * swFactor} class="city-focus" pointer-events="none" />
+                <circle cx={pos.x} cy={pos.y} r={cityDotR + 10} data-city-id={city.id}
+                  fill="#000" fill-opacity="0" pointer-events="all" />
+              </g>
             {/if}
           {/each}
         </g>
@@ -659,23 +694,32 @@
           stroke-linecap="round" stroke-dasharray="10 7" opacity="0.9" />
       {/each}
 
-      <!-- 7. Città: ombra, pallino a bottone, anello doppio per gli hub -->
-      <g class="layer-cities" aria-hidden="true">
-        {#each labelLeaders as l (l.id)}
-          <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
-            stroke="#453416" stroke-width="1.1" stroke-opacity="0.55" stroke-linecap="round" />
-        {/each}
+      <!-- 7. Città: ombra, pallino a bottone, anello doppio per gli hub.
+           Ogni città è un'immagine col suo nome per gli screen reader (quelle selezionabili
+           sono già esposte come pulsanti al livello 5b). -->
+      <g class="layer-cities">
+        <g aria-hidden="true">
+          {#each labelLeaders as l (l.id)}
+            <line x1={l.x1} y1={l.y1} x2={l.x2} y2={l.y2}
+              stroke="#453416" stroke-width="1.1" stroke-opacity="0.55" stroke-linecap="round" />
+          {/each}
+        </g>
         {#each mapData.cities as city (city.id)}
           {@const pos = cityPositions.get(city.id)}
           {#if pos}
             {@const hub = (cityDegree.get(city.id) ?? 0) >= 6}
-            <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
-              fill="#2a1d0c" opacity="0.25" />
-            <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
-              stroke="#453416" stroke-width="2" />
-            {#if hub}
-              <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
-            {/if}
+            {@const exposedAsButton = cityInteractive && selectableCitySet.has(city.id)}
+            <g role={exposedAsButton ? undefined : 'img'}
+              aria-label={exposedAsButton ? undefined : city.name}
+              aria-hidden={exposedAsButton ? 'true' : undefined}>
+              <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
+                fill="#2a1d0c" opacity="0.25" />
+              <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
+                stroke="#453416" stroke-width="2" />
+              {#if hub}
+                <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
+              {/if}
+            </g>
           {/if}
         {/each}
       </g>
@@ -864,8 +908,20 @@
     from { opacity: 0.18; }
     to { opacity: 0.5; }
   }
-  .layer-shadow, .layer-bed, .layer-glow, .layer-slots, .layer-cities, .layer-labels {
+  .layer-shadow, .layer-bed, .layer-glow, .layer-longest, .layer-slots, .layer-cities, .layer-labels {
     pointer-events: none;
+  }
+  /* Percorso più lungo (fine partita): alone dorato, sempre visibile; pulsa solo senza
+     preferenza di movimento ridotto. Colori dai token (--gold*). */
+  .longest-halo { stroke: var(--gold); opacity: 0.28; }
+  .longest-mid { stroke: var(--gold-bright); opacity: 0.5; }
+  .longest-core { stroke: var(--gold-bright); opacity: 0.95; }
+  @media (prefers-reduced-motion: no-preference) {
+    .longest-halo, .longest-mid { animation: longest-pulse 1.4s ease-in-out infinite alternate; }
+  }
+  @keyframes longest-pulse {
+    from { opacity: 0.15; }
+    to { opacity: 0.6; }
   }
   .route-tappable {
     cursor: pointer;
@@ -904,7 +960,9 @@
     }
   }
   .tunnel-hatch, .tunnel-outline, .ferry-glyph { pointer-events: none; }
-  .city-tappable { cursor: pointer; }
+  .city-tappable { cursor: pointer; outline: none; }
+  .city-focus { display: none; }
+  .city-tappable:focus-visible .city-focus { display: inline; }
   .city-ring { opacity: 1; }
   @media (prefers-reduced-motion: no-preference) {
     .city-ring:not(.picked), .city-halo:not(.picked) { animation: glow-pulse 1.2s ease-in-out infinite alternate; }

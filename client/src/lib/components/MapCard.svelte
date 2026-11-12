@@ -3,9 +3,9 @@
   //
   // La thumbnail è un mini-render SVG originale del layout schematico
   // (lo stesso che si vede in partita) — zero asset ufficiali (regola d'oro 2).
-  // Le mappe non disponibili, o senza mappa/layout caricabili, mostrano un
-  // placeholder neutro disegnato da noi.
-  import type { RulesetInfo } from '../rulesets';
+  // Finché mappa/layout non sono caricati (o non lo sono affatto) mostra un
+  // placeholder neutro disegnato da noi. Il sottotitolo deriva dai dati del ruleset.
+  import { rulesetBlurb, type RulesetInfo } from '../rulesets';
   import { loadRulesetMap, type RulesetMap } from '../map-loader';
 
   let { host, ruleset, selected, onSelect }: {
@@ -24,7 +24,6 @@
   let loaded = $state.raw<RulesetMap | null>(null);
   $effect(() => {
     loaded = null;
-    if (!ruleset.available) return;
     let cancelled = false;
     loadRulesetMap(host, ruleset.id).then(
       (m) => { if (!cancelled) loaded = m; },
@@ -63,13 +62,12 @@
     });
     return { routes, cities };
   });
+  const blurb = $derived(rulesetBlurb(ruleset));
 </script>
 
 <button
   class="map-card"
   class:selected
-  class:locked={!ruleset.available}
-  disabled={!ruleset.available}
   onclick={() => onSelect(ruleset.id)}
   aria-pressed={selected}
 >
@@ -86,7 +84,7 @@
         {/each}
       </svg>
     {:else}
-      <!-- Placeholder neutro originale per mappe future (niente artwork esterno) -->
+      <!-- Placeholder neutro originale in attesa della mappa (niente artwork esterno) -->
       <svg viewBox="0 0 {THUMB_W} {THUMB_H}" width="100%" height="100%" aria-hidden="true">
         <rect width={THUMB_W} height={THUMB_H} fill="#e8d9b8" rx="6" />
         <path d="M40 130 Q 90 60 140 100 T 225 55"
@@ -98,12 +96,9 @@
           font-size="30" fill="#a68b5b" font-family="system-ui">?</text>
       </svg>
     {/if}
-    {#if !ruleset.available}
-      <span class="coming-soon">In arrivo</span>
-    {/if}
   </div>
   <div class="card-name">{ruleset.name}</div>
-  <div class="card-blurb">{ruleset.blurb}</div>
+  <div class="card-blurb">{blurb}</div>
 </button>
 
 <style>
@@ -124,17 +119,13 @@
     box-shadow: var(--shadow-panel);
     transition: transform 0.08s ease;
   }
-  .map-card:hover:not(.locked) {
+  .map-card:hover {
     border-color: var(--gold);
     transform: translateY(-2px);
   }
   .map-card.selected {
     border-color: var(--gold);
     box-shadow: 0 0 0 2px var(--gold), var(--shadow-panel);
-  }
-  .map-card.locked {
-    opacity: 0.55;
-    cursor: not-allowed;
   }
   .thumb {
     position: relative;
@@ -144,17 +135,6 @@
   }
   .thumb svg {
     display: block;
-  }
-  .coming-soon {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    background: var(--gold);
-    color: #453416;
-    font-size: 0.7rem;
-    font-weight: 700;
-    padding: 0.15rem 0.5rem;
-    border-radius: 10px;
   }
   .card-name {
     font-size: 1.05rem;

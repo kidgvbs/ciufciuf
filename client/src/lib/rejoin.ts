@@ -28,3 +28,23 @@ export function parseRejoinHash(hash: string): RejoinIdentity | null {
   if (!gameId || !playerId || !token) return null;
   return { gameId, playerId, token };
 }
+
+/**
+ * QR di rientro ancora utili: tiene la voce di un nome solo se è ancora in attesa di rientrare
+ * (nome del salvataggio non rientrato, o giocatore del roster ancora disconnesso). Chi è tornato
+ * connesso o è uscito dal roster perde la voce. Restituisce `links` stesso se non cambia nulla.
+ */
+export function pruneRejoinLinks(
+  links: Record<string, string>,
+  players: ReadonlyArray<{ name: string; connected: boolean }>,
+  missingNames: readonly string[],
+): Record<string, string> {
+  const waiting = new Set(missingNames);
+  for (const p of players) {
+    if (!p.connected) waiting.add(p.name);
+    else waiting.delete(p.name);
+  }
+  const names = Object.keys(links);
+  if (names.every((n) => waiting.has(n))) return links;
+  return Object.fromEntries(names.filter((n) => waiting.has(n)).map((n) => [n, links[n]!]));
+}

@@ -26,12 +26,13 @@
   import { parseRejoinHash } from '../lib/rejoin';
   import { createActionGate } from '../lib/action-gate';
   import { notConnectedError, fatalMessage } from '../lib/errors';
-  import { rankedScores, winnerNames, borrowedRouteLabel } from '../lib/scores';
-  import { bonusLabel } from '../lib/rulesets';
+  import { rulesetCatalog } from '../lib/rulesets.svelte.ts';
   import type { Snapshot, PublicState, PrivateState, ErrorPayload, InboundAction, PlayerColor } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import JoinScreen from '../lib/components/JoinScreen.svelte';
   import ControllerGameView from '../lib/components/ControllerGameView.svelte';
+  import MapSvg from '../lib/components/MapSvg.svelte';
+  import FinalScores from '../lib/components/FinalScores.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
 
   // ── Stato connessione ───────────────────────────────────────────
@@ -71,6 +72,7 @@
   // reattivo chiude/riapre il WS all'infinito. onMount gira una volta sola,
   // fuori da qualunque contesto reattivo.
   onMount(() => {
+    rulesetCatalog.load(host);
     // Identità consegnata dalla TV via QR: la salviamo e togliamo il token dall'URL.
     const rejoin = parseRejoinHash(window.location.hash);
     if (rejoin) {
@@ -96,6 +98,11 @@
     if (gameState === 'WAITING_FOR_PLAYERS') return 'waiting';
     if (gameState === 'GAME_OVER') return 'gameover';
     return 'game';
+  });
+
+  // Nome del bonus a fine partita: se il catalogo non era arrivato, riprova.
+  $effect(() => {
+    if (view === 'gameover') untrack(() => rulesetCatalog.load(host));
   });
 
   // Polling giocatori in lobby
@@ -358,55 +365,17 @@
     <div class="gameover-screen">
       <h1>🏁 Fine partita!</h1>
       {#if publicStore.finalScores}
-        {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
-        {#if winners}<p class="winner-line">🥇 Vince {winners}!</p>{/if}
-        <div class="scores-list">
-          {#each rankedScores(publicStore.finalScores) as fs}
-            {@const p = publicStore.playersSummary.find(
-              (ps) => ps.player_id === fs.playerId,
-            )}
-            <div
-              class="score-card"
-              class:mine={fs.playerId === playerId}
-              class:winner={fs.winner}
-            >
-              <div class="score-header">
-                <span
-                  class="chip-dot"
-                  style="background:{p
-                    ? PLAYER_COLOR_CSS[p.color]
-                    : '#666'}"
-                ></span>
-                <span class="score-name">{fs.winner ? '🥇 ' : ''}{p?.name ?? fs.playerId}</span>
-                <span class="score-total">{fs.total}</span>
-              </div>
-              <div class="score-detail">
-                Rotte {fs.routePoints} · Biglietti +{fs.ticketCompleted}
-                {#if fs.ticketFailed < 0} · {fs.ticketFailed}{/if}
-                {#if fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
-                {#if fs.stationPoints > 0} · 🏠 +{fs.stationPoints}{/if}
-              </div>
-              {#if fs.borrowedRoutes.length > 0}
-                <div class="score-detail">
-                  Rotte in prestito:
-                  {fs.borrowedRoutes.map((b) => borrowedRouteLabel(b, gameMap.state.data)).join(', ')}
-                </div>
-              {/if}
-            </div>
-          {/each}
-        </div>
-        {#if publicStore.longestPathPlayerIds}
-          <div class="longest-banner">
-            🏆 {bonusLabel(gameMap.rulesetId)}:
-            {publicStore.longestPathPlayerIds
-              .map(
-                (pid) =>
-                  publicStore.playersSummary.find((ps) => ps.player_id === pid)
-                    ?.name ?? pid,
-              )
-              .join(', ')}
-          </div>
-        {/if}
+        <FinalScores
+          scores={publicStore.finalScores}
+          players={publicStore.playersSummary}
+          {playerId}
+          longestPathPlayerIds={publicStore.longestPathPlayerIds}
+          bonusName={rulesetCatalog.bonusLabel(gameMap.rulesetId)}
+          mapData={gameMap.state.data}
+        >
+          <!-- Mappa a fine partita: il percorso più lungo è evidenziato (glow dorato). -->
+          <div class="gameover-map"><MapSvg compact /></div>
+        </FinalScores>
       {/if}
       <button class="leave-btn btn" onclick={onLeave}> Nuova partita </button>
     </div>
@@ -538,63 +507,12 @@
     margin-bottom: 1.5rem;
     text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
   }
-  .scores-list {
+  .gameover-map {
     width: 100%;
-    max-width: 380px;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  .score-card {
-    background: var(--chrome-bg-1);
-    border: 1px solid var(--chrome-line);
-    border-radius: 8px;
-    box-shadow: var(--shadow-panel);
-    padding: 0.75rem;
-    border-left: 4px solid var(--chrome-line);
+    max-width: 560px;
+    height: 260px;
+    margin-bottom: 1rem;
     text-align: left;
-  }
-  .score-card.mine {
-    border-left-color: var(--gold);
-  }
-  .score-card.winner {
-    background: #2c3a1c;
-  }
-  .winner-line {
-    font-size: 1.2rem;
-    font-weight: 800;
-    color: var(--gold);
-    margin: 0 0 0.75rem;
-  }
-  .score-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .score-name {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: 600;
-  }
-  .score-total {
-    font-weight: bold;
-    font-size: 1.3rem;
-    color: var(--gold);
-  }
-  .score-detail {
-    font-size: 0.8rem;
-    color: var(--chrome-muted);
-    margin-top: 0.25rem;
-    margin-left: 22px;
-  }
-  .longest-banner {
-    margin-top: 1rem;
-    color: var(--gold);
-    font-weight: bold;
-    font-size: 1.1rem;
   }
 
   /* Shared */

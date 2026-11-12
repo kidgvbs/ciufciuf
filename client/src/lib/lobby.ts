@@ -317,6 +317,10 @@ export class LobbyError extends Error {
 export const MAP_FETCH_TIMEOUT_MS = 10_000;
 export const MAP_TIMEOUT_MESSAGE = 'Timeout caricamento mappa';
 
+/** Tempo massimo per leggere il catalogo dei ruleset. */
+export const RULESETS_FETCH_TIMEOUT_MS = 10_000;
+export const RULESETS_TIMEOUT_MESSAGE = 'Timeout caricamento mappe';
+
 /** Tempo massimo per elencare, riprendere o eliminare un salvataggio. */
 export const SAVES_FETCH_TIMEOUT_MS = 15_000;
 export const SAVES_TIMEOUT_MESSAGE = 'Il server non risponde';
@@ -412,6 +416,16 @@ export class LobbyClient {
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  // GET /api/rulesets — catalogo dei ruleset (forma non validata: vedi rulesets.ts).
+  async getRulesets(): Promise<unknown> {
+    return this.requestWithTimeout<unknown>(
+      'GET',
+      '/api/rulesets',
+      RULESETS_FETCH_TIMEOUT_MS,
+      RULESETS_TIMEOUT_MESSAGE,
+    );
   }
 
   // GET /api/rulesets/{id}/map — mappa e biglietti del ruleset (forma non validata: vedi map-loader).

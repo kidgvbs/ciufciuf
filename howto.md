@@ -17,7 +17,6 @@ cargo build --release
 ```
 
 - Il server serve `client/dist`: se tocco il client devo rifare `bun run build`, se tocco Rust `cargo build --release`.
-- `--client-dist` ha default `../client/dist`, che dalla radice è sbagliato: va sempre passato `./client/dist`.
 - Se macOS chiede di consentire le connessioni in entrata a `ttr-server`, consento.
 - Il registry del client è fissato in `client/bunfig.toml` (`registry.npmjs.org`). Non cambiarlo, anche se in locale uso il mirror aziendale: la CI controlla che `bun.lock` abbia solo URL pubblici.
 
@@ -29,7 +28,7 @@ cargo build --release
 | `--bind` | `0.0.0.0` | Indirizzo su cui ascoltare (`127.0.0.1` per solo locale) |
 | `--data-dir` | `data` | Mappe (`maps/`) e ruleset (`rulesets/`) |
 | `--saves-dir` | `saves` | Save in corso, `profiles.json`, `results.jsonl` |
-| `--client-dist` | `../client/dist` | File statici del client |
+| `--client-dist` | `client/dist` | File statici del client |
 | `--resume <file>` | | Riprende una partita da un save |
 | `--allow-client-seed` | spento | Permette `seed` in `POST /api/games` (test, partite riproducibili) |
 | `--deleted-saves-retention-days <N>` | 30 | Giorni dopo i quali all'avvio cancella i `*.deleted-*.bak`; `0` = mai |
@@ -127,6 +126,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 | `POST /api/games/{id}/start` | `{hostToken}` | `204` |
 | `POST /api/games/{id}/reassign` | `{hostToken, name}` | `{playerId, token}` (token nuovo); in lobby solo per partite riprese, a partita avviata per ogni giocatore del roster |
 | `DELETE /api/games/{id}` | `{hostToken}` | `204` (un save su disco resta) |
+| `GET /api/rulesets` | | `{rulesets:[{id,name,mapId,cities,routes,tickets,minPlayers,maxPlayers,bonusLabel,tunnels,ferries,stations}]}` per id: il catalogo del selettore mappe (`name` dal campo `name` di `data/rulesets/<id>.json`) |
 | `GET /api/rulesets/{id}/map` | | Documento della mappa (`cities`, `routes`, `tickets`, con `lat`/`lon`) più `rulesetId` |
 | `GET /api/rulesets/{id}/layout` | | Layout schematico della mappa (`width`, `height`, `cities`, `labels`, `routes` con 2–3 punti) più `rulesetId` e `mapId`; mappa senza layout → `404 LAYOUT_NOT_FOUND` |
 | `GET /api/saves` | | `{saves:[{gameId,name,rulesetId,players:[nome,…],createdAt,updatedAt}]}`: save `in_progress` riprendibili (regole attuali, ruleset noto) e non già attivi, dal più recente; i file illeggibili sono saltati con un warn |
@@ -241,7 +241,7 @@ bun run copy-bindings  # copia i binding ts-rs da crates/ttr-proto/bindings
 
 - `?server=` non esiste più: in dev si passa dal proxy di Vite.
 - Identità (telefono): `localStorage`, una chiave per partita (`ciufciuf-identity:<gameId>`), scade dopo 24 h; sulla schermata di rientro c'è "Non sono io". L'`hostToken` della TV sta in `sessionStorage`.
-- Mappa e biglietti arrivano da `GET /api/rulesets/{id}/map`, il disegno schematico da `GET /api/rulesets/{id}/layout` (`data/layouts/<mapId>.json`): le due fetch partono insieme, sotto lo stesso timeout di 10 s. Resta statico nel client solo l'elenco dei ruleset (`rulesets.ts`).
+- Mappa e biglietti arrivano da `GET /api/rulesets/{id}/map`, il disegno schematico da `GET /api/rulesets/{id}/layout` (`data/layouts/<mapId>.json`): le due fetch partono insieme, sotto lo stesso timeout di 10 s. Anche l'elenco dei ruleset (card del selettore, nome del bonus percorso più lungo) arriva dal server: `GET /api/rulesets`.
 - Il QR si genera nel browser (`qrcode-generator`): nessun token finisce in una query string.
 - La CSP è in `client/index.html`.
 
@@ -301,7 +301,7 @@ La CI (`.github/workflows/ci.yml`) esegue fmt, clippy, test, drift dei binding, 
 | Sintomo | Cosa controllo |
 |---|---|
 | La TV mostra la UI vecchia | Ho rifatto `bun run build`? Il server serve `client/dist` |
-| 404 sul client / pagina vuota | `--client-dist ./client/dist` (il default è sbagliato dalla radice) |
+| 404 sul client / pagina vuota | Il server parte dalla radice del repo? Altrimenti `--client-dist <percorso>/client/dist` |
 | I telefoni non si collegano | Stessa Wi-Fi, firewall di macOS, `--bind` non su 127.0.0.1, URL dal QR (`GET /api/lan`) |
 | Il server non parte | Dati incoerenti (guardo il messaggio, poi `ttr-validate`), porta occupata |
 | `429 TOO_MANY_GAMES` | 20 partite attive: chiudo le vecchie con `DELETE` o aspetto i TTL |

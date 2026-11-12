@@ -22,14 +22,15 @@
   import { adoptGame } from '../lib/adopt-game';
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
   import { currentHostEnv } from '../lib/server-host';
-  import { buildRejoinUrl } from '../lib/rejoin';
+  import { buildRejoinUrl, pruneRejoinLinks } from '../lib/rejoin';
   import { fatalMessage, errorMessage } from '../lib/errors';
   import { qrDataUrl } from '../lib/qr';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations } from '../lib/scores';
   import { formatSavedAt } from '../lib/saves';
-  import { RULESETS, DEFAULT_RULESET_ID, bonusLabel } from '../lib/rulesets';
+  import { rulesetCatalog } from '../lib/rulesets.svelte.ts';
+  import { defaultRulesetId } from '../lib/rulesets';
   import MapSvg from '../lib/components/MapSvg.svelte';
   import MapCard from '../lib/components/MapCard.svelte';
   import TrainCard from '../lib/components/TrainCard.svelte';
@@ -47,7 +48,8 @@
   let hostToken = $state<string>('');
   let gameNameInput = $state<string>('CiufCiuf!');
   let seedInput = $state<string>('');
-  let rulesetId = $state<string>(DEFAULT_RULESET_ID);
+  // Ruleset scelto nel form ('' finché il catalogo del server non è arrivato).
+  let rulesetId = $state<string>('');
   let lanCandidates = $state<LanCandidate[]>([]);
   let lanFallback = $state<string>('');
   let lobbyPlayers = $state<GameDetailPlayer[]>([]);
@@ -347,6 +349,7 @@
   // priorità ?game=<id> > localStorage ciufciuf-last-game > lista partite.
   onMount(() => {
     void loadLan();
+    rulesetCatalog.load(host);
     void (async () => {
       const params = new URLSearchParams(window.location.search);
       const paramGame = params.get('game');
@@ -393,6 +396,23 @@
 
   // Chiudi la connessione WS allo smontaggio (popstate in App.svelte rimonta le viste).
   $effect(() => () => { connection?.close(); connection = null; });
+
+  // Nome del bonus a fine partita: se il catalogo non era arrivato, riprova.
+  $effect(() => {
+    if (isGameOver) untrack(() => rulesetCatalog.load(host));
+  });
+
+  // Preselezione del ruleset: appena arriva il catalogo, o se quello scelto non c'è più.
+  $effect(() => {
+    const catalog = rulesetCatalog.items;
+    if (!catalog.some((r) => r.id === rulesetId)) rulesetId = defaultRulesetId(catalog) ?? '';
+  });
+
+  // QR di rientro: la voce di un giocatore sparisce quando torna connesso o esce dal roster.
+  $effect(() => {
+    const pruned = pruneRejoinLinks(rejoinLinks, publicStore.playersSummary, missingPlayers);
+    if (pruned !== rejoinLinks) rejoinLinks = pruned;
+  });
 
   // Helpers
   function isCurrentPlayer(pid: string) { return publicStore.currentTurnPlayerId === pid; }
@@ -500,7 +520,7 @@
             <div class="create-game">
               <h2 tabindex="-1" bind:this={newGameHeading}>Nuova partita</h2>
               <div class="map-cards">
-                {#each RULESETS as rs}
+                {#each rulesetCatalog.items as rs (rs.id)}
                   <MapCard
                     {host}
                     ruleset={rs}
@@ -509,11 +529,21 @@
                   />
                 {/each}
               </div>
+              {#if rulesetCatalog.status === 'loading'}
+                <p class="hint" role="status">Caricamento mappe…</p>
+              {:else if rulesetCatalog.status === 'error'}
+                <p class="hint" role="alert">
+                  Mappe non disponibili: {rulesetCatalog.error}
+                  <button class="btn retry-btn" onclick={() => rulesetCatalog.load(host)}>Riprova</button>
+                </p>
+              {:else if rulesetCatalog.status === 'ready' && rulesetCatalog.items.length === 0}
+                <p class="hint">Nessuna mappa disponibile</p>
+              {/if}
               <label>Nome: <input bind:value={gameNameInput} /></label>
               {#if import.meta.env.DEV}
                 <label>Seed (solo sviluppo — partita ripetibile): <input bind:value={seedInput} inputmode="numeric" placeholder="casuale" /></label>
               {/if}
-              <button class="btn" onclick={createGame} disabled={resumingSave !== ''}>Crea partita</button>
+              <button class="btn" onclick={createGame} disabled={resumingSave !== '' || rulesetId === ''}>Crea partita</button>
             </div>
             {#if availableGames.length > 0}
               <div class="existing-games">
@@ -668,9 +698,11 @@
           </div>
         {/if}
         {#if publicStore.longestPathPlayerIds}
-          <div class="longest-path">🏆 {bonusLabel(gameMap.rulesetId)}: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
+          <div class="longest-path">🏆 {rulesetCatalog.bonusLabel(gameMap.rulesetId)}: {publicStore.longestPathPlayerIds.map(pid => publicStore.playersSummary.find(ps => ps.player_id === pid)?.name ?? pid).join(', ')}</div>
         {/if}
       {/if}
+      <!-- Mappa a fine partita: il percorso più lungo è evidenziato (glow dorato). -->
+      <div class="gameover-map"><MapSvg /></div>
       <!-- Via d'uscita dalla schermata di fine partita
            (l'attach automatico riaggancia questa partita a ogni reload). -->
       <button class="btn leave-game-btn" onclick={() => leaveGame()}>✕ Cambia partita</button>
@@ -870,6 +902,8 @@
   .winner td { background:rgba(30,132,73,0.14); }
   .longest-path { margin-top:1rem; font-size:1.2rem; color:var(--gold); }
   .winner-line { font-size:2rem; font-weight:800; color:var(--gold); margin-bottom:1rem; }
+  /* Mappa a fine partita, sotto il segnapunti: altezza esplicita (il contenitore della mappa riempie). */
+  .gameover-map { display:flex; height:60vh; min-height:320px; max-width:1400px; margin:1.5rem auto 0; text-align:left; }
 
   /* Game layout — plancia segnapunti + board */
   .game-layout { display:flex; width:100vw; height:100vh; }
