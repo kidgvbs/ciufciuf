@@ -1915,11 +1915,10 @@ fn loco_reset_deadend_only_locos_terminates() {
 }
 
 /// Pool con meno di 5 carte durante la riscoperta: le carte mancanti arrivano
-/// dal mazzo nuovo (D27) e il loop si ferma dopo quella passata.
-/// Copre solo lo slot `None` nelle scoperte (non raggiungibile in partita,
-/// dove D27 non lascia slot vuoti): NON è il caso I13, coperto dal test
-/// `loco_reset_dead_end_with_empty_deck_rebuilds_and_rechecks` in
-/// `engine_deck.rs`.
+/// dal mazzo nuovo (D27), che sblocca il reset: le scoperte vengono
+/// ricontrollate una volta e scendono sotto la soglia.
+/// Usa lo slot `None` nelle scoperte (non raggiungibile in partita) solo per
+/// arrivare alla riscoperta con un pool di 4 carte.
 #[test]
 fn loco_reset_deadend_small_pool_uses_fresh_deck_and_terminates() {
     for seed in 0..20u64 {
@@ -1928,13 +1927,18 @@ fn loco_reset_deadend_small_pool_uses_fresh_deck_and_terminates() {
         assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
         assert_eq!(face_up_count(&eng), 5, "seed {}", seed);
         assert!(
-            loco_count(&eng) >= 4,
+            loco_count(&eng) < 3,
             "seed {}: {}",
             seed,
             deck_fingerprint(&eng)
         );
-        assert_eq!(eng.draw_pile_len(), 109, "seed {}", seed);
-        assert_eq!(eng.discards_len(), 0, "seed {}", seed);
+        // 4 locomotive del pool più il mazzo nuovo da 110, RED in mano.
+        assert_eq!(
+            eng.draw_pile_len() + eng.discards_len() + face_up_count(&eng),
+            114,
+            "seed {}",
+            seed
+        );
     }
 }
 
@@ -1965,7 +1969,7 @@ fn face_up_replacement_with_empty_pool_fills_slot() {
 }
 
 /// D27: in `SecondCardDraw` con sole locomotive scoperte e pool vuoto resta
-/// disponibile la pesca dal mazzo.
+/// disponibile la pesca dal mazzo, e il mazzo nuovo fa ricontrollare il mercato.
 #[test]
 fn second_draw_with_only_locos_and_empty_pool_can_draw_deck() {
     let mut eng = deck_fixture(42, vec![L; 20], [RED, RED, GREEN, GREEN, RED]);
@@ -1986,7 +1990,88 @@ fn second_draw_with_only_locos_and_empty_pool_can_draw_deck() {
     })
     .unwrap();
     assert_eq!(eng.current_player(), 1);
-    assert_eq!(eng.draw_pile_len(), 109);
+    assert!(loco_count(&eng) < 3, "{}", deck_fingerprint(&eng));
+    // 109 dopo la pesca, poi le 5 locomotive negli scarti e 5 nuove scoperte.
+    assert_eq!(eng.draw_pile_len() + eng.discards_len(), 109);
+    assert_eq!(face_up_count(&eng), 5);
+}
+
+/// J1: un mercato rimasto con ≥3 locomotive dopo un reset senza uscita (D26)
+/// viene ricontrollato quando una pesca dal mazzo coperto crea il mazzo nuovo
+/// (D27), dopo che la carta è finita in mano.
+#[test]
+fn deck_draw_that_builds_fresh_deck_rechecks_market() {
+    for seed in 0..20u64 {
+        let mut eng = deck_fixture(seed, vec![], [LOCO, LOCO, LOCO, RED, GREEN]);
+        eng.set_draw_pile(vec![CardColor::Red]);
+
+        let first = eng
+            .apply(Action::DrawTrainCard {
+                player_index: 0,
+                source: DrawSource::Deck,
+            })
+            .unwrap();
+        assert!(
+            !first
+                .iter()
+                .any(|e| matches!(e, GameEvent::FaceUpReset { .. })),
+            "seed {seed}: pesca senza mazzo nuovo non tocca il mercato"
+        );
+        assert_eq!(loco_count(&eng), 3);
+
+        let second = eng
+            .apply(Action::DrawTrainCard {
+                player_index: 0,
+                source: DrawSource::Deck,
+            })
+            .unwrap();
+        let reshuffled = second
+            .iter()
+            .position(|e| matches!(e, GameEvent::DeckReshuffled))
+            .expect("mazzo nuovo D27");
+        let drawn = second
+            .iter()
+            .position(|e| matches!(e, GameEvent::CardDrawnFromDeck { .. }))
+            .expect("carta pescata");
+        let reset = second
+            .iter()
+            .position(|e| matches!(e, GameEvent::FaceUpReset { .. }))
+            .expect("mercato ricontrollato");
+        assert!(
+            reshuffled < drawn && drawn < reset,
+            "seed {seed}: {second:?}"
+        );
+        assert!(
+            loco_count(&eng) < 3,
+            "seed {seed}: {}",
+            deck_fingerprint(&eng)
+        );
+        assert_eq!(face_up_count(&eng), 5);
+        assert_eq!(eng.current_player(), 1);
+    }
+}
+
+/// J1, controllo: con il pool in stato senza uscita e il mazzo non vuoto la
+/// pesca dal mazzo non ricontrolla il mercato (niente rimescolamenti a vuoto).
+#[test]
+fn deck_draw_without_fresh_deck_leaves_dead_end_market() {
+    let mut eng = deck_fixture(3, vec![L], [LOCO, LOCO, LOCO, RED, GREEN]);
+    eng.set_draw_pile(vec![CardColor::Red, CardColor::Locomotive]);
+    for _ in 0..2 {
+        let events = eng
+            .apply(Action::DrawTrainCard {
+                player_index: 0,
+                source: DrawSource::Deck,
+            })
+            .unwrap();
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, GameEvent::FaceUpReset { .. })),
+            "{events:?}"
+        );
+    }
+    assert_eq!(loco_count(&eng), 3);
 }
 
 /// Mappa con una doppia, una rotta corta e una da 6, con 5 treni a testa e

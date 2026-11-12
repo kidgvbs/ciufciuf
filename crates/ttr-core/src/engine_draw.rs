@@ -4,7 +4,9 @@ use ttr_proto::CardColor;
 
 use crate::action::DrawSource;
 use crate::engine::Engine;
-use crate::engine_deck::{draw_from_deck, draw_from_face_up};
+use crate::engine_deck::{
+    DeckDraw, check_and_reset_loco_threshold, draw_from_deck, draw_from_face_up,
+};
 use crate::error::{EngineError, GamePhase};
 use crate::event::GameEvent;
 
@@ -30,7 +32,7 @@ impl Engine {
 
         match source {
             DrawSource::Deck => {
-                let card = draw_from_deck(
+                let DeckDraw { card, rebuilt } = draw_from_deck(
                     &mut self.draw_pile,
                     &mut self.train_discards,
                     &mut self.rng,
@@ -41,6 +43,20 @@ impl Engine {
 
                 self.players[player_index].hand.push(card);
                 events.push(GameEvent::CardDrawnFromDeck { player_index, card });
+
+                // Il mazzo nuovo D27 può sbloccare un mercato rimasto con ≥3
+                // locomotive dopo un reset senza uscita (D26): un solo controllo,
+                // mai a ogni pesca, che altrimenti rimescolerebbe le scoperte.
+                if rebuilt {
+                    check_and_reset_loco_threshold(
+                        &mut self.face_up,
+                        &mut self.draw_pile,
+                        &mut self.train_discards,
+                        &mut self.rng,
+                        &self.ruleset.deck,
+                        &mut events,
+                    );
+                }
 
                 if self.phase == GamePhase::SecondCardDraw {
                     events.push(GameEvent::DrawTurnComplete { player_index });

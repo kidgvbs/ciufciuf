@@ -109,7 +109,7 @@ Le regole vincolanti sono nel piano, §3. Il motore le applica così, e tre casi
 
 - Chi non è di turno non ha mosse disponibili.
 - L'ultimo giro parte quando un giocatore resta con 2 treni o meno, e lo giocano tutti, compreso chi l'ha innescato.
-- **D26:** con 3 o più locomotive scoperte si scartano le 5 carte e se ne scoprono altre. Se tra mazzo e scarti restano al massimo 2 carte non-locomotiva, si rimescola una volta sola e ci si ferma, anche con 3 locomotive scoperte; se però mazzo e scarti sono a quel punto vuoti, si crea il mazzo nuovo di D27 e il controllo si ripete una volta.
+- **D26:** con 3 o più locomotive scoperte si scartano le 5 carte e se ne scoprono altre. Se tra mazzo e scarti restano al massimo 2 carte non-locomotiva, si rimescola una volta sola e ci si ferma, anche con 3 locomotive scoperte; se però mazzo e scarti sono a quel punto vuoti, si crea il mazzo nuovo di D27 e il controllo si ripete una volta. Anche una pesca dal mazzo coperto che crea il mazzo nuovo D27 fa ricontrollare le scoperte una volta.
 - **D27:** se finiscono sia il mazzo sia gli scarti, entra in gioco un mazzo completo nuovo. Le carte in mano restano ai giocatori.
 - **D28:** se nessuno può più reclamare alcuna rotta, parte l'ultimo giro.
 - **Pagamento:** il client indica le carte; se ne manca una del colore dichiarato il motore usa una locomotiva (sempre un pagamento legale).

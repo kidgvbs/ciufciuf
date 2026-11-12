@@ -19,6 +19,14 @@ pub fn build_train_deck(config: &DeckConfig) -> Vec<CardColor> {
     cards
 }
 
+/// Carta pescata dal mazzo coperto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeckDraw {
+    pub card: CardColor,
+    /// true se per questa pesca è stato creato un mazzo completo nuovo (D27).
+    pub rebuilt: bool,
+}
+
 /// Pesca una carta dal mazzo coperto.
 ///
 /// A mazzo vuoto rimescola gli scarti; se anche gli scarti sono vuoti crea un
@@ -31,11 +39,15 @@ pub fn draw_from_deck(
     rng: &mut SeededRng,
     deck: &DeckConfig,
     events: &mut Vec<GameEvent>,
-) -> Option<CardColor> {
+) -> Option<DeckDraw> {
     if let Some(card) = draw_pile.pop() {
-        return Some(card);
+        return Some(DeckDraw {
+            card,
+            rebuilt: false,
+        });
     }
-    if discards.is_empty() {
+    let rebuilt = discards.is_empty();
+    if rebuilt {
         *draw_pile = build_train_deck(deck);
     } else {
         std::mem::swap(draw_pile, discards);
@@ -45,7 +57,7 @@ pub fn draw_from_deck(
         return None;
     }
     events.push(GameEvent::DeckReshuffled);
-    draw_pile.pop()
+    draw_pile.pop().map(|card| DeckDraw { card, rebuilt })
 }
 
 /// Rivela fino a `count` carte dal mazzo coperto per un tunnel (D30).
@@ -91,7 +103,10 @@ pub fn draw_from_face_up(
     let card = face_up.get_mut(index)?.take()?;
 
     // Con una configurazione senza carte lo slot resta vuoto.
-    if let Some(replacement) = draw_from_deck(draw_pile, discards, rng, deck, events) {
+    if let Some(DeckDraw {
+        card: replacement, ..
+    }) = draw_from_deck(draw_pile, discards, rng, deck, events)
+    {
         face_up[index] = Some(replacement);
         events.push(GameEvent::FaceUpRevealed {
             index,
@@ -118,10 +133,11 @@ pub fn loco_count_face_up(face_up: &[Option<CardColor>]) -> usize {
 /// Se dopo lo scarto mazzo e scarti contengono al più 2 carte non-locomotiva
 /// nessuna ripetizione può uscire dalla soglia: gli scarti tornano nel mazzo,
 /// si rimescola una volta e ci si ferma dopo aver rivelato le nuove scoperte.
-/// Se però quella rivelazione ha esaurito mazzo e scarti lasciando ≥3
-/// locomotive scoperte, si crea il mazzo nuovo di D27 e si ricontrollano le
-/// scoperte (una sola volta per chiamata), così non restano ≥3 locomotive
-/// davanti a un mazzo pieno di carte normali.
+/// Se dopo quella rivelazione restano ≥3 locomotive scoperte, si ricontrolla
+/// una sola volta per chiamata quando c'è un mazzo nuovo D27: (a) la
+/// rivelazione ha esaurito mazzo e scarti, e allora lo si crea qui; (b)
+/// `draw_from_deck` l'ha già creato durante la rivelazione. Così non restano
+/// ≥3 locomotive davanti a un mazzo pieno di carte normali.
 /// Ogni reset aggiunge `FaceUpReset` a `events` (dopo gli eventuali
 /// `DeckReshuffled`); restituisce true se è avvenuto almeno un reset.
 pub fn check_and_reset_loco_threshold(
@@ -155,10 +171,12 @@ pub fn check_and_reset_loco_threshold(
             events.push(GameEvent::DeckReshuffled);
         }
 
+        let mut rebuilt_in_reveal = false;
         for slot in face_up.iter_mut() {
             // Con una configurazione senza carte lo slot resta vuoto.
-            if let Some(card) = draw_from_deck(draw_pile, discards, rng, deck, events) {
-                *slot = Some(card);
+            if let Some(draw) = draw_from_deck(draw_pile, discards, rng, deck, events) {
+                rebuilt_in_reveal |= draw.rebuilt;
+                *slot = Some(draw.card);
             }
         }
 
@@ -168,18 +186,21 @@ pub fn check_and_reset_loco_threshold(
         });
 
         if dead_end {
-            if !rebuilt
-                && loco_count_face_up(face_up) >= LOCO_RESET_THRESHOLD
-                && draw_pile.is_empty()
-                && discards.is_empty()
-            {
-                // Mazzo e scarti esauriti: D27, mazzo completo nuovo.
-                rebuilt = true;
-                *draw_pile = build_train_deck(deck);
-                if !draw_pile.is_empty() {
-                    rng.shuffle(draw_pile);
-                    events.push(GameEvent::DeckReshuffled);
+            if !rebuilt && loco_count_face_up(face_up) >= LOCO_RESET_THRESHOLD {
+                if rebuilt_in_reveal {
+                    // La rivelazione ha già creato il mazzo nuovo D27.
+                    rebuilt = true;
                     continue;
+                }
+                if draw_pile.is_empty() && discards.is_empty() {
+                    // Mazzo e scarti esauriti: D27, mazzo completo nuovo.
+                    rebuilt = true;
+                    *draw_pile = build_train_deck(deck);
+                    if !draw_pile.is_empty() {
+                        rng.shuffle(draw_pile);
+                        events.push(GameEvent::DeckReshuffled);
+                        continue;
+                    }
                 }
             }
             break;
