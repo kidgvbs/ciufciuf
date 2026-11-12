@@ -14,8 +14,17 @@ use crate::rng::SeededRng;
 use crate::scoring::PlayerConnectivity;
 use crate::types::{
     CityId, ClaimedRouteInfo, FACE_UP_COUNT, INITIAL_HAND_SIZE, LONGEST_PATH_BONUS_TYPE, MapData,
-    PendingTunnel, PlayerState, Route, RouteId, Ruleset, TicketDef, TicketId,
+    PendingTunnel, PlayerState, Route, RouteColor, RouteId, Ruleset, TicketDef, TicketId,
+    sister_route_id,
 };
+
+/// Dati di una rotta risolti al caricamento della mappa.
+#[derive(Debug, Clone)]
+pub(crate) struct RouteInfo {
+    pub(crate) color: RouteColor,
+    /// L'altra rotta di una coppia doppia, se la mappa la contiene.
+    pub(crate) sister: Option<RouteId>,
+}
 
 /// Il motore di CiufCiuf!
 #[derive(Clone)]
@@ -54,6 +63,7 @@ pub struct Engine {
 
     // Indexes
     pub(crate) routes_by_id: BTreeMap<RouteId, Route>,
+    pub(crate) route_info: BTreeMap<RouteId, RouteInfo>,
     pub(crate) tickets_by_id: BTreeMap<TicketId, TicketDef>,
 
     /// Punti del bonus del percorso più lungo, letti dal ruleset in `new`.
@@ -61,6 +71,9 @@ pub struct Engine {
     /// Giocatori il cui percorso più lungo non è esatto (budget di ricerca esaurito),
     /// calcolati a fine partita; vuoto sulle mappe validate.
     pub(crate) longest_path_inexact: Vec<usize>,
+    /// Per giocatore, id (ordinati) delle rotte di un suo percorso più lungo, calcolati a
+    /// fine partita; vuoto prima.
+    pub(crate) longest_path_routes: Vec<Vec<RouteId>>,
 
     // Log
     pub(crate) action_log: Vec<ActionRecord>,
@@ -233,6 +246,18 @@ impl Engine {
             .iter()
             .map(|r| (r.id.clone(), r.clone()))
             .collect();
+        let mut route_info: BTreeMap<RouteId, RouteInfo> = BTreeMap::new();
+        for route in &map.routes {
+            let Some(color) = RouteColor::parse(&route.color) else {
+                return Err(EngineInitError::InvalidRouteColor {
+                    route_id: route.id.clone(),
+                    color: route.color.clone(),
+                });
+            };
+            let sister = sister_route_id(&route.id)
+                .filter(|id| route.double && routes_by_id.contains_key(id));
+            route_info.insert(route.id.clone(), RouteInfo { color, sister });
+        }
         let tickets_by_id: BTreeMap<TicketId, TicketDef> = map
             .tickets
             .iter()
@@ -260,9 +285,11 @@ impl Engine {
             pending_tickets: Vec::new(),
             pending_tunnel: None,
             routes_by_id,
+            route_info,
             tickets_by_id,
             longest_path_bonus_points,
             longest_path_inexact: Vec::new(),
+            longest_path_routes: Vec::new(),
             action_log: Vec::new(),
         })
     }
@@ -327,6 +354,14 @@ impl Engine {
     #[must_use]
     pub fn longest_path_inexact_players(&self) -> &[usize] {
         &self.longest_path_inexact
+    }
+    /// Id (ordinati) delle rotte di un percorso più lungo del giocatore, scelto in modo
+    /// deterministico; calcolato a fine partita, vuoto prima e per indici sconosciuti.
+    #[must_use]
+    pub fn longest_path_routes(&self, index: usize) -> &[RouteId] {
+        self.longest_path_routes
+            .get(index)
+            .map_or(&[], Vec::as_slice)
     }
     #[must_use]
     pub fn last_round(&self) -> bool {

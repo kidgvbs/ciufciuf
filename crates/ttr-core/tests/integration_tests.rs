@@ -102,6 +102,7 @@ fn mini_ruleset() -> Ruleset {
     rp.insert("5".into(), 10);
     rp.insert("6".into(), 15);
     Ruleset {
+        name: "Mini".into(),
         map: "mini".into(),
         players: PlayersConfig { min: 2, max: 5 },
         trains_per_player: 45,
@@ -2937,6 +2938,16 @@ fn engine_new_rejects_zero_trains_per_player() {
     assert_eq!(
         init_error(rs, mini_map(), 2, 0),
         EngineInitError::ZeroTrainsPerPlayer
+    );
+}
+
+#[test]
+fn validate_rejects_empty_ruleset_name() {
+    let mut rs = mini_ruleset();
+    rs.name = "  ".into();
+    assert_eq!(
+        rs.validate(&mini_map()),
+        Err(EngineInitError::EmptyRulesetName)
     );
 }
 

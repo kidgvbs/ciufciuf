@@ -54,6 +54,8 @@ pub struct TicketDef {
 /// Regole per-mappa (caricate da JSON, piano §4.1).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ruleset {
+    /// Nome mostrato nell'elenco dei ruleset; obbligatorio e non vuoto.
+    pub name: String,
     pub map: String,
     pub players: PlayersConfig,
     #[serde(rename = "trainsPerPlayer")]
@@ -290,15 +292,6 @@ pub(crate) fn sister_route_id(route_id: &str) -> Option<RouteId> {
     }
 }
 
-/// Id della rotta gemella in una coppia doppia (`_1` ↔ `_2`), se esiste.
-pub(crate) fn find_sister_route(
-    route_id: &str,
-    routes: &BTreeMap<RouteId, Route>,
-) -> Option<RouteId> {
-    let sister_id = sister_route_id(route_id)?;
-    routes.contains_key(&sister_id).then_some(sister_id)
-}
-
 /// Converte punti (`u32`) nel tipo con segno dei punteggi, saturando.
 pub(crate) fn points_to_score(points: u32) -> i32 {
     i32::try_from(points).unwrap_or(i32::MAX)
@@ -307,19 +300,6 @@ pub(crate) fn points_to_score(points: u32) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn route(id: &str) -> Route {
-        Route {
-            id: id.into(),
-            from: "a".into(),
-            to: "b".into(),
-            len: 1,
-            color: GRAY_ROUTE_COLOR.into(),
-            double: true,
-            tunnel: false,
-            ferries: 0,
-        }
-    }
 
     #[test]
     fn route_color_parses_only_canonical_values() {
@@ -334,20 +314,9 @@ mod tests {
     }
 
     #[test]
-    fn sister_route_pairs_first_and_second() {
-        let routes: BTreeMap<RouteId, Route> = ["x_y_1", "x_y_2", "p_q_1"]
-            .iter()
-            .map(|id| ((*id).to_string(), route(id)))
-            .collect();
-        assert_eq!(
-            find_sister_route("x_y_1", &routes).as_deref(),
-            Some("x_y_2")
-        );
-        assert_eq!(
-            find_sister_route("x_y_2", &routes).as_deref(),
-            Some("x_y_1")
-        );
-        assert_eq!(find_sister_route("p_q_1", &routes), None);
-        assert_eq!(find_sister_route("other", &routes), None);
+    fn sister_route_id_swaps_the_suffix() {
+        assert_eq!(sister_route_id("x_y_1").as_deref(), Some("x_y_2"));
+        assert_eq!(sister_route_id("x_y_2").as_deref(), Some("x_y_1"));
+        assert_eq!(sister_route_id("other"), None);
     }
 }

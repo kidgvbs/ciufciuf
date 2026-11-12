@@ -248,6 +248,10 @@ pub struct PublicState {
     pub final_scores: Option<Vec<FinalScoreInfo>>,
     /// Vincitori del longest path: id giocatori, non indici.
     pub longest_path_player_ids: Option<Vec<String>>,
+    /// Id delle rotte di un percorso più lungo di ciascun vincitore del bonus, ordinati e
+    /// senza duplicati; `None` finché la partita non è terminata. Solo rotte possedute dal
+    /// giocatore, non quelle prese in prestito dalle stazioni.
+    pub longest_path_route_ids: Option<Vec<String>>,
     /// Ultime mosse della partita, dalla più vecchia alla più recente (al più
     /// `RECENT_MOVES_MAX`), con sole informazioni pubbliche: niente carte pescate
     /// dal mazzo né biglietti. Il draft iniziale non compare.
@@ -716,6 +720,7 @@ mod tests {
             stations: vec![],
             final_scores: None,
             longest_path_player_ids: None,
+            longest_path_route_ids: None,
             recent_moves: vec![
                 RecentMove::DrawCards {
                     player_id: "p1".into(),
@@ -775,6 +780,7 @@ mod tests {
                 }],
             }]),
             longest_path_player_ids: Some(vec!["p1".into()]),
+            longest_path_route_ids: Some(vec!["a_b_1".into(), "b_c_1".into()]),
             recent_moves: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
@@ -784,6 +790,7 @@ mod tests {
         assert_eq!(scores[0].station_points, 4);
         assert_eq!(scores[0].borrowed_routes[0].route_id, "dieppe_paris_1");
         assert_eq!(back.longest_path_player_ids.unwrap(), vec!["p1"]);
+        assert_eq!(back.longest_path_route_ids.unwrap(), ["a_b_1", "b_c_1"]);
     }
 
     #[test]
@@ -803,6 +810,7 @@ mod tests {
             stations: vec![],
             final_scores: None,
             longest_path_player_ids: None,
+            longest_path_route_ids: None,
             recent_moves: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
@@ -883,6 +891,7 @@ mod tests {
             stations: vec![],
             final_scores: None,
             longest_path_player_ids: None,
+            longest_path_route_ids: None,
             recent_moves: vec![],
         });
         let json = serde_json::to_string(&msg).unwrap();
@@ -937,6 +946,7 @@ mod tests {
                 stations: vec![],
                 final_scores: None,
                 longest_path_player_ids: None,
+                longest_path_route_ids: None,
                 recent_moves: vec![],
             },
             private: Some(PrivateState {
@@ -985,6 +995,7 @@ mod tests {
                 stations: vec![],
                 final_scores: None,
                 longest_path_player_ids: None,
+                longest_path_route_ids: None,
                 recent_moves: vec![],
             },
             private: None,

@@ -198,6 +198,11 @@ const CASES: &[Case] = &[
         expected: "routePoints",
     },
     Case {
+        name: "empty-ruleset-name",
+        mutate: |_, ruleset| ruleset["name"] = Value::from(""),
+        expected: "nome del ruleset",
+    },
+    Case {
         name: "zero-trains-per-player",
         mutate: |_, ruleset| ruleset["trainsPerPlayer"] = Value::from(0),
         expected: "trainsPerPlayer",

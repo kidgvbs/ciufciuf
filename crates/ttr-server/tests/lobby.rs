@@ -549,6 +549,50 @@ async fn ruleset_map_endpoint_serves_the_map_document() {
     assert_eq!(body["error"], "RULESET_NOT_FOUND");
 }
 
+/// GET /api/rulesets elenca i ruleset caricati, ordinati per id, con i conteggi
+/// della mappa e le funzioni di Europe (tunnel, traghetti, stazioni).
+#[tokio::test]
+async fn rulesets_endpoint_lists_the_loaded_rulesets() {
+    let server = TestServer::start().await;
+    let (status, body) = get_json(&server.base_url, "/api/rulesets").await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "rulesets": [
+                {
+                    "id": "europe",
+                    "name": "Europe",
+                    "mapId": "europe",
+                    "cities": 47,
+                    "routes": 101,
+                    "tickets": 46,
+                    "minPlayers": 2,
+                    "maxPlayers": 5,
+                    "bonusLabel": "European Express",
+                    "tunnels": true,
+                    "ferries": true,
+                    "stations": true
+                },
+                {
+                    "id": "usa_v2",
+                    "name": "USA",
+                    "mapId": "usa",
+                    "cities": 36,
+                    "routes": 100,
+                    "tickets": 33,
+                    "minPlayers": 2,
+                    "maxPlayers": 5,
+                    "bonusLabel": "Longest Path",
+                    "tunnels": false,
+                    "ferries": false,
+                    "stations": false
+                }
+            ]
+        })
+    );
+}
+
 /// GET /api/rulesets/{id}/layout serve il layout schematico della mappa del ruleset
 /// con `rulesetId`/`mapId`, e copre ogni città e rotta della mappa; un ruleset
 /// sconosciuto dà 404.

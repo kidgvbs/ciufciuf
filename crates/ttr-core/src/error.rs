@@ -55,9 +55,6 @@ pub enum EngineError {
     #[error("rotta '{route_id}' non trovata nella mappa")]
     RouteNotFound { route_id: String },
 
-    #[error("colore della rotta non valido: '{color}'")]
-    InvalidRouteColor { color: String },
-
     #[error("rotta '{route_id}': giocatore {player} ha già l'altra doppia")]
     SamePlayerDouble { route_id: String, player: usize },
 
@@ -96,6 +93,9 @@ pub enum EngineInitError {
 
     #[error("intervallo giocatori del ruleset non valido: min {min}, max {max}")]
     InvalidPlayerRange { min: u32, max: u32 },
+
+    #[error("nome del ruleset vuoto")]
+    EmptyRulesetName,
 
     #[error("primo giocatore {first_player} fuori dai {players} giocatori")]
     FirstPlayerOutOfRange { first_player: usize, players: usize },

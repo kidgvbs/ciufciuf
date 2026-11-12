@@ -37,6 +37,12 @@ final_scores: Array<FinalScoreInfo> | null,
  */
 longest_path_player_ids: Array<string> | null, 
 /**
+ * Id delle rotte di un percorso più lungo di ciascun vincitore del bonus, ordinati e
+ * senza duplicati; `None` finché la partita non è terminata. Solo rotte possedute dal
+ * giocatore, non quelle prese in prestito dalle stazioni.
+ */
+longest_path_route_ids: Array<string> | null, 
+/**
  * Ultime mosse della partita, dalla più vecchia alla più recente (al più
  * `RECENT_MOVES_MAX`), con sole informazioni pubbliche: niente carte pescate
  * dal mazzo né biglietti. Il draft iniziale non compare.

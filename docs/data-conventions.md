@@ -53,6 +53,7 @@ Vincoli su mappa e ruleset, ognuno con una variante dedicata di `EngineInitError
 - le città di rotte e biglietti esistono; una rotta e un biglietto hanno `from != to`;
 - ogni rotta ha `len >= 1` e la sua lunghezza compare in `routePoints`;
 - `trainsPerPlayer >= 1`;
+- il ruleset ha un `name` non vuoto (nome mostrato nel selettore mappe, servito da `GET /api/rulesets`);
 - una rotta con `double: true` ha id con suffisso `_1`/`_2` e una gemella con `double: true`, stessi estremi e stessa lunghezza;
 - il mazzo treni ha `perColor × 8 >= 3 × locomotives`;
 - `Engine::new` richiede inoltre id e colori dei giocatori distinti.

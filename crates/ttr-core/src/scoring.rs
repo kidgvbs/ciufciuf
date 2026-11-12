@@ -347,6 +347,8 @@ struct TrailSearch<'a> {
     node_budget: u64,
     /// Longest trail found so far over all components.
     best: u32,
+    /// Routes of the trail that reached `best`, as global route indices.
+    best_routes: Vec<usize>,
     /// Set when the node budget ended the search before it was complete.
     exhausted: bool,
 }
@@ -520,21 +522,40 @@ impl TrailSearch<'_> {
             .map(|&c| self.piece_len[c])
             .max()
             .unwrap_or(0);
-        self.best = self.best.max(heaviest);
+        if heaviest > self.best {
+            self.best = heaviest;
+            let root = self
+                .cities
+                .iter()
+                .copied()
+                .find(|&c| self.piece_len[c] == heaviest);
+            self.best_routes.clear();
+            if let Some(root) = root {
+                for &route in &self.routes {
+                    if self.leave[route] != Leave::Skipped
+                        && root_of(&mut self.parent, self.ends[route].0) == root
+                    {
+                        self.best_routes.push(route);
+                    }
+                }
+            }
+        }
     }
 }
 
 /// Distanza pesata massima da `start` in un albero, con la città più lontana.
-fn farthest_in_tree(adj: &[Vec<Arc>], start: usize) -> (usize, u32) {
+/// `pred[città]` riceve (città precedente, rotta) del percorso da `start`.
+fn farthest_in_tree(adj: &[Vec<Arc>], start: usize, pred: &mut [(usize, usize)]) -> (usize, u32) {
     let mut far = (start, 0);
-    let mut stack: Vec<(usize, usize, u32)> = vec![(start, usize::MAX, 0)];
-    while let Some((city, parent_edge, dist)) = stack.pop() {
+    let mut stack: Vec<(usize, usize, usize, u32)> = vec![(start, usize::MAX, usize::MAX, 0)];
+    while let Some((city, from, parent_edge, dist)) = stack.pop() {
+        pred[city] = (from, parent_edge);
         if dist > far.1 {
             far = (city, dist);
         }
         for arc in &adj[city] {
             if arc.edge != parent_edge {
-                stack.push((arc.to, arc.edge, dist.saturating_add(arc.len)));
+                stack.push((arc.to, city, arc.edge, dist.saturating_add(arc.len)));
             }
         }
     }
@@ -579,6 +600,24 @@ pub fn longest_path_report(
     claimed_routes: &[&ClaimedRouteInfo],
     routes: &BTreeMap<RouteId, Route>,
 ) -> LongestPath {
+    longest_path_trail(claimed_routes, routes).path
+}
+
+/// A longest path together with the routes that form it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LongestTrail {
+    pub path: LongestPath,
+    /// Ids of the routes of one longest trail, sorted. Their lengths add up to
+    /// `path.length`. The choice depends only on route and city ids: of several trails of
+    /// the same length the first one found by the search wins.
+    pub route_ids: Vec<RouteId>,
+}
+
+/// Longest path and the routes of one such trail, with the `MAX_SEARCH_NODES` budget.
+pub fn longest_path_trail(
+    claimed_routes: &[&ClaimedRouteInfo],
+    routes: &BTreeMap<RouteId, Route>,
+) -> LongestTrail {
     longest_path_with_budget(claimed_routes, routes, MAX_SEARCH_NODES)
 }
 
@@ -586,7 +625,7 @@ fn longest_path_with_budget(
     claimed_routes: &[&ClaimedRouteInfo],
     routes: &BTreeMap<RouteId, Route>,
     node_budget: u64,
-) -> LongestPath {
+) -> LongestTrail {
     let mut by_id: BTreeMap<&str, &Route> = BTreeMap::new();
     for cri in claimed_routes {
         if let Some(route) = routes.get(&cri.route_id) {
@@ -661,8 +700,11 @@ fn longest_path_with_budget(
         nodes: 0,
         node_budget,
         best: 0,
+        best_routes: Vec::new(),
         exhausted: false,
     };
+    // Scratch per i componenti ad albero: (città precedente, rotta) di ogni città.
+    let mut pred: Vec<(usize, usize)> = vec![(usize::MAX, usize::MAX); city_count];
     // Componenti in ordine canonico: per città minima (id), non per radice union-find.
     for first in 0..city_count {
         let root = root_of(&mut parent, first);
@@ -672,16 +714,34 @@ fn longest_path_with_budget(
             continue;
         }
         if edges.len() + 1 == cities_here.len() {
-            let (end, _) = farthest_in_tree(&adj, cities_here[0]);
-            let (_, diameter) = farthest_in_tree(&adj, end);
-            search.best = search.best.max(diameter);
+            let (end, _) = farthest_in_tree(&adj, cities_here[0], &mut pred);
+            let (far, diameter) = farthest_in_tree(&adj, end, &mut pred);
+            if diameter > search.best {
+                search.best = diameter;
+                search.best_routes.clear();
+                let mut city = far;
+                while city != end {
+                    let (previous, edge) = pred[city];
+                    search.best_routes.push(edge);
+                    city = previous;
+                }
+            }
         } else {
             search.run_component(cities_here, edges);
         }
     }
-    LongestPath {
-        length: search.best,
-        exact: !search.exhausted,
+    // Gli indici seguono l'ordine degli id: ordinare gli indici ordina gli id.
+    search.best_routes.sort_unstable();
+    LongestTrail {
+        path: LongestPath {
+            length: search.best,
+            exact: !search.exhausted,
+        },
+        route_ids: search
+            .best_routes
+            .iter()
+            .map(|&edge| graph_routes[edge].id.clone())
+            .collect(),
     }
 }
 
@@ -698,6 +758,8 @@ pub struct PlayerScore {
     pub longest_path: u32,
     /// False when the longest path search hit its budget: `longest_path` is a lower bound.
     pub longest_path_exact: bool,
+    /// Ids (sorted) of the routes of one longest path of the player.
+    pub longest_path_routes: Vec<RouteId>,
     /// Rotte avversarie prese in prestito dalle stazioni: (città, rotta).
     pub borrowed_routes: Vec<(CityId, RouteId)>,
 }
@@ -727,6 +789,7 @@ pub fn compute_final_scores(
             failed_tickets: 0,
             longest_path: 0,
             longest_path_exact: true,
+            longest_path_routes: Vec::new(),
             borrowed_routes: Vec::new(),
         })
         .collect();
@@ -735,10 +798,11 @@ pub fn compute_final_scores(
     let mut longest_paths: Vec<u32> = vec![0; num_players];
     for (pi, routes) in claimed_routes.iter().enumerate() {
         let cri_refs: Vec<&ClaimedRouteInfo> = routes.iter().collect();
-        let report = longest_path_report(&cri_refs, routes_map);
-        longest_paths[pi] = report.length;
-        scores[pi].longest_path = report.length;
-        scores[pi].longest_path_exact = report.exact;
+        let trail = longest_path_trail(&cri_refs, routes_map);
+        longest_paths[pi] = trail.path.length;
+        scores[pi].longest_path = trail.path.length;
+        scores[pi].longest_path_exact = trail.path.exact;
+        scores[pi].longest_path_routes = trail.route_ids;
     }
 
     // Determina il massimo
@@ -904,6 +968,41 @@ mod tests {
         routes.keys().map(|id| make_cri(id)).collect()
     }
 
+    /// Le rotte restituite formano un cammino senza rotta ripetuta (connesse, al più due
+    /// città di grado dispari) la cui lunghezza è quella del percorso più lungo.
+    fn assert_trail_matches(
+        claimed: &[ClaimedRouteInfo],
+        routes: &BTreeMap<RouteId, Route>,
+        case: &str,
+    ) {
+        let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
+        let trail = longest_path_trail(&refs, routes);
+        assert!(
+            trail.route_ids.windows(2).all(|w| w[0] < w[1]),
+            "{case}: id non ordinati o ripetuti: {:?}",
+            trail.route_ids
+        );
+        let mut total = 0;
+        let mut degree: BTreeMap<&str, u32> = BTreeMap::new();
+        let mut uf = UnionFind::new();
+        for id in &trail.route_ids {
+            assert!(
+                claimed.iter().any(|c| &c.route_id == id),
+                "{case}: rotta non reclamata {id}"
+            );
+            let route = &routes[id];
+            total += route.len;
+            *degree.entry(route.from.as_str()).or_default() += 1;
+            *degree.entry(route.to.as_str()).or_default() += 1;
+            uf.union(&route.from, &route.to);
+        }
+        assert_eq!(total, trail.path.length, "{case}: somma delle lunghezze");
+        let odd = degree.values().filter(|d| **d % 2 == 1).count();
+        assert!(odd <= 2, "{case}: {odd} città di grado dispari");
+        let components: BTreeSet<String> = degree.keys().map(|c| uf.find(c)).collect();
+        assert!(components.len() <= 1, "{case}: rotte non connesse");
+    }
+
     fn longest(claimed: &[ClaimedRouteInfo], routes: &BTreeMap<RouteId, Route>) -> u32 {
         let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
         longest_continuous_path(&refs, routes)
@@ -941,6 +1040,7 @@ mod tests {
                 "caso {case}: {:?}",
                 claimed.iter().map(|c| &c.route_id).collect::<Vec<_>>()
             );
+            assert_trail_matches(&claimed, &routes, &format!("caso {case}"));
         }
     }
 
@@ -1118,6 +1218,7 @@ mod tests {
                     .collect(),
             );
             let claimed = claim_all(&routes);
+            assert_trail_matches(&claimed, &routes, &format!("caso {case}"));
             let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
             assert_eq!(
                 report(&claimed, &routes),
@@ -1136,9 +1237,9 @@ mod tests {
         let routes = complete_graph(8);
         let claimed = claim_all(&routes);
         let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
-        let exact = longest_path_with_budget(&refs, &routes, MAX_SEARCH_NODES);
+        let exact = longest_path_with_budget(&refs, &routes, MAX_SEARCH_NODES).path;
         assert!(exact.exact);
-        let cut = longest_path_with_budget(&refs, &routes, 1);
+        let cut = longest_path_with_budget(&refs, &routes, 1).path;
         assert!(!cut.exact);
         assert!(cut.length <= exact.length);
     }
@@ -1163,7 +1264,7 @@ mod tests {
         let claimed = claim_all(&routes);
         let refs: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
         assert_eq!(
-            longest_path_with_budget(&refs, &routes, 1),
+            longest_path_with_budget(&refs, &routes, 1).path,
             LongestPath {
                 length: 3,
                 exact: false
@@ -1219,6 +1320,48 @@ mod tests {
         let claimed = [make_cri("a_b_1"), make_cri("a_b_1"), make_cri("ghost_1")];
         assert_eq!(longest(&claimed, &routes), 3);
         assert_eq!(longest(&[], &routes), 0);
+    }
+
+    #[test]
+    fn longest_path_routes_on_known_graphs() {
+        // Albero: a-b-d-e (12), senza la foglia c.
+        let tree = route_map(vec![
+            make_route("a_b_1", "a", "b", 3),
+            make_route("b_c_1", "b", "c", 2),
+            make_route("b_d_1", "b", "d", 5),
+            make_route("d_e_1", "d", "e", 4),
+        ]);
+        let refs: Vec<ClaimedRouteInfo> = claim_all(&tree);
+        let cri: Vec<&ClaimedRouteInfo> = refs.iter().collect();
+        assert_eq!(
+            longest_path_trail(&cri, &tree).route_ids,
+            ["a_b_1", "b_d_1", "d_e_1"]
+        );
+        assert_trail_matches(&refs, &tree, "albero");
+
+        // Triangolo (9) contro una catena più corta (6): vince il triangolo.
+        let two = route_map(vec![
+            make_route("a_b_1", "a", "b", 3),
+            make_route("b_c_1", "b", "c", 3),
+            make_route("a_c_1", "a", "c", 3),
+            make_route("x_y_1", "x", "y", 6),
+        ]);
+        let claimed = claim_all(&two);
+        let cri: Vec<&ClaimedRouteInfo> = claimed.iter().collect();
+        assert_eq!(
+            longest_path_trail(&cri, &two).route_ids,
+            ["a_b_1", "a_c_1", "b_c_1"]
+        );
+        assert_trail_matches(&claimed, &two, "triangolo");
+
+        for n in [4, 7, 8] {
+            let routes = complete_graph(n);
+            assert_trail_matches(&claim_all(&routes), &routes, &format!("K{n}"));
+        }
+        assert_eq!(
+            longest_path_trail(&[], &tree).route_ids,
+            Vec::<String>::new()
+        );
     }
 
     fn candidates(city: &str, options: &[(&str, &str)]) -> StationCandidates {

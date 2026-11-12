@@ -52,6 +52,68 @@ pub async fn api_not_found() -> axum::response::Response {
     error_response(LobbyError::EndpointNotFound)
 }
 
+// ── /api/rulesets ──────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct RulesetListItem {
+    id: String,
+    name: String,
+    #[serde(rename = "mapId")]
+    map_id: String,
+    cities: usize,
+    routes: usize,
+    tickets: usize,
+    #[serde(rename = "minPlayers")]
+    min_players: u32,
+    #[serde(rename = "maxPlayers")]
+    max_players: u32,
+    /// Etichetta del bonus del percorso più lungo.
+    #[serde(rename = "bonusLabel")]
+    bonus_label: String,
+    /// La mappa ha almeno una rotta tunnel.
+    tunnels: bool,
+    /// La mappa ha almeno una rotta con traghetti.
+    ferries: bool,
+    /// Il ruleset prevede le stazioni.
+    stations: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ListRulesetsResponse {
+    rulesets: Vec<RulesetListItem>,
+}
+
+/// GET /api/rulesets — i ruleset caricati con i dati per sceglierli in lobby,
+/// ordinati per id.
+pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
+    let rulesets = state
+        .rulesets
+        .iter()
+        .filter_map(|(id, ruleset)| {
+            let map = state.map(&ruleset.map)?;
+            let bonus = ruleset
+                .bonuses
+                .iter()
+                .find(|b| b.bonus_type == ttr_core::types::LONGEST_PATH_BONUS_TYPE)?;
+            Some(RulesetListItem {
+                id: id.clone(),
+                name: ruleset.name.clone(),
+                map_id: ruleset.map.clone(),
+                cities: map.cities.len(),
+                routes: map.routes.len(),
+                tickets: map.tickets.len(),
+                min_players: ruleset.players.min,
+                max_players: ruleset.players.max,
+                bonus_label: bonus.label.clone(),
+                tunnels: map.routes.iter().any(|r| r.tunnel),
+                ferries: map.routes.iter().any(|r| r.ferries > 0),
+                stations: ruleset.stations.is_some(),
+            })
+        })
+        .collect();
+    Json(ListRulesetsResponse { rulesets })
+}
+
 // ── /api/rulesets/{id}/map ─────────────────────────────────────────
 
 /// GET /api/rulesets/{id}/map — il documento JSON della mappa del ruleset
@@ -361,10 +423,11 @@ pub async fn list_games(State(state): State<AppState>) -> impl IntoResponse {
         games.values().cloned().collect()
     };
 
-    let mut list: Vec<GameListItem> = Vec::with_capacity(handles.len());
-    for h in handles {
-        let info = query_game_info(&h).await;
-        list.push(GameListItem {
+    let infos = futures_util::future::join_all(handles.iter().map(query_game_info)).await;
+    let list = handles
+        .iter()
+        .zip(infos)
+        .map(|(h, info)| GameListItem {
             game_id: h.game_id.clone(),
             name: h.game_name.clone(),
             ruleset_id: h.ruleset_id.clone(),
@@ -374,8 +437,8 @@ pub async fn list_games(State(state): State<AppState>) -> impl IntoResponse {
                 .unwrap_or(h.players_joined),
             max_players: h.max_players,
             started: info.as_ref().map(|i| i.started).unwrap_or(h.started),
-        });
-    }
+        })
+        .collect();
     Json(ListGamesResponse { games: list })
 }
 
@@ -715,7 +778,7 @@ pub async fn start_game(
 
     let result = ask_actor(&handle, |reply| GameCommand::Start {
         host_token: body.host_token,
-        ruleset,
+        ruleset: Box::new(ruleset),
         map,
         reply,
     })
@@ -801,12 +864,13 @@ pub async fn delete_save(
 // ── Conversione InboundAction → ttr_core::Action ───────────────────
 
 /// Converte un'azione inbound del protocollo in un'azione core,
-/// dato l'indice del giocatore già risolto dall'attore.
+/// dato l'indice del giocatore già risolto dall'attore. `None` per
+/// `RequestSnapshot`, che non ha un'azione core corrispondente.
 pub(crate) fn inbound_to_core_action(
     inbound: &ttr_proto::InboundAction,
     player_index: usize,
-) -> ttr_core::Action {
-    match inbound {
+) -> Option<ttr_core::Action> {
+    let action = match inbound {
         ttr_proto::InboundAction::DrawTrainCard(p) => {
             let source = match &p.source {
                 ttr_proto::DrawSource::Deck => ttr_core::DrawSource::Deck,
@@ -839,10 +903,7 @@ pub(crate) fn inbound_to_core_action(
             pay: p.pay,
             cards_discarded: p.cards_discarded.clone(),
         },
-        ttr_proto::InboundAction::RequestSnapshot(_) => {
-            // RequestSnapshot non ha un'azione core corrispondente;
-            // viene gestito come caso speciale dal chiamante.
-            unreachable!("RequestSnapshot non è un'azione core")
-        }
-    }
+        ttr_proto::InboundAction::RequestSnapshot(_) => return None,
+    };
+    Some(action)
 }

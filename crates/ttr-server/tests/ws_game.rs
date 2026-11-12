@@ -55,6 +55,29 @@ async fn full_game_over_ws() {
         scores.iter().any(|s| s.total > 0),
         "il vincitore deve avere un totale > 0"
     );
+
+    // Percorso più lungo: id ordinati, senza duplicati, tutte rotte dei vincitori del bonus.
+    let winners = final_public
+        .longest_path_player_ids
+        .as_ref()
+        .expect("longest_path_player_ids Some a fine partita");
+    let route_ids = final_public
+        .longest_path_route_ids
+        .as_ref()
+        .expect("longest_path_route_ids Some a fine partita");
+    assert_eq!(winners.is_empty(), route_ids.is_empty());
+    assert!(
+        route_ids.windows(2).all(|w| w[0] < w[1]),
+        "id non ordinati o duplicati: {route_ids:?}"
+    );
+    for id in route_ids {
+        let claim = final_public
+            .claimed_routes
+            .iter()
+            .find(|c| &c.route_id == id)
+            .unwrap_or_else(|| panic!("rotta {id} non reclamata"));
+        assert!(winners.contains(&claim.claimed_by_player_id));
+    }
 }
 
 /// Disconnect mid-game e reconnect con snapshot coerente.

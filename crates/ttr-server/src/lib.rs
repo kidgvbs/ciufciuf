@@ -70,6 +70,7 @@ pub fn build_router(state: AppState, client_dist: PathBuf) -> Router {
         .route("/api/games/{id}/join", post(lobby::join_game))
         .route("/api/games/{id}/reassign", post(lobby::reassign_player))
         .route("/api/games/{id}/start", post(lobby::start_game))
+        .route("/api/rulesets", get(lobby::list_rulesets))
         .route("/api/rulesets/{id}/map", get(lobby::ruleset_map))
         .route("/api/rulesets/{id}/layout", get(lobby::ruleset_layout))
         .route("/api/standings", get(lobby::standings))

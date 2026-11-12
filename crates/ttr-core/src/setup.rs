@@ -43,6 +43,9 @@ impl Ruleset {
     /// Verifica che ruleset e mappa siano coerenti per ogni numero di giocatori
     /// ammesso (i controlli sulle dimensioni dei mazzi usano `players.max`).
     pub fn validate(&self, map: &MapData) -> Result<(), EngineInitError> {
+        if self.name.trim().is_empty() {
+            return Err(EngineInitError::EmptyRulesetName);
+        }
         if self.players.min == 0 || self.players.min > self.players.max {
             return Err(EngineInitError::InvalidPlayerRange {
                 min: self.players.min,

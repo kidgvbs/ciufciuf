@@ -11,7 +11,7 @@ use crate::event::{FinalScore, GameEvent};
 use crate::scoring::{UnionFind, compute_final_scores, evaluate_tickets};
 use crate::types::{
     ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
-    RouteColor, find_sister_route, points_to_score,
+    RouteColor, points_to_score,
 };
 
 impl Engine {
@@ -33,13 +33,13 @@ impl Engine {
             });
         }
 
-        let route = self
+        let (route, info) = self
             .routes_by_id
             .get(route_id)
+            .zip(self.route_info.get(route_id))
             .ok_or_else(|| EngineError::RouteNotFound {
                 route_id: route_id.to_string(),
-            })?
-            .clone();
+            })?;
 
         if self.claimed_routes.contains_key(route_id) {
             return Err(EngineError::RouteAlreadyClaimed {
@@ -49,9 +49,8 @@ impl Engine {
 
         // Rotte doppie: la gemella già reclamata dallo stesso giocatore, o da
         // chiunque con pochi giocatori, blocca la rotta.
-        if route.double
-            && let Some(sister_id) = find_sister_route(route_id, &self.routes_by_id)
-            && let Some(sister_claim) = self.claimed_routes.get(&sister_id)
+        if let Some(sister_id) = &info.sister
+            && let Some(sister_claim) = self.claimed_routes.get(sister_id)
         {
             if sister_claim.claimed_by == player_index {
                 return Err(EngineError::SamePlayerDouble {
@@ -65,6 +64,8 @@ impl Engine {
                 });
             }
         }
+        let route_color = info.color;
+        let route = route.clone();
 
         let len = route.len;
         let insufficient_cards = || EngineError::InsufficientCards {
@@ -88,10 +89,6 @@ impl Engine {
             removed.push(hand.remove(pos));
         }
 
-        let route_color =
-            RouteColor::parse(&route.color).ok_or_else(|| EngineError::InvalidRouteColor {
-                color: route.color.clone(),
-            })?;
         match route_color {
             RouteColor::Colored(expected) => {
                 for card in cards_discarded {
@@ -431,7 +428,7 @@ impl Engine {
             .map(|pi| self.station_candidates(pi))
             .collect();
 
-        let (scores, winners, bonus) = compute_final_scores(
+        let (mut scores, winners, bonus) = compute_final_scores(
             &routes_per_player,
             &self.routes_by_id,
             &self.map.tickets,
@@ -446,6 +443,10 @@ impl Engine {
             .enumerate()
             .filter(|(_, s)| !s.longest_path_exact)
             .map(|(i, _)| i)
+            .collect();
+        self.longest_path_routes = scores
+            .iter_mut()
+            .map(|s| std::mem::take(&mut s.longest_path_routes))
             .collect();
 
         let mut final_scores: Vec<FinalScore> = self

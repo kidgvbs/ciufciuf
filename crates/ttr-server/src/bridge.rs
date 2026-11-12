@@ -139,6 +139,7 @@ pub(crate) fn build_public_state(
         stations,
         final_scores: session.final_scores.clone(),
         longest_path_player_ids: session.longest_path_player_ids.clone(),
+        longest_path_route_ids: session.longest_path_route_ids.clone(),
         recent_moves,
     }
 }
@@ -569,7 +570,6 @@ pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
         | EngineError::DeckEmpty
         | EngineError::PlayerNotFound { .. }
         | EngineError::RouteNotFound { .. }
-        | EngineError::InvalidRouteColor { .. }
         | EngineError::CityNotFound { .. }
         | EngineError::StationCityOccupied { .. }
         | EngineError::NoStationsLeft
@@ -717,12 +717,6 @@ mod tests {
                     route_id: "nx".into(),
                 },
                 "RouteNotFound",
-            ),
-            (
-                EngineError::InvalidRouteColor {
-                    color: "Magenta".into(),
-                },
-                "InvalidRouteColor",
             ),
             (
                 EngineError::InvalidPayload {

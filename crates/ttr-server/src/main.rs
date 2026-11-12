@@ -44,7 +44,7 @@ struct Args {
     saves_dir: PathBuf,
 
     /// Cartella con i file statici del client.
-    #[arg(long, default_value = "../client/dist")]
+    #[arg(long, default_value = "client/dist")]
     client_dist: PathBuf,
 
     /// Ripristina la partita di questo save.

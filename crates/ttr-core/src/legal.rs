@@ -4,9 +4,9 @@ use std::collections::BTreeMap;
 
 use ttr_proto::CardColor;
 
-use crate::engine::Engine;
+use crate::engine::{Engine, RouteInfo};
 use crate::error::GamePhase;
-use crate::types::{CityId, Route, RouteColor, RouteId, find_sister_route};
+use crate::types::{CityId, Route, RouteColor, RouteId};
 
 /// Mosse legali per un giocatore.
 #[derive(Debug, Clone)]
@@ -167,13 +167,16 @@ impl Engine {
         let color_counts = count_colors(hand);
 
         for route in &self.map.routes {
-            if !self.route_open_for(player_index, route) {
+            let Some(info) = self.route_info.get(&route.id) else {
+                continue;
+            };
+            if !self.route_open_for(player_index, route, info) {
                 continue;
             }
             let rid = &route.id;
 
             let can_pay = Self::can_pay_route(
-                &route.color,
+                info.color,
                 route.len as usize,
                 route.ferries as usize,
                 hand.len(),
@@ -188,7 +191,7 @@ impl Engine {
     }
 
     /// Vero se il giocatore può reclamare la rotta, a prescindere dalle carte.
-    fn route_open_for(&self, player_index: usize, route: &Route) -> bool {
+    fn route_open_for(&self, player_index: usize, route: &Route, info: &RouteInfo) -> bool {
         let rid = &route.id;
 
         if self.claimed_routes.contains_key(rid) {
@@ -198,17 +201,14 @@ impl Engine {
             return false;
         }
 
-        if route.double {
-            let sister_id = find_sister_route(rid, &self.routes_by_id);
-            if let Some(sid) = &sister_id
-                && let Some(cri) = self.claimed_routes.get(sid)
-            {
-                if cri.claimed_by == player_index {
-                    return false;
-                }
-                if self.players.len() < self.ruleset.double_route_min_players as usize {
-                    return false;
-                }
+        if let Some(sid) = &info.sister
+            && let Some(cri) = self.claimed_routes.get(sid)
+        {
+            if cri.claimed_by == player_index {
+                return false;
+            }
+            if self.players.len() < self.ruleset.double_route_min_players as usize {
+                return false;
             }
         }
         true
@@ -218,15 +218,16 @@ impl Engine {
     /// dalle carte (D28).
     pub(crate) fn any_route_claimable_by_anyone(&self) -> bool {
         (0..self.players.len()).any(|player_index| {
-            self.map
-                .routes
-                .iter()
-                .any(|route| self.route_open_for(player_index, route))
+            self.map.routes.iter().any(|route| {
+                self.route_info
+                    .get(&route.id)
+                    .is_some_and(|info| self.route_open_for(player_index, route, info))
+            })
         })
     }
 
     fn can_pay_route(
-        route_color: &str,
+        route_color: RouteColor,
         len: usize,
         ferries: usize,
         hand_len: usize,
@@ -236,16 +237,15 @@ impl Engine {
         if hand_len < len || loco_count < ferries {
             return false;
         }
-        match RouteColor::parse(route_color) {
-            Some(RouteColor::Gray) => {
+        match route_color {
+            RouteColor::Gray => {
                 color_counts.iter().any(|(color, count)| {
                     *color != CardColor::Locomotive && count + loco_count >= len
                 }) || loco_count >= len
             }
-            Some(RouteColor::Colored(card_color)) => {
+            RouteColor::Colored(card_color) => {
                 color_counts.get(&card_color).copied().unwrap_or(0) + loco_count >= len
             }
-            None => false,
         }
     }
 

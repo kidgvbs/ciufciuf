@@ -146,7 +146,7 @@ pub enum GameCommand {
     },
     Start {
         host_token: String,
-        ruleset: ttr_core::Ruleset,
+        ruleset: Box<ttr_core::Ruleset>,
         map: ttr_core::MapData,
         reply: tokio::sync::oneshot::Sender<Result<(), LobbyError>>,
     },
@@ -293,6 +293,9 @@ pub(crate) struct GameSession {
     pub next_conn_id: u64,
     pub final_scores: Option<Vec<ttr_proto::FinalScoreInfo>>,
     pub longest_path_player_ids: Option<Vec<String>>,
+    /// Id delle rotte del percorso più lungo di ogni vincitore del bonus, ordinati; `None`
+    /// finché la partita non è terminata.
+    pub longest_path_route_ids: Option<Vec<String>>,
     pub save_path: Option<PathBuf>,
     writer: Option<SaveWriter>,
     results_lock: Arc<Mutex<()>>,
@@ -384,6 +387,7 @@ impl GameSession {
             next_conn_id: 0,
             final_scores: None,
             longest_path_player_ids: None,
+            longest_path_route_ids: None,
             save_path: config.save_path,
             writer: None,
             results_lock: config.results_lock,
@@ -497,7 +501,7 @@ impl GameSession {
                     map,
                     reply,
                 } => {
-                    let result = self.handle_start(host_token, ruleset, map);
+                    let result = self.handle_start(host_token, *ruleset, map);
                     if result.is_ok() {
                         self.touch();
                     }
@@ -911,7 +915,15 @@ impl GameSession {
             }
         };
 
-        let action = crate::lobby::inbound_to_core_action(&inbound, engine_idx);
+        let Some(action) = crate::lobby::inbound_to_core_action(&inbound, engine_idx) else {
+            // REQUEST_SNAPSHOT non è un'azione del motore e qui non arriva (vedi sopra).
+            self.send_error(
+                &player_id,
+                ttr_proto::ErrorReason::InvalidAction,
+                Some("azione non valida".into()),
+            );
+            return;
+        };
 
         let engine = match &mut self.engine {
             Some(e) => e,
@@ -971,6 +983,15 @@ impl GameSession {
                                 })
                                 .collect(),
                         );
+                        self.longest_path_route_ids = self.engine.as_ref().map(|e| {
+                            longest_path_players
+                                .iter()
+                                .flat_map(|&ei| e.longest_path_routes(ei))
+                                .cloned()
+                                .collect::<std::collections::BTreeSet<String>>()
+                                .into_iter()
+                                .collect()
+                        });
                     }
                 }
 
