@@ -58,6 +58,10 @@
 //      che crea un clash nuovo è rifiutato; pass finale raddrizza/ripiega.
 //  Label: metriche reali (opentype, Barlow Semi Condensed 600), tier
 //      12–32px, ownership (box più vicino al proprio dot di ogni altro).
+//  9d. Hub polish (NUOVO): ricerca locale + ricottura deterministica (PRNG a seed fisso) sullo
+//      stato finale. Porta a ≥10px l'approach delle coppie di rotte adiacenti a un hub e toglie le
+//      label dai binari della propria città, con TUTTI i gate di validazione come vincoli hard
+//      (mosse: controllo Q libero delle rotte, spostamento città ≤28px, label). Vedi sezione 4g.
 //  10. Bounding: box di nodi + bend + label con margine 30px → canvas reale.
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
@@ -554,11 +558,37 @@ function sampleDrawnCurve(e) {
   const pts = trimmed(e);
   return sampleCurve(pts, 2);
 }
+// Cache per edge: le curve disegnate dipendono solo da points/len/isDouble. La chiave è
+// la stringa dei punti (points viene mutato sul posto), così la cache non può invecchiare.
+// `flat` = unione delle curve, `bbox` = riquadro dei campioni (prefiltro esatto: nessun
+// segmento campionato esce dal riquadro dei suoi campioni).
+const drawnCache = new Map();
+function drawnEntry(e) {
+  let key = e.len + (e.isDouble ? 'D' : 'S');
+  for (const p of e.points) key += `|${p[0]},${p[1]}`;
+  let c = drawnCache.get(e);
+  if (c && c.key === key) return c;
+  let curves;
+  if (!e.isDouble) curves = [sampleDrawnCurve(e)];
+  else {
+    const plus = trimPts(offsetPts(e.points, offsetOf(e)), e);
+    const minus = trimPts(offsetPts(e.points, -offsetOf(e)), e);
+    curves = [sampleCurve(plus, 2), sampleCurve(minus, 2)];
+  }
+  const flat = [];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const cv of curves) for (const q of cv) {
+    flat.push(q);
+    if (q[0] < x0) x0 = q[0]; if (q[0] > x1) x1 = q[0];
+    if (q[1] < y0) y0 = q[1]; if (q[1] > y1) y1 = q[1];
+  }
+  c = { key, curves, flat, bbox: [x0, y0, x1, y1] };
+  drawnCache.set(e, c);
+  return c;
+}
+const bboxApart = (A, B, th) => A[0] > B[2] + th || B[0] > A[2] + th || A[1] > B[3] + th || B[1] > A[3] + th;
 function sampledCurvesOf(e) {
-  if (!e.isDouble) return [sampleDrawnCurve(e)];
-  const plus = trimPts(offsetPts(e.points, offsetOf(e)), e);
-  const minus = trimPts(offsetPts(e.points, -offsetOf(e)), e);
-  return [sampleCurve(plus, 2), sampleCurve(minus, 2)];
+  return drawnEntry(e).curves;
 }
 
 // Distanza minima tra due tratte disegnate (curve campionate)
@@ -582,14 +612,12 @@ function distPointDrawnEdge(px, py, e) {
 
 // F2: overlap stretch su curve, non polyline
 function overlapStretchCurve(A, B, threshold) {
-  const curvesA = sampledCurvesOf(A);
-  const curvesB = sampledCurvesOf(B);
-  // Unione di tutte le curve di B in un unico array per lookup veloce
-  const allB = [];
-  for (const cb of curvesB) allB.push(...cb);
-  
+  const eA = drawnEntry(A), eB = drawnEntry(B);
+  if (bboxApart(eA.bbox, eB.bbox, threshold)) return 0; // ogni distanza ≥ soglia
+  const allB = eB.flat;
+
   let maxRun = 0, cur = 0;
-  for (const ca of curvesA) {
+  for (const ca of eA.curves) {
     for (let i = 1; i < ca.length; i++) {
       const d = distPointCurve((ca[i-1][0]+ca[i][0])/2, (ca[i-1][1]+ca[i][1])/2, allB);
       const stepLen = dist(ca[i], ca[i-1]);
@@ -602,10 +630,10 @@ function overlapStretchCurve(A, B, threshold) {
 
 // F2: cover fraction su curve
 function coverFractionCurve(A, B, threshold) {
-  const curvesA = sampledCurvesOf(A);
-  const allB = [];
-  for (const cb of sampledCurvesOf(B)) allB.push(...cb);
-  
+  const eA = drawnEntry(A), eB = drawnEntry(B);
+  if (bboxApart(eA.bbox, eB.bbox, threshold)) return 0; // niente coperto
+  const curvesA = eA.curves;
+  const allB = eB.flat;
   let covered = 0, total = 0;
   for (const ca of curvesA) {
     for (let i = 1; i < ca.length; i++) {
@@ -2413,7 +2441,7 @@ for (let round = 0; round < 6; round++) {
   }
   if (!progress) break;
 }
-const clashResidual = countClashes();
+let clashResidual = countClashes();
 
 // Repair finale delle etichette: le fasi 4e/4f/4z modificano le tratte
 // ignorando (di proposito) le label delle proprie città estreme, quindi
@@ -2530,6 +2558,396 @@ for (const id of order) {
     }
   }
 }
+
+// ── 4g. Hub polish (approach ≥10px + label fuori dai binari della propria città) ──
+// Ricerca locale deterministica a valle di tutta la pipeline. Obiettivo (soft): ogni coppia
+// di rotte adiacenti a un hub ha approach ≥ APPROACH_MIN_DIST e nessuna label copre i binari
+// della propria città. Vincoli (hard): TUTTI i gate di validazione finale restano a 0
+// (label-label/CORE/pallino/ownership/distanza, tratta-tratta, nascosto, tratta-città,
+// doppie, incroci, ratio, scarto medio, distanza città-città). Mosse: bend asimmetrico
+// (controllo Q libero: normale + tangente), spostamento di città (≤ POLISH_CITY_CAP dalla
+// posizione di partenza, i bend incidenti seguono la città), riposizionamento label.
+// Discesa (miglior mossa del vicinato per ogni violazione) + ricottura Metropolis (PRNG a seed
+// fisso; durante la ricottura l'ownership è una penalità, ma lo stato accettato è sempre pulito)
+// → output deterministico. Costo: ~1 min per mappa.
+//
+// Residuo noto (USA): la label di Pittsburgh resta sul doppio Pittsburgh↔Toronto (1 caso, erano
+// 8 label su binari propri). Il cuneo a nord-ovest è attraversato da Chicago↔Toronto; nelle altre
+// posizioni entro 32px la label viola l'ownership (Chicago/Toronto troppo vicini al box) o copre
+// comunque un binario incidente. Provati: candidati label/slide/nudge, bend (normale+tangente)
+// di ogni rotta dell'hub, spostamento delle città vicine ≤28px (gate ratio invariati) e
+// ricottura con ownership morbida: nessuno stato a 0 trovato (non provato che non esista).
+const POLISH_TARGET = APPROACH_MIN_DIST + 0.25; // margine per l'arrotondamento dell'output
+const POLISH_CITY_CAP = 28;
+const POLISH_MAX_SWEEPS = 30;
+const POLISH_ANNEAL_ROUNDS = 8;
+const POLISH_ANNEAL_ITERS = 3000;
+const POLISH_INCIDENT_W = 1.5;
+const POLISH_OWN_W = 2.5;
+const POLISH_INK_W = 0.08; // gradiente: ogni segmento (~4px) di binario coperto dalla label
+edges.forEach((e, i) => { e.idx = i; e.maxLen = Math.max(...pairRoutes.get(e.key).map((r) => r.len)); });
+const polishOrigin = cityPos.map((p) => [p[0], p[1]]);
+// Ratio: stessi limiti del gate standard (≤1.6×, ≤1.7× per rotte ≥5 carte, ≥0.8×) senza le
+// eccezioni; una rotta che parte già fuori (cluster-escape) non può peggiorare.
+for (const e of edges) {
+  const r = dist(e.points[0], e.points[e.points.length - 1]) / (e.len * UNIT);
+  e.ratioHi = Math.max(e.maxLen >= 5 ? 1.7 : 1.6, r);
+  e.ratioLo = Math.min(0.8, r);
+}
+const edgesAt = cityIds.map((_, ci) => edges.filter((e) => e.a === ci || e.b === ci));
+const cityAdj = cityIds.map((a) => cityIds.map((b) => pairRoutes.has([a, b].sort().join('|'))));
+const otherEnd = (e, ci) => (e.a === ci ? e.b : e.a);
+let polishGeom = new Map(), polishPairMemo = new Map();
+function polishGid(e) {
+  const k = `${e.idx}|${drawnEntry(e).key}`;
+  let g = polishGeom.get(k);
+  if (g === undefined) { g = polishGeom.size + 1; polishGeom.set(k, g); }
+  return g;
+}
+// Info per coppia (memoizzata sulla geometria delle due rotte): violazioni hard + approach.
+function polishPair(i, j, gi, gj) {
+  const key = gi * 4194304 + gj;
+  let r = polishPairMemo.get(key);
+  if (r) return r;
+  const a = edges[i], b = edges[j];
+  let hard = routesClash(a, b) ? 1 : 0, appr = Infinity;
+  if (isAdjacent(a, b)) {
+    appr = approachMinDistDrawn(a, b, (a.a === b.a || a.a === b.b) ? a.a : a.b);
+  } else {
+    if (isConflict(a, b)) hard++;
+    const th = swAvg(a, b) + COVER_PAD;
+    if (coverFractionCurve(a, b, th) > COVER_FRACTION || coverFractionCurve(b, a, th) > COVER_FRACTION) hard++;
+  }
+  r = { hard, appr };
+  polishPairMemo.set(key, r);
+  return r;
+}
+// Segmenti campionati (~4px) di inchiostro della rotta coperti dal box della label: 0 = libera.
+function polishLabelInk(e, ent, box) {
+  const sw2 = swOf(e.len) / 2;
+  const infl = sw2 + 2, bb = ent.bbox;
+  if (box.right < bb[0] - infl || box.left > bb[2] + infl || box.bottom < bb[1] - infl || box.top > bb[3] + infl) return 0;
+  let n = 0;
+  for (const t of labelCurvesOf(e)) {
+    for (let k = 0; k < t.length - 1; k++) {
+      if (segRectDist(t[k][0], t[k][1], t[k + 1][0], t[k + 1][1], box) < sw2) n++;
+    }
+  }
+  return n;
+}
+// Valuta lo stato corrente: null se un gate hard è violato, altrimenti { score, nApp, nInc }.
+// Durante la ricottura l'ownership è una penalità (si può attraversare uno stato sporco per
+// spostare un vicino); lo stato finale accettato ha sempre ownership pulita.
+let polishSoftOwn = false;
+function polishEval() {
+  if (polishGeom.size > 400000) { polishGeom = new Map(); polishPairMemo = new Map(); }
+  const n = cityIds.length;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+    if (!cityAdj[i][j] && dist(cityPos[i], cityPos[j]) < 18) return null;
+  }
+  // label: distanza, ownership, label-label, label-pallino
+  const boxes = new Array(n);
+  let nOwn = 0;
+  for (let i = 0; i < n; i++) boxes[i] = labelBox(cityPos[i][0], cityPos[i][1], labels.get(cityIds[i]), names.get(cityIds[i]));
+  for (let i = 0; i < n; i++) {
+    const c = { x: cityPos[i][0], y: cityPos[i][1] };
+    if (distPointRect(c.x, c.y, boxes[i]) > MAX_LABEL_DIST + 0.05) return null;
+    if (ownershipBad(c, boxes[i], cityIds[i])) { if (!polishSoftOwn) return null; nOwn++; }
+    for (let j = 0; j < n; j++) {
+      if (j === i) continue;
+      if (j > i && rectsOverlap(boxes[i], boxes[j])) return null;
+      if (distPointRect(cityPos[j][0], cityPos[j][1], boxes[i]) < DOT_R + 1) return null;
+    }
+  }
+  // singole rotte: ratio, doppie, tratta-città
+  const ents = edges.map(drawnEntry);
+  let errSumP = 0;
+  for (let k = 0; k < edges.length; k++) {
+    const e = edges[k], bb = ents[k].bbox;
+    const d = dist(e.points[0], e.points[e.points.length - 1]);
+    errSumP += Math.abs(d - e.len * UNIT);
+    const ratio = d / (e.len * UNIT);
+    if (ratio > e.ratioHi + 1e-9 || ratio < e.ratioLo - 1e-9) return null;
+    if (e.isDouble && e.points.length >= 3 && !doubleTrackSafe(e)) return null;
+    for (let ci = 0; ci < n; ci++) {
+      if (ci === e.a || ci === e.b) continue;
+      const px = cityPos[ci][0], py = cityPos[ci][1];
+      if (px < bb[0] - CITY_CLEARANCE || px > bb[2] + CITY_CLEARANCE || py < bb[1] - CITY_CLEARANCE || py > bb[3] + CITY_CLEARANCE) continue;
+      if (distPointDrawnEdge(px, py, e) < CITY_CLEARANCE) return null;
+    }
+  }
+  if (errSumP / edges.length > 30) return null;
+  // label-CORE: non incidenti = hard, incidenti = soft
+  let nInc = 0, inkSeg = 0;
+  for (let i = 0; i < n; i++) {
+    for (let k = 0; k < edges.length; k++) {
+      const e = edges[k];
+      const ink = polishLabelInk(e, ents[k], boxes[i]);
+      if (ink === 0) continue;
+      if (e.a === i || e.b === i) { nInc++; inkSeg += ink; }
+      else return null;
+    }
+  }
+  // coppie di rotte
+  const gids = edges.map(polishGid);
+  let score = nInc * POLISH_INCIDENT_W + inkSeg * POLISH_INK_W + nOwn * POLISH_OWN_W, nApp = 0;
+  for (let i = 0; i < edges.length; i++) for (let j = i + 1; j < edges.length; j++) {
+    const r = polishPair(i, j, gids[i], gids[j]);
+    if (r.hard) return null;
+    if (r.appr < POLISH_TARGET) {
+      score += 1 + (POLISH_TARGET - r.appr) / POLISH_TARGET;
+      if (r.appr < APPROACH_MIN_DIST) nApp++;
+    }
+  }
+  return { score, nApp, nInc, nOwn };
+}
+
+function snapEdge(e) { return { pts: e.points.map((p) => [...p]), bs: e.bendSign }; }
+function restoreEdge(e, s) { e.points = s.pts.map((p) => [...p]); e.bendSign = s.bs; }
+// Mossa: controllo Q = mid + n·S + t·U (S=0,U=0 → dritta).
+function polishBend(e, S, U) {
+  return () => {
+    const saved = snapEdge(e);
+    const p0 = e.points[0], p1 = e.points[e.points.length - 1];
+    if (S === 0 && U === 0) { e.points = [[...p0], [...p1]]; e.bendSign = null; }
+    else {
+      e.points = [[...p0], [0, 0], [...p1]];
+      const { mid, nx, ny } = normalOf(e);
+      e.points[1] = [round1(mid[0] + nx * S + ny * U), round1(mid[1] + ny * S - nx * U)];
+      e.bendSign = S >= 0 ? 1 : -1;
+    }
+    return () => restoreEdge(e, saved);
+  };
+}
+function polishCityShift(ci, dx, dy) {
+  return () => {
+    const aff = edgesAt[ci];
+    const saved = aff.map(snapEdge);
+    const oldPos = [cityPos[ci][0], cityPos[ci][1]];
+    const rels = aff.map((e) => {
+      if (e.points.length < 3) return null;
+      const { mid, nx, ny } = normalOf(e);
+      const ux = e.points[1][0] - mid[0], uy = e.points[1][1] - mid[1];
+      return [ux * nx + uy * ny, ux * ny - uy * nx];
+    });
+    cityPos[ci][0] += dx; cityPos[ci][1] += dy;
+    aff.forEach((e, k) => {
+      const end = e.a === ci ? 0 : e.points.length - 1;
+      e.points[end] = [cityPos[ci][0], cityPos[ci][1]];
+      if (rels[k]) {
+        const { mid, nx, ny } = normalOf(e);
+        e.points[1] = [round1(mid[0] + nx * rels[k][0] + ny * rels[k][1]), round1(mid[1] + ny * rels[k][0] - nx * rels[k][1])];
+      }
+    });
+    return () => { cityPos[ci][0] = oldPos[0]; cityPos[ci][1] = oldPos[1]; aff.forEach((e, k) => restoreEdge(e, saved[k])); };
+  };
+}
+function polishLabelSet(id, cand) {
+  return () => {
+    const old = labels.get(id);
+    labels.set(id, { dx: round1(cand.dx), dy: round1(cand.dy), anchor: cand.anchor });
+    return () => labels.set(id, old);
+  };
+}
+
+const POLISH_DIRS = Array.from({ length: 16 }, (_, k) => [Math.cos((k * Math.PI) / 8), Math.sin((k * Math.PI) / 8)]);
+const POLISH_RADII = [2, 4, 7, 11];
+function bendMoves(e) {
+  const out = [polishBend(e, 0, 0)];
+  const seen = new Set();
+  const add = (S, U) => { const k = `${S}|${U}`; if (!seen.has(k)) { seen.add(k); out.push(polishBend(e, S, U)); } };
+  for (const sg of [1, -1]) for (let s = 6; s <= 90; s += 6) for (const u of [-20, -10, 0, 10, 20]) add(sg * s, u);
+  if (e.points.length === 3) {
+    const { mid, nx, ny } = normalOf(e);
+    const ux = e.points[1][0] - mid[0], uy = e.points[1][1] - mid[1];
+    const S0 = ux * nx + uy * ny, U0 = ux * ny - uy * nx;
+    for (const ds of [-4, -2, 0, 2, 4]) for (const du of [-4, -2, 0, 2, 4]) {
+      if (ds === 0 && du === 0) continue;
+      add(round1(S0 + ds), round1(U0 + du));
+    }
+  }
+  return out;
+}
+function cityMoves(ci) {
+  const out = [];
+  for (const r of POLISH_RADII) for (const [cx, cy] of POLISH_DIRS) {
+    const dx = round1(cx * r), dy = round1(cy * r);
+    const nx0 = cityPos[ci][0] + dx - polishOrigin[ci][0], ny0 = cityPos[ci][1] + dy - polishOrigin[ci][1];
+    if (Math.hypot(nx0, ny0) > POLISH_CITY_CAP) continue;
+    out.push(polishCityShift(ci, dx, dy));
+  }
+  return out;
+}
+function labelMoves(ci) {
+  const id = cityIds[ci], name = names.get(id);
+  const c = { x: cityPos[ci][0], y: cityPos[ci][1] };
+  const out = [];
+  for (const cand of [...candidatesFor(), ...slideCandidatesFor(name)]) {
+    if (distPointRect(c.x, c.y, labelBox(c.x, c.y, cand, name)) > MAX_LABEL_DIST) continue;
+    out.push(polishLabelSet(id, cand));
+  }
+  return out;
+}
+
+// Piccoli spostamenti della label attorno alla posizione corrente (stesso ancoraggio).
+function labelNudges(ci) {
+  const id = cityIds[ci], cur = labels.get(id), out = [];
+  for (const ddx of [-6, -4, -2, -1, 0, 1, 2, 4, 6]) for (const ddy of [-6, -4, -2, -1, 0, 1, 2, 4, 6]) {
+    if (ddx === 0 && ddy === 0) continue;
+    out.push(polishLabelSet(id, { anchor: cur.anchor, dx: cur.dx + ddx, dy: cur.dy + ddy }));
+  }
+  return out;
+}
+
+function polishViolations() {
+  const gids = edges.map(polishGid);
+  const out = [];
+  const ents = edges.map(drawnEntry);
+  for (let ci = 0; ci < cityIds.length; ci++) {
+    const inc = edgesAt[ci];
+    for (let x = 0; x < inc.length; x++) for (let y = x + 1; y < inc.length; y++) {
+      const a = inc[x], b = inc[y];
+      const r = polishPair(a.idx, b.idx, gids[a.idx], gids[b.idx]);
+      if (r.appr < POLISH_TARGET) out.push({ kind: 'appr', ci, a, b, d: r.appr });
+    }
+    const box = labelBox(cityPos[ci][0], cityPos[ci][1], labels.get(cityIds[ci]), names.get(cityIds[ci]));
+    for (const e of inc) if (polishLabelInk(e, ents[e.idx], box) > 0) out.push({ kind: 'inc', ci, e, d: 99 });
+  }
+  return out.sort((p, q) => p.d - q.d);
+}
+function polishStillBad(v) {
+  if (v.kind === 'appr') return polishPair(v.a.idx, v.b.idx, polishGid(v.a), polishGid(v.b)).appr < POLISH_TARGET;
+  const box = labelBox(cityPos[v.ci][0], cityPos[v.ci][1], labels.get(cityIds[v.ci]), names.get(cityIds[v.ci]));
+  return polishLabelInk(v.e, drawnEntry(v.e), box) > 0;
+}
+
+function polishSnapshot() {
+  return { pos: cityPos.map((p) => [p[0], p[1]]), eds: edges.map(snapEdge), lab: [...labels].map(([k, v]) => [k, { ...v }]) };
+}
+function polishRestore(s) {
+  cityPos.forEach((p, i) => { p[0] = s.pos[i][0]; p[1] = s.pos[i][1]; });
+  edges.forEach((e, i) => restoreEdge(e, s.eds[i]));
+  for (const [k, v] of s.lab) labels.set(k, { ...v }); // set su chiave esistente: l'ordine d'inserimento resta
+}
+function mulberry32(seed) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+let polishCur = polishEval();
+const polishStart = polishCur;
+let polishMoveCount = 0, polishSweeps = 0;
+if (!polishCur) {
+  console.log('hub polish: stato di partenza non valido per i gate, salto');
+} else {
+  const tryMoves = (moves) => {
+    let best = null;
+    for (const apply of moves) {
+      const undo = apply();
+      const r = polishEval();
+      undo();
+      if (r && (!best || r.score < best.r.score - 1e-9)) best = { r, apply };
+    }
+    if (best && best.r.score < polishCur.score - 1e-6) {
+      best.apply();
+      polishCur = best.r;
+      polishMoveCount++;
+      return true;
+    }
+    return false;
+  };
+  // Discesa: per ogni violazione prova TUTTE le mosse del vicinato e applica la migliore.
+  const descend = () => {
+    for (let sw = 0; sw < POLISH_MAX_SWEEPS; sw++) {
+      const viol = polishViolations();
+      if (viol.length === 0) return;
+      polishSweeps++;
+      let improved = false;
+      for (const v of viol) {
+        if (!polishStillBad(v)) continue;
+        const moves = [];
+        if (v.kind === 'appr') {
+          moves.push(...bendMoves(v.a), ...bendMoves(v.b));
+          for (const ci of [v.ci, otherEnd(v.a, v.ci), otherEnd(v.b, v.ci)]) moves.push(...cityMoves(ci));
+        } else {
+          moves.push(...labelMoves(v.ci), ...labelNudges(v.ci), ...bendMoves(v.e));
+          for (const ci of [v.ci, otherEnd(v.e, v.ci)]) moves.push(...cityMoves(ci));
+        }
+        if (tryMoves(moves)) improved = true;
+      }
+      if (!improved) return;
+    }
+  };
+  // Ricottura (PRNG con seed fisso → deterministica): mosse casuali nel vicinato della
+  // violazione corrente, accettate anche se peggiorano (Metropolis), poi si torna al migliore.
+  const rng = mulberry32(20240607);
+  const anneal = (iters, t0) => {
+    let best = polishCur, bestSnap = polishSnapshot(), t = t0;
+    polishSoftOwn = true;
+    polishCur = polishEval();
+    for (let it = 0; it < iters; it++, t *= 0.996) {
+      const viol = polishViolations();
+      if (viol.length === 0) break;
+      const v = viol[Math.floor(rng() * viol.length)];
+      const hubEdges = edgesAt[v.ci];
+      const edgePool = v.kind === 'appr' ? [v.a, v.b, v.a, v.b, ...hubEdges] : [v.e, v.e, ...hubEdges];
+      const cityPool = v.kind === 'appr'
+        ? [v.ci, otherEnd(v.a, v.ci), otherEnd(v.b, v.ci), ...hubEdges.map((e) => otherEnd(e, v.ci))]
+        : [v.ci, otherEnd(v.e, v.ci), ...hubEdges.map((e) => otherEnd(e, v.ci))];
+      const pick = (arr) => arr[Math.floor(rng() * arr.length)];
+      const kind = rng();
+      let mv;
+      if (kind < 0.45) {
+        const e = pick(edgePool);
+        mv = rng() < 0.2 ? polishBend(e, 0, 0) : polishBend(e, round1((rng() < 0.5 ? -1 : 1) * (3 + rng() * 90)), round1((rng() - 0.5) * 60));
+      } else if (kind < 0.9) {
+        const ci = pick(cityPool);
+        const ang = rng() * 2 * Math.PI, rad = 1 + rng() * 11;
+        const dx = round1(Math.cos(ang) * rad), dy = round1(Math.sin(ang) * rad);
+        if (Math.hypot(cityPos[ci][0] + dx - polishOrigin[ci][0], cityPos[ci][1] + dy - polishOrigin[ci][1]) > POLISH_CITY_CAP) continue;
+        mv = polishCityShift(ci, dx, dy);
+      } else {
+        if (rng() < 0.35) {
+          const ln = labelNudges(v.ci);
+          mv = pick(ln);
+        } else if (rng() < 0.5) {
+          const lm = labelMoves(v.ci);
+          if (lm.length === 0) continue;
+          mv = pick(lm);
+        } else {
+          const anchor = pick(['start', 'middle', 'end']);
+          mv = polishLabelSet(cityIds[v.ci], { anchor, dx: round1((rng() - 0.5) * 100), dy: round1((rng() - 0.55) * 70) });
+        }
+      }
+      const undo = mv();
+      const r = polishEval();
+      if (!r) { undo(); continue; }
+      const d = r.score - polishCur.score;
+      if (d <= 0 || rng() < Math.exp(-d / t)) {
+        polishCur = r;
+        polishMoveCount++;
+        if (r.nOwn === 0 && r.score < best.score - 1e-9) { best = r; bestSnap = polishSnapshot(); }
+      } else undo();
+    }
+    polishSoftOwn = false;
+    polishRestore(bestSnap);
+    polishCur = polishEval();
+  };
+  descend();
+  console.log(`  hub polish discesa: score ${polishCur.score.toFixed(2)} (approach ${polishCur.nApp}, label su propri binari ${polishCur.nInc})`);
+  for (let round = 0; round < POLISH_ANNEAL_ROUNDS && (polishCur.nApp > 0 || polishCur.nInc > 0 || polishViolations().length > 0); round++) {
+    anneal(POLISH_ANNEAL_ITERS, 0.9);
+    descend();
+    console.log(`  hub polish ricottura ${round + 1}: score ${polishCur.score.toFixed(2)} (approach ${polishCur.nApp}, label su propri binari ${polishCur.nInc})`);
+  }
+}
+clashResidual = countClashes();
+const polishMoved = cityIds.map((id, i) => [id, dist(cityPos[i], polishOrigin[i])]).filter(([, d]) => d > 0.05);
 
 // ── 5. Bounding → canvas di output (variabile) ─────────────────────────
 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2750,6 +3168,10 @@ if (clusterTotals.size > 0) {
 if (f2ShiftsApplied > 0) {
   console.log(`F2 approach shifts: ${f2ShiftsApplied} micro-spostamenti mirati`);
   for (const d of f2ShiftDetail) console.log(`  F2-SHIFT ${d}`);
+}
+if (polishStart) {
+  console.log(`hub polish: ${polishMoveCount} mosse accettate (${polishSweeps} sweep di discesa + ricottura) | approach <${APPROACH_MIN_DIST}px: ${polishStart.nApp} → ${polishCur.nApp} | label su binari propri: ${polishStart.nInc} → ${polishCur.nInc}`);
+  if (polishMoved.length > 0) console.log(`  città spostate dal polish: ${polishMoved.map(([id, d]) => `${id}(${d.toFixed(1)}px)`).join(', ')}`);
 }
 console.log('validazione finale:');
 console.log(`  conflitti label-label:       ${labelLabel}`);
