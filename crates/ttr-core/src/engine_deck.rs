@@ -118,6 +118,10 @@ pub fn loco_count_face_up(face_up: &[Option<CardColor>]) -> usize {
 /// Se dopo lo scarto mazzo e scarti contengono al più 2 carte non-locomotiva
 /// nessuna ripetizione può uscire dalla soglia: gli scarti tornano nel mazzo,
 /// si rimescola una volta e ci si ferma dopo aver rivelato le nuove scoperte.
+/// Se però quella rivelazione ha esaurito mazzo e scarti lasciando ≥3
+/// locomotive scoperte, si crea il mazzo nuovo di D27 e si ricontrollano le
+/// scoperte (una sola volta per chiamata), così non restano ≥3 locomotive
+/// davanti a un mazzo pieno di carte normali.
 /// Ogni reset aggiunge `FaceUpReset` a `events` (dopo gli eventuali
 /// `DeckReshuffled`); restituisce true se è avvenuto almeno un reset.
 pub fn check_and_reset_loco_threshold(
@@ -129,6 +133,7 @@ pub fn check_and_reset_loco_threshold(
     events: &mut Vec<GameEvent>,
 ) -> bool {
     let mut reset = false;
+    let mut rebuilt = false;
     while loco_count_face_up(face_up) >= LOCO_RESET_THRESHOLD {
         reset = true;
 
@@ -163,6 +168,20 @@ pub fn check_and_reset_loco_threshold(
         });
 
         if dead_end {
+            if !rebuilt
+                && loco_count_face_up(face_up) >= LOCO_RESET_THRESHOLD
+                && draw_pile.is_empty()
+                && discards.is_empty()
+            {
+                // Mazzo e scarti esauriti: D27, mazzo completo nuovo.
+                rebuilt = true;
+                *draw_pile = build_train_deck(deck);
+                if !draw_pile.is_empty() {
+                    rng.shuffle(draw_pile);
+                    events.push(GameEvent::DeckReshuffled);
+                    continue;
+                }
+            }
             break;
         }
     }
@@ -188,5 +207,44 @@ mod tests {
             deck.iter().filter(|c| **c == CardColor::Locomotive).count(),
             14
         );
+    }
+
+    #[test]
+    fn loco_reset_dead_end_with_empty_deck_rebuilds_and_rechecks() {
+        let deck = DeckConfig {
+            per_color: 12,
+            locomotives: 14,
+        };
+        let mut rng = SeededRng::new(7);
+        let mut face_up = vec![
+            Some(CardColor::Orange),
+            Some(CardColor::Locomotive),
+            Some(CardColor::Locomotive),
+            Some(CardColor::Locomotive),
+            Some(CardColor::Orange),
+        ];
+        let mut draw_pile = Vec::new();
+        let mut discards = Vec::new();
+        let mut events = Vec::new();
+
+        let reset = check_and_reset_loco_threshold(
+            &mut face_up,
+            &mut draw_pile,
+            &mut discards,
+            &mut rng,
+            &deck,
+            &mut events,
+        );
+
+        assert!(reset);
+        assert!(loco_count_face_up(&face_up) <= 2);
+        assert!(face_up.iter().all(Option::is_some));
+        // Le 5 scoperte vecchie sono scarti, il resto è il mazzo nuovo.
+        assert_eq!(draw_pile.len() + discards.len() + 5, 110 + 5);
+        // Ordine: reset del dead end, mazzo nuovo, reset successivo.
+        assert!(matches!(events[0], GameEvent::DeckReshuffled));
+        assert!(matches!(events[1], GameEvent::FaceUpReset { .. }));
+        assert!(matches!(events[2], GameEvent::DeckReshuffled));
+        assert!(matches!(events.last(), Some(GameEvent::FaceUpReset { .. })));
     }
 }

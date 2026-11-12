@@ -1916,6 +1916,10 @@ fn loco_reset_deadend_only_locos_terminates() {
 
 /// Pool con meno di 5 carte durante la riscoperta: le carte mancanti arrivano
 /// dal mazzo nuovo (D27) e il loop si ferma dopo quella passata.
+/// Copre solo lo slot `None` nelle scoperte (non raggiungibile in partita,
+/// dove D27 non lascia slot vuoti): NON è il caso I13, coperto dal test
+/// `loco_reset_dead_end_with_empty_deck_rebuilds_and_rechecks` in
+/// `engine_deck.rs`.
 #[test]
 fn loco_reset_deadend_small_pool_uses_fresh_deck_and_terminates() {
     for seed in 0..20u64 {
