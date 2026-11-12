@@ -200,14 +200,11 @@ const COLOR_ORDER: [PlayerColor; 5] = [
     PlayerColor::Black,
 ];
 
-/// Il nome ricevuto da un join senza autenticazione non va normalizzato se supera ciò che può
-/// contenere un nome del roster: `MAX_PLAYER_NAME_CHARS`, o più se un save esistente ha nomi
-/// fuori limite (restano riprendibili). `name_key` costa per carattere.
-fn name_too_long<'a>(name: &str, roster_names: impl Iterator<Item = &'a str>) -> bool {
-    let limit = roster_names
-        .map(|n| n.chars().count())
-        .fold(MAX_PLAYER_NAME_CHARS, usize::max);
-    name.chars().nth(limit).is_some()
+/// Il nome ricevuto da un join senza autenticazione non va normalizzato se supera
+/// `MAX_PLAYER_NAME_CHARS` (un nome del roster non può essere più lungo: `validate_save` lo
+/// garantisce anche per i save). `name_key` costa per carattere.
+fn name_too_long(name: &str) -> bool {
+    name.chars().nth(MAX_PLAYER_NAME_CHARS).is_some()
 }
 
 /// Primo colore libero in ordine, dato il roster attuale.
@@ -619,7 +616,7 @@ impl GameSession {
         name: &str,
         resume_token: Option<&str>,
     ) -> Result<JoinResponse, LobbyError> {
-        if name_too_long(name, self.players.iter().map(|p| p.name.as_str())) {
+        if name_too_long(name) {
             return Err(LobbyError::GameStarted);
         }
         let key = name_key(name);
@@ -646,7 +643,7 @@ impl GameSession {
         name: &str,
         resume_token: Option<&str>,
     ) -> Result<JoinResponse, LobbyError> {
-        if name_too_long(name, self.saved_roster.values().map(|e| e.name.as_str())) {
+        if name_too_long(name) {
             return Err(LobbyError::NameNotInSave);
         }
         let entry = self

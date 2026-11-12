@@ -142,8 +142,17 @@ impl Drop for TestServer {
         if let Some(t) = self.task.take() {
             t.abort();
         }
-        // Pulisce la cartella save di test (best effort)
-        let _ = std::fs::remove_dir_all(&self.saves_dir);
+        // Pulisce la cartella save di test. Il writer non ricrea la cartella (`write_atomic` e
+        // `append_result` non fanno `create_dir_all`): una scrittura in ritardo fallisce. Qui
+        // si ritenta se una scrittura in corso aggiunge un file durante la rimozione
+        // (`remove_dir_all` fallisce con «directory non vuota»); `NotFound` è già pulito.
+        for _ in 0..100 {
+            match std::fs::remove_dir_all(&self.saves_dir) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => break,
+                Err(_) => std::thread::yield_now(),
+            }
+        }
     }
 }
 

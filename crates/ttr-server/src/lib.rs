@@ -235,30 +235,29 @@ fn prepare_resume(
 ) -> Result<PreparedResume, ResumeError> {
     use ResumeError::NotResumable;
 
-    if expected_id.is_some() {
-        // REST: il file arriva dalla cartella dei save, quindi niente symlink né file enormi.
-        match save::check_save_file(save_path) {
-            Ok(save::SaveFileCheck::Ok) => {}
-            Ok(save::SaveFileCheck::NotRegular) => return Err(ResumeError::NotFound),
-            Ok(save::SaveFileCheck::TooLarge(size)) => {
+    let save = if expected_id.is_some() {
+        // REST: il file arriva dalla cartella dei save: una sola apertura, senza symlink,
+        // senza file speciali né oltre il limite di dimensione.
+        match save::read_save_bounded(save_path) {
+            Ok(save) => save,
+            Err(save::SaveReadError::NotFound | save::SaveReadError::NotRegular) => {
+                return Err(ResumeError::NotFound);
+            }
+            Err(save::SaveReadError::TooLarge(size)) => {
                 tracing::warn!(path = %save_path.display(), size, "save troppo grande: resume rifiutato");
                 return Err(NotResumable(
                     "il save supera la dimensione massima".to_string(),
                 ));
             }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                return Err(ResumeError::NotFound);
-            }
-            Err(e) => {
-                return Err(ResumeError::Unreadable(format!(
-                    "lettura {save_path:?}: {e}"
-                )));
+            Err(e @ (save::SaveReadError::Io(_) | save::SaveReadError::Parse(_))) => {
+                return Err(ResumeError::Unreadable(e.to_string()));
             }
         }
     } else if !save_path.is_file() {
         return Err(ResumeError::NotFound);
-    }
-    let save = save::read_save(save_path).map_err(ResumeError::Unreadable)?;
+    } else {
+        save::read_save(save_path).map_err(ResumeError::Unreadable)?
+    };
 
     // `game_id` finisce in un percorso su disco: solo la forma canonica è ammessa.
     if !save::is_canonical_uuid(&save.game_id) {
@@ -273,6 +272,8 @@ fn prepare_resume(
         ));
     }
 
+    // Nomi oltre i limiti: non riprendibile (prima del replay, che costa per carattere).
+    save::check_name_limits(&save).map_err(NotResumable)?;
     let ruleset = state
         .ruleset(&save.ruleset_id)
         .ok_or_else(|| NotResumable(format!("ruleset '{}' sconosciuto", save.ruleset_id)))?

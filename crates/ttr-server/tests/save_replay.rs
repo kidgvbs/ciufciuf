@@ -851,25 +851,27 @@ async fn r3_resume_rejects_game_id_that_is_not_a_canonical_uuid() {
     );
 }
 
-/// I limiti della lobby valgono solo per i nuovi join: un save esistente deve
-/// restare riprendibile anche con nomi fuori limite.
+/// Un save con un nome di giocatore oltre il limite della lobby non è riprendibile:
+/// troncarlo cambierebbe la `name_key` e romperebbe il rientro.
 #[tokio::test]
-async fn resume_accepts_saved_names_outside_lobby_limits() {
+async fn resume_rejects_saved_names_outside_lobby_limits() {
     let server = TestServer::start().await;
     let g = create_game_with_seed(&server.base_url, "LongName", Some(3)).await;
-    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    join_game(&server.base_url, &g.game_id, "Alice", None).await;
     join_game(&server.base_url, &g.game_id, "Bob", None).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     wait_for_file(&save).await;
-    let long_name = "x".repeat(30);
     let mut v = read_save(&save);
-    v["players"][0]["name"] = serde_json::json!(long_name);
+    v["players"][0]["name"] = serde_json::json!("x".repeat(30));
     std::fs::write(&save, v.to_string()).unwrap();
 
-    let (rid, _) = resume_after_restart(&server, &save).await.unwrap();
-    join_game_resume(&server.base_url, &rid, &long_name, &pa.token).await;
+    let err = resume_after_restart(&server, &save).await.unwrap_err();
+    assert!(
+        matches!(err, ttr_server::ResumeError::NotResumable(_)),
+        "{err:?}"
+    );
 }
 
 // ── Validazione dei save ─────────────────────────────────────────────
@@ -1300,7 +1302,8 @@ async fn resume_of_completed_save_reports_game_over() {
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
     wait_for_save(&save, |s| s["status"] == "completed").await;
 
-    let fresh = temp_saves_dir();
+    let fresh_dir = tempfile::tempdir().unwrap();
+    let fresh = fresh_dir.path().to_path_buf();
     let copy = fresh.join("conclusa.json");
     std::fs::copy(&save, &copy).unwrap();
     let out = tokio::task::spawn_blocking({
@@ -1398,6 +1401,105 @@ async fn stale_tmp_files_are_removed() {
     assert_eq!(ttr_server::save::archive_completed_saves(&server.state), 0);
     assert!(!stale.exists(), "tmp obsoleto eliminato");
     assert!(fresh.exists(), "tmp recente intatto");
+}
+
+/// I limiti sui nomi valgono per resume ed elenco, non per l'archiviazione all'avvio: un
+/// save `completed` con il nome della partita di 41 caratteri finisce comunque in classifica.
+#[tokio::test]
+async fn startup_archive_ignores_name_limits() {
+    let server = TestServer::start().await;
+    let (game_id, save) = completed_save_on_disk(&server, "Lunga").await;
+    let long_name = "é".repeat(41);
+    let mut v = read_save(&save);
+    v["gameName"] = serde_json::json!(long_name);
+    std::fs::write(&save, v.to_string()).unwrap();
+
+    assert_eq!(ttr_server::save::archive_completed_saves(&server.state), 1);
+    assert!(!save.exists());
+    let results = ttr_server::save::read_results(&server.saves_dir);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].game_id, game_id);
+    assert_eq!(results[0].game_name, long_name);
+}
+
+/// Gioca una partita fino alla fine con l'archiviazione fallita (`results.jsonl` è una
+/// directory), così `{id}.json` resta su disco `completed`; poi libera `results.jsonl`.
+async fn completed_save_on_disk(server: &TestServer, name: &str) -> (String, std::path::PathBuf) {
+    let results = server.saves_dir.join(ttr_server::save::RESULTS_FILE);
+    std::fs::create_dir(&results).unwrap();
+
+    let g = create_game_with_seed(&server.base_url, name, Some(42)).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", None).await;
+    start_game(&server.base_url, &g.game_id, &g.host_token).await;
+    let mut a = Player::new(WsClient::connect(server, &g.game_id, &pa.player_id, &pa.token).await);
+    let mut b = Player::new(WsClient::connect(server, &g.game_id, &pb.player_id, &pb.token).await);
+    let final_public = run_game(&mut a, &mut b, &usa_map()).await;
+    assert_eq!(final_public.state, GameState::GameOver);
+
+    let save = server.saves_dir.join(format!("{}.json", g.game_id));
+    wait_for_save(&save, |s| s["status"] == "completed").await;
+    std::fs::remove_dir(&results).unwrap();
+    (g.game_id, save)
+}
+
+/// Un FIFO `{uuid}.json` non blocca l'archiviazione all'avvio: il save valido è archiviato
+/// e il FIFO resta dov'è.
+#[cfg(unix)]
+#[tokio::test]
+async fn startup_archive_skips_fifo_named_like_a_save() {
+    let server = TestServer::start().await;
+    let (game_id, save) = completed_save_on_disk(&server, "Fifo").await;
+    let fifo = server
+        .saves_dir
+        .join(format!("{}.json", uuid::Uuid::new_v4()));
+    let status = std::process::Command::new("mkfifo")
+        .arg(&fifo)
+        .status()
+        .expect("avvio di mkfifo");
+    assert!(status.success(), "mkfifo fallito");
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let state = server.state.clone();
+    std::thread::spawn(move || {
+        let _ = tx.send(ttr_server::save::archive_completed_saves(&state));
+    });
+    let archived = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("l'archiviazione all'avvio non deve bloccarsi su un FIFO");
+
+    assert_eq!(archived, 1);
+    assert!(!save.exists(), "il save valido è archiviato");
+    assert!(fifo.exists(), "il FIFO non è toccato");
+    let results = ttr_server::save::read_results(&server.saves_dir);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].game_id, game_id);
+}
+
+/// Un symlink `{uuid}.json` verso un save concluso non è archiviato né eliminato, e il
+/// file di destinazione resta intatto.
+#[cfg(unix)]
+#[tokio::test]
+async fn startup_archive_skips_symlinked_save() {
+    let server = TestServer::start().await;
+    let (_game_id, save) = completed_save_on_disk(&server, "Symlink").await;
+    let outside = tempfile::tempdir().unwrap();
+    let target = outside.path().join("conclusa.json");
+    std::fs::copy(&save, &target).unwrap();
+    let original = std::fs::read(&target).unwrap();
+    std::fs::remove_file(&save).unwrap();
+    std::os::unix::fs::symlink(&target, &save).unwrap();
+
+    assert_eq!(ttr_server::save::archive_completed_saves(&server.state), 0);
+    assert!(
+        std::fs::symlink_metadata(&save)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "il symlink non è toccato"
+    );
+    assert_eq!(std::fs::read(&target).unwrap(), original);
+    assert!(ttr_server::save::read_results(&server.saves_dir).is_empty());
 }
 
 /// Il token riassegnato dall'host è nel save subito, quindi sopravvive a un riavvio.

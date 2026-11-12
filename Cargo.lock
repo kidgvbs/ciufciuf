@@ -2051,6 +2051,7 @@ dependencies = [
  "clap",
  "futures-util",
  "getrandom 0.3.4",
+ "libc",
  "local-ip-address",
  "qrcode",
  "reqwest",

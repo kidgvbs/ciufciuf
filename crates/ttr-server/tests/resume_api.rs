@@ -421,22 +421,35 @@ async fn list_saves_skips_oversized_files() {
     assert!(save_path(&server, &big).exists());
 }
 
-/// Nome partita e nomi dei giocatori di un save manomesso sono troncati nell'elenco.
+/// Un save con il nome della partita o di un giocatore oltre i limiti della lobby non è
+/// elencato né riprendibile; ai limiti esatti sì.
 #[tokio::test]
-async fn list_saves_truncates_long_names() {
+async fn saves_with_names_beyond_limits_are_not_resumable() {
     let server = TestServer::start().await;
     let g = saved_game(&server, "Normale").await;
-    clone_save(&server, &g.game_id, |s| {
-        s["gameName"] = "é".repeat(100).into();
-        s["players"][0]["name"] = "ü".repeat(60).into();
+    let long_game = clone_save(&server, &g.game_id, |s| {
+        s["gameName"] = "é".repeat(41).into();
+    });
+    let long_player = clone_save(&server, &g.game_id, |s| {
+        s["players"][0]["name"] = "ü".repeat(25).into();
+    });
+    let at_limits = clone_save(&server, &g.game_id, |s| {
+        s["gameName"] = "é".repeat(40).into();
+        s["players"][0]["name"] = "ü".repeat(24).into();
     });
 
     let saves = listed_saves(&server).await;
-    let long = saves
-        .iter()
-        .find(|s| s["gameId"] != g.game_id.as_str())
-        .expect("save clonato elencato");
-    assert_eq!(long["name"], "é".repeat(40));
-    assert_eq!(long["players"][0], "ü".repeat(24));
-    assert_eq!(long["players"][1], "Bob");
+    let ids = listed_ids(&saves);
+    assert!(ids.contains(&g.game_id.as_str()), "{ids:?}");
+    assert!(ids.contains(&at_limits.as_str()), "{ids:?}");
+    assert!(!ids.contains(&long_game.as_str()), "{ids:?}");
+    assert!(!ids.contains(&long_player.as_str()), "{ids:?}");
+
+    for id in [&long_game, &long_player] {
+        let res = resume(&server, id).await;
+        assert_error(&res, 409, "SAVE_NOT_RESUMABLE");
+        assert!(save_path(&server, id).exists());
+    }
+    let res = resume(&server, &at_limits).await;
+    assert_eq!(res.0, 201, "{}", res.1);
 }

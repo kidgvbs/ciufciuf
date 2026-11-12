@@ -4,7 +4,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashSet;
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -25,6 +25,9 @@ const MAX_BACKUP_ATTEMPTS: u32 = 1000;
 
 /// Backup `{id}.resume-*.bak` conservati per partita: i più vecchi vengono eliminati.
 const MAX_RESUME_BACKUPS: usize = 5;
+
+/// Un backup con timestamp oltre `adesso + questo margine` (secondi) è anomalo.
+const BACKUP_FUTURE_SLACK_SECS: u64 = 24 * 60 * 60;
 
 /// Dimensione massima di un file di save letto dal server.
 pub(crate) const MAX_SAVE_FILE_BYTES: u64 = 16 * 1024 * 1024;
@@ -164,7 +167,6 @@ pub(crate) fn append_result(
     result: &GameResult,
 ) -> Result<bool, String> {
     let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
-    std::fs::create_dir_all(saves_dir).map_err(|e| format!("mkdir {:?}: {}", saves_dir, e))?;
     let path = saves_dir.join(RESULTS_FILE);
 
     let existing = match std::fs::read(&path) {
@@ -429,20 +431,29 @@ pub(crate) fn build_save_data(session: &GameSession) -> SaveData {
     }
 }
 
-/// Scrive i dati con `durable_write`, creando la directory se manca.
+/// Scrive i dati con `durable_write`. La cartella dei save esiste già (la crea `main.rs`
+/// all'avvio): non va ricreata qui, altrimenti una scrittura in ritardo la farebbe rinascere.
 pub(crate) fn write_atomic(path: &Path, data: &SaveData) -> Result<(), String> {
     let json = serde_json::to_string_pretty(data).map_err(|e| format!("serializzazione: {}", e))?;
-
-    if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("creazione directory {:?}: {}", parent, e))?;
-    }
     durable_write(path, json.as_bytes()).map_err(|e| format!("scrittura {:?}: {}", path, e))
 }
 
-/// Scompone `{stem}.{kind}-{unix}[-{n}].bak` in `(stem, (unix, n))`; `None` se il nome
-/// ha un'altra forma. L'ordine `(unix, n)` è numerico, non lessicografico.
-fn parse_backup_name<'a>(name: &'a str, kind: &str) -> Option<(&'a str, (u64, u64))> {
+fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Scompone `{stem}.{kind}-{unix}[-{n}].bak`. `None` se il nome ha un'altra forma;
+/// `Some((stem, None))` se è un backup anomalo (timestamp non numerico o oltre
+/// `now + 1 giorno`); altrimenti `Some((stem, Some((unix, n))))`. L'ordine
+/// `(unix, n)` è numerico, non lessicografico.
+fn parse_backup_name<'a>(
+    name: &'a str,
+    kind: &str,
+    now: u64,
+) -> Option<(&'a str, Option<(u64, u64)>)> {
     let (stem, rest) = name.strip_suffix(".bak")?.split_once('.')?;
     let rest = rest.strip_prefix(kind)?.strip_prefix('-')?;
     let (unix, n) = rest.split_once('-').unwrap_or((rest, "0"));
@@ -452,13 +463,17 @@ fn parse_backup_name<'a>(name: &'a str, kind: &str) -> Option<(&'a str, (u64, u6
         }
         s.parse::<u64>().ok()
     };
-    Some((stem, (number(unix)?, number(n)?)))
+    let order = number(unix)
+        .zip(number(n))
+        .filter(|&(unix, _)| unix <= now.saturating_add(BACKUP_FUTURE_SLACK_SECS));
+    Some((stem, order))
 }
 
-/// Ordine `(unix, n)` e percorso di un backup.
-type BackupEntry = ((u64, u64), PathBuf);
+/// Ordine `(unix, n)` (`None` se anomalo: ordina per primo) e percorso di un backup.
+type BackupEntry = (Option<(u64, u64)>, PathBuf);
 
-/// Backup `{stem}.resume-*.bak` di `path`, dal più vecchio al più recente.
+/// Backup `{stem}.resume-*.bak` di `path`, dal più vecchio al più recente; quelli
+/// anomali vengono prima di tutti.
 fn list_resume_backups(path: &Path) -> Result<Vec<BackupEntry>, String> {
     let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
         return Ok(Vec::new());
@@ -468,10 +483,13 @@ fn list_resume_backups(path: &Path) -> Result<Vec<BackupEntry>, String> {
         _ => Path::new("."),
     };
     let entries = std::fs::read_dir(dir).map_err(|e| format!("lettura {:?}: {}", dir, e))?;
+    let now = unix_now();
     let mut found = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let Some((entry_stem, order)) = name.to_str().and_then(|n| parse_backup_name(n, "resume"))
+        let Some((entry_stem, order)) = name
+            .to_str()
+            .and_then(|n| parse_backup_name(n, "resume", now))
         else {
             continue;
         };
@@ -483,9 +501,22 @@ fn list_resume_backups(path: &Path) -> Result<Vec<BackupEntry>, String> {
     Ok(found)
 }
 
+/// Copia al più `MAX_SAVE_FILE_BYTES` byte da `src`; un file che ne contiene di più (per
+/// esempio cresciuto dopo il controllo dei metadati) è un errore.
+fn copy_bounded(src: &mut std::fs::File, dst: &mut impl Write) -> std::io::Result<u64> {
+    let copied = std::io::copy(&mut Read::take(&mut *src, MAX_SAVE_FILE_BYTES + 1), dst)?;
+    if copied > MAX_SAVE_FILE_BYTES {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidData,
+            "il save supera la dimensione massima",
+        ));
+    }
+    Ok(copied)
+}
+
 fn file_digest(file: &mut std::fs::File) -> std::io::Result<[u8; 32]> {
     let mut hasher = Sha256::new();
-    std::io::copy(file, &mut hasher)?;
+    copy_bounded(file, &mut hasher)?;
     Ok(hasher.finalize().into())
 }
 
@@ -495,18 +526,25 @@ fn file_digest(file: &mut std::fs::File) -> std::io::Result<[u8; 32]> {
 /// `MAX_RESUME_BACKUPS` backup. Ritorna il percorso del backup, o `None` se il
 /// save non esiste. `path` deve avere uno stem già validato.
 pub(crate) fn backup_before_resume(path: &Path) -> Result<Option<PathBuf>, String> {
-    let mut source = match std::fs::File::open(path) {
-        Ok(file) => file,
-        Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+    let (mut source, meta) = match open_regular(path) {
+        Ok(opened) => opened,
+        Err(SaveReadError::NotFound) => return Ok(None),
         Err(e) => return Err(format!("lettura {:?} per backup: {}", path, e)),
     };
+    if meta.len() > MAX_SAVE_FILE_BYTES {
+        return Err(format!(
+            "lettura {:?} per backup: {}",
+            path,
+            SaveReadError::TooLarge(meta.len())
+        ));
+    }
 
     let existing = list_resume_backups(path)?;
     let source_digest =
         file_digest(&mut source).map_err(|e| format!("lettura {:?} per backup: {}", path, e))?;
     std::io::Seek::rewind(&mut source)
         .map_err(|e| format!("lettura {:?} per backup: {}", path, e))?;
-    if let Some((_, newest)) = existing.last()
+    if let Some((_, newest)) = existing.last().filter(|(order, _)| order.is_some())
         && std::fs::File::open(newest)
             .and_then(|mut file| file_digest(&mut file))
             .is_ok_and(|digest| digest == source_digest)
@@ -514,10 +552,7 @@ pub(crate) fn backup_before_resume(path: &Path) -> Result<Option<PathBuf>, Strin
         return Ok(Some(newest.clone()));
     }
 
-    let unix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let unix = unix_now();
 
     for attempt in 0..MAX_BACKUP_ATTEMPTS {
         let extension = if attempt == 0 {
@@ -535,7 +570,7 @@ pub(crate) fn backup_before_resume(path: &Path) -> Result<Option<PathBuf>, Strin
             Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
             Err(e) => return Err(format!("creazione backup {:?}: {}", backup_path, e)),
         };
-        if let Err(e) = std::io::copy(&mut source, &mut backup) {
+        if let Err(e) = copy_bounded(&mut source, &mut backup) {
             let _ = std::fs::remove_file(&backup_path);
             return Err(format!("copia backup {:?}: {}", backup_path, e));
         }
@@ -585,7 +620,8 @@ pub(crate) fn soft_delete_save(path: &Path) -> Result<Option<PathBuf>, String> {
 }
 
 /// Elimina i `{uuid}.deleted-{unix}[-{n}].bak` il cui `unix` nel nome è anteriore di più di
-/// `retention` a ora (la rinomina conserva la mtime originale, quindi non conta).
+/// `retention` a ora (la rinomina conserva la mtime originale, quindi non conta). I nomi
+/// anomali (timestamp non numerico o nel futuro) sono potati in base alla mtime del file.
 /// Ritorna il numero di file eliminati; gli errori sono avvisi.
 pub fn prune_deleted_saves(saves_dir: &Path, retention: std::time::Duration) -> usize {
     let entries = match std::fs::read_dir(saves_dir) {
@@ -598,23 +634,37 @@ pub fn prune_deleted_saves(saves_dir: &Path, retention: std::time::Duration) -> 
         }
     };
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
+    let now = unix_now();
     let cutoff = now.saturating_sub(retention.as_secs());
 
     let mut removed = 0;
     for entry in entries.flatten() {
         let name = entry.file_name();
-        let Some((stem, (unix, _))) = name.to_str().and_then(|n| parse_backup_name(n, "deleted"))
+        let Some((stem, order)) = name
+            .to_str()
+            .and_then(|n| parse_backup_name(n, "deleted", now))
         else {
             continue;
         };
-        if unix >= cutoff
-            || !is_canonical_uuid(stem)
-            || !entry.file_type().is_ok_and(|t| t.is_file())
-        {
+        if !is_canonical_uuid(stem) || !entry.file_type().is_ok_and(|t| t.is_file()) {
+            continue;
+        }
+        let expired = match order {
+            Some((unix, _)) => unix < cutoff,
+            // Nome anomalo: conta la mtime. Una mtime nel futuro oltre il margine è anomala
+            // anch'essa, quindi scaduta.
+            None => entry
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .is_some_and(|modified| {
+                    match std::time::SystemTime::now().duration_since(modified) {
+                        Ok(age) => age > retention,
+                        Err(ahead) => ahead.duration().as_secs() > BACKUP_FUTURE_SLACK_SECS,
+                    }
+                }),
+        };
+        if !expired {
             continue;
         }
         let path = entry.path();
@@ -631,7 +681,8 @@ pub fn prune_deleted_saves(saves_dir: &Path, retention: std::time::Duration) -> 
     removed
 }
 
-/// Legge un save file.
+/// Legge un save file seguendo i symlink, senza limiti di dimensione: solo per il percorso
+/// scelto dall'operatore (`--resume`). Per la cartella dei save c'è `read_save_bounded`.
 pub fn read_save(path: &Path) -> Result<SaveData, String> {
     let json = std::fs::read_to_string(path).map_err(|e| format!("lettura {:?}: {}", path, e))?;
     let save: SaveData =
@@ -645,26 +696,77 @@ pub(crate) fn is_canonical_uuid(s: &str) -> bool {
     uuid::Uuid::parse_str(s).is_ok_and(|id| id.to_string() == s)
 }
 
-/// Esito del controllo su un file di save prima di leggerlo.
-pub(crate) enum SaveFileCheck {
-    Ok,
-    /// Non è un file regolare (symlink, cartella, ...).
+/// Errore di `read_save_bounded`.
+#[derive(Debug)]
+pub(crate) enum SaveReadError {
+    /// Il file non esiste (anche se sparito tra l'elenco della cartella e la lettura).
+    NotFound,
+    /// Non è un file regolare (symlink, cartella, FIFO, ...).
     NotRegular,
     /// Supera `MAX_SAVE_FILE_BYTES`.
     TooLarge(u64),
+    /// Apertura o lettura fallita.
+    Io(String),
+    /// Il contenuto non è un save.
+    Parse(String),
 }
 
-/// Controlla con `symlink_metadata` che `path` sia un file regolare di dimensione ammessa;
-/// i symlink sono rifiutati.
-pub(crate) fn check_save_file(path: &Path) -> std::io::Result<SaveFileCheck> {
-    let meta = std::fs::symlink_metadata(path)?;
-    Ok(if !meta.is_file() {
-        SaveFileCheck::NotRegular
-    } else if meta.len() > MAX_SAVE_FILE_BYTES {
-        SaveFileCheck::TooLarge(meta.len())
-    } else {
-        SaveFileCheck::Ok
-    })
+impl std::fmt::Display for SaveReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound => f.write_str("il file non esiste"),
+            Self::NotRegular => f.write_str("non è un file regolare"),
+            Self::TooLarge(size) => write!(f, "save troppo grande: {size} byte"),
+            Self::Io(msg) | Self::Parse(msg) => f.write_str(msg),
+        }
+    }
+}
+
+/// Apre un file regolare con una sola apertura: su Unix `O_NOFOLLOW` (un symlink è «non
+/// regolare») e `O_NONBLOCK` (un FIFO non blocca l'apertura); il tipo viene dai metadati
+/// dell'handle. Ritorna l'handle e i metadati; `NotFound`, `NotRegular` o `Io` altrimenti.
+fn open_regular(path: &Path) -> Result<(std::fs::File, std::fs::Metadata), SaveReadError> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK);
+    }
+    let file = match options.open(path) {
+        Ok(file) => file,
+        Err(e) if e.kind() == ErrorKind::NotFound => return Err(SaveReadError::NotFound),
+        #[cfg(unix)]
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => return Err(SaveReadError::NotRegular),
+        Err(e) => return Err(SaveReadError::Io(format!("apertura {:?}: {}", path, e))),
+    };
+    let meta = file
+        .metadata()
+        .map_err(|e| SaveReadError::Io(format!("metadati {:?}: {}", path, e)))?;
+    if !meta.is_file() {
+        return Err(SaveReadError::NotRegular);
+    }
+    Ok((file, meta))
+}
+
+/// Legge un save dalla cartella dei save con `open_regular`; la dimensione viene dai
+/// metadati dell'handle e la lettura è comunque limitata a `MAX_SAVE_FILE_BYTES`, anche se
+/// il file cresce dopo il controllo.
+pub(crate) fn read_save_bounded(path: &Path) -> Result<SaveData, SaveReadError> {
+    let (file, meta) = open_regular(path)?;
+    if meta.len() > MAX_SAVE_FILE_BYTES {
+        return Err(SaveReadError::TooLarge(meta.len()));
+    }
+
+    let mut bytes = Vec::with_capacity(meta.len() as usize);
+    file.take(MAX_SAVE_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| SaveReadError::Io(format!("lettura {:?}: {}", path, e)))?;
+    if bytes.len() as u64 > MAX_SAVE_FILE_BYTES {
+        return Err(SaveReadError::TooLarge(bytes.len() as u64));
+    }
+    serde_json::from_slice(&bytes)
+        .map_err(|e| SaveReadError::Parse(format!("parsing save {:?}: {}", path, e)))
 }
 
 /// Una partita salvata e riprendibile, come la elenca `GET /api/saves`.
@@ -707,25 +809,12 @@ pub(crate) fn list_in_progress_saves(state: &AppState) -> Vec<SaveSummary> {
         else {
             continue;
         };
-        match check_save_file(&path) {
-            Ok(SaveFileCheck::Ok) => {}
-            Ok(SaveFileCheck::NotRegular) => {
-                tracing::warn!(path = %path.display(), "non è un file regolare: save non elencato");
-                continue;
-            }
-            Ok(SaveFileCheck::TooLarge(size)) => {
-                tracing::warn!(path = %path.display(), size, "save troppo grande: non elencato");
-                continue;
-            }
-            Err(e) => {
-                tracing::warn!(path = %path.display(), error = %e, "save non ispezionabile: non elencato");
-                continue;
-            }
-        }
-        let save = match read_save(&path) {
+        let save = match read_save_bounded(&path) {
             Ok(save) => save,
+            // Sparito tra l'elenco della cartella e la lettura (es. eliminato): non c'è più.
+            Err(SaveReadError::NotFound) => continue,
             Err(e) => {
-                tracing::warn!(path = %path.display(), error = %e, "save illeggibile: non elencato");
+                tracing::warn!(path = %path.display(), error = %e, "save non leggibile: non elencato");
                 continue;
             }
         };
@@ -740,21 +829,17 @@ pub(crate) fn list_in_progress_saves(state: &AppState) -> Vec<SaveSummary> {
             tracing::debug!(path = %path.display(), ruleset = %save.ruleset_id, "ruleset sconosciuto: save non elencato");
             continue;
         };
-        // Stessi controlli del resume, senza replay: formato, versione delle
-        // regole, roster.
-        if let Err(reason) = validate_save(&save, ruleset) {
+        // Stessi controlli del resume, senza replay: nomi entro i limiti, formato, versione
+        // delle regole, roster.
+        if let Err(reason) = check_name_limits(&save).and_then(|()| validate_save(&save, ruleset)) {
             tracing::debug!(path = %path.display(), %reason, "save non riprendibile: non elencato");
             continue;
         }
         saves.push(SaveSummary {
             game_id: save.game_id,
-            name: truncate_chars(&save.game_name, crate::lobby::MAX_GAME_NAME_CHARS),
+            name: save.game_name,
             ruleset_id: save.ruleset_id,
-            players: save
-                .players
-                .into_iter()
-                .map(|p| truncate_chars(&p.name, MAX_PLAYER_NAME_CHARS))
-                .collect(),
+            players: save.players.into_iter().map(|p| p.name).collect(),
             created_at: save.created_at,
             updated_at: save.updated_at,
         });
@@ -765,11 +850,6 @@ pub(crate) fn list_in_progress_saves(state: &AppState) -> Vec<SaveSummary> {
             .then_with(|| a.game_id.cmp(&b.game_id))
     });
     saves
-}
-
-/// Primi `max` caratteri di `s`: un save manomesso non gonfia le risposte dell'elenco.
-fn truncate_chars(s: &str, max: usize) -> String {
-    s.chars().take(max).collect()
 }
 
 /// Replay: ricostruisce il motore da un save file.
@@ -830,8 +910,9 @@ fn replay_with_final_scores(
 
 /// All'avvio archivia in `results.jsonl` i save `completed` rimasti su disco
 /// (archiviazione fallita in una sessione precedente) e li elimina; elimina
-/// anche i `*.tmp` più vecchi di un'ora. Ritorna il numero di save archiviati;
-/// i save illeggibili o non riproducibili restano dove sono, con un avviso.
+/// anche i `*.tmp` più vecchi di un'ora. Considera solo i file `{uuid canonico}.json`.
+/// Ritorna il numero di save archiviati; i save non regolari, troppo grandi, illeggibili
+/// o non riproducibili restano dove sono, con un avviso.
 pub fn archive_completed_saves(state: &AppState) -> usize {
     let dir = &state.saves_dir;
     let entries = match std::fs::read_dir(dir) {
@@ -852,7 +933,7 @@ pub fn archive_completed_saves(state: &AppState) -> usize {
         };
         if name.ends_with(".tmp") {
             remove_if_stale(&path);
-        } else if name.ends_with(".json") && name != crate::profiles::PROFILES_FILE {
+        } else if name.strip_suffix(".json").is_some_and(is_canonical_uuid) {
             match archive_if_completed(state, &path) {
                 Ok(true) => archived += 1,
                 Ok(false) => {}
@@ -882,7 +963,12 @@ fn remove_if_stale(path: &Path) {
 
 /// Archivia e elimina il save se è `completed`; `Ok(false)` se non lo è.
 fn archive_if_completed(state: &AppState, path: &Path) -> Result<bool, String> {
-    let save = read_save(path)?;
+    let save = match read_save_bounded(path) {
+        Ok(save) => save,
+        // Sparito dopo l'elenco della cartella: niente da archiviare.
+        Err(SaveReadError::NotFound) => return Ok(false),
+        Err(e) => return Err(e.to_string()),
+    };
     if save.status != "completed" {
         return Ok(false);
     }
@@ -913,6 +999,29 @@ fn archive_if_completed(state: &AppState, path: &Path) -> Result<bool, String> {
     std::fs::remove_file(path).map_err(|e| format!("eliminazione {:?}: {}", path, e))?;
     tracing::info!(game_id = %save.game_id, "save completed archiviato all'avvio");
     Ok(true)
+}
+
+/// Rifiuta i save con il nome della partita o di un giocatore oltre i limiti della lobby:
+/// non sono riprendibili né elencati (troncare cambierebbe la `name_key` e romperebbe il
+/// rientro). Vale solo per resume ed elenco: l'archiviazione all'avvio dei save `completed`
+/// non lo usa, così un save concluso con nomi lunghi finisce comunque in classifica.
+pub(crate) fn check_name_limits(save: &SaveData) -> Result<(), String> {
+    if save
+        .game_name
+        .chars()
+        .nth(crate::lobby::MAX_GAME_NAME_CHARS)
+        .is_some()
+    {
+        return Err("nome della partita oltre il limite".to_string());
+    }
+    if save
+        .players
+        .iter()
+        .any(|p| p.name.chars().nth(MAX_PLAYER_NAME_CHARS).is_some())
+    {
+        return Err("nome di un giocatore oltre il limite".to_string());
+    }
+    Ok(())
 }
 
 /// Rifiuta i save che il motore non può riprodurre o che il resume non può
@@ -1179,7 +1288,7 @@ mod tests {
         let mut names: Vec<String> = std::fs::read_dir(dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .filter(|n| parse_backup_name(n, "resume").is_some_and(|(stem, _)| stem == id))
+            .filter(|n| parse_backup_name(n, "resume", 0).is_some_and(|(stem, _)| stem == id))
             .collect();
         names.sort();
         names
@@ -1197,7 +1306,6 @@ mod tests {
             seed(format!("{id}.resume-{suffix}.bak"));
         }
         let unrelated = [
-            format!("{id}.resume-abc.bak"),
             format!("{id}.resume-1.bak.tmp"),
             format!("{}.resume-1.bak", uuid::Uuid::new_v4()),
             format!("{id}.deleted-1.bak"),
@@ -1288,5 +1396,198 @@ mod tests {
             assert!(dir.path().join(name).exists(), "{name} doveva restare");
         }
         assert_eq!(prune_deleted_saves(dir.path(), retention), 0);
+    }
+
+    #[test]
+    fn future_resume_backup_is_dropped_first() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let path = dir.path().join(format!("{id}.json"));
+        let future = format!("{id}.resume-99999999999.bak");
+        std::fs::write(dir.path().join(&future), "futuro").unwrap();
+
+        for content in ["uno", "due", "tre", "quattro", "cinque"] {
+            std::fs::write(&path, content).unwrap();
+            backup_before_resume(&path).unwrap().unwrap();
+        }
+        let names = resume_backup_names(dir.path(), &id);
+        assert_eq!(names.len(), 5, "{names:?}");
+        assert!(
+            !names.contains(&future),
+            "il backup nel futuro resta: {names:?}"
+        );
+    }
+
+    #[test]
+    fn unparsable_resume_backups_are_dropped_before_valid_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let path = dir.path().join(format!("{id}.json"));
+        let anomalous = [
+            format!("{id}.resume-abc.bak"),
+            format!("{id}.resume-18446744073709551616.bak"),
+        ];
+        let valid = [1, 2, 3].map(|n| format!("{id}.resume-{n}.bak"));
+        for name in anomalous.iter().chain(&valid) {
+            std::fs::write(dir.path().join(name), name).unwrap();
+        }
+
+        for content in ["uno", "due"] {
+            std::fs::write(&path, content).unwrap();
+            backup_before_resume(&path).unwrap().unwrap();
+        }
+        let names = resume_backup_names(dir.path(), &id);
+        assert_eq!(names.len(), 5, "{names:?}");
+        for name in &anomalous {
+            assert!(!names.contains(name), "{name} doveva sparire: {names:?}");
+        }
+        for name in &valid {
+            assert!(names.contains(name), "{name} doveva restare: {names:?}");
+        }
+    }
+
+    #[test]
+    fn anomalous_deleted_saves_are_pruned_by_mtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let day = 24 * 60 * 60;
+        let retention = std::time::Duration::from_secs(30 * day);
+        let long_ago = std::time::SystemTime::now() - std::time::Duration::from_secs(31 * day);
+        let create = |name: &str, modified: std::time::SystemTime| {
+            let file = std::fs::File::create(dir.path().join(name)).unwrap();
+            file.set_modified(modified).unwrap();
+        };
+
+        let old = [
+            format!("{id}.deleted-abc.bak"),
+            format!("{id}.deleted-99999999999.bak"),
+            format!("{id}.deleted-99999999999-4.bak"),
+            format!("{id}.deleted-18446744073709551616.bak"),
+        ];
+        let fresh = [
+            format!("{id}.deleted-def.bak"),
+            format!("{id}.deleted-99999999998.bak"),
+        ];
+        for name in &old {
+            create(name, long_ago);
+        }
+        for name in &fresh {
+            create(name, std::time::SystemTime::now());
+        }
+
+        assert_eq!(prune_deleted_saves(dir.path(), retention), old.len());
+        for name in &old {
+            assert!(!dir.path().join(name).exists(), "{name} doveva sparire");
+        }
+        for name in &fresh {
+            assert!(dir.path().join(name).exists(), "{name} doveva restare");
+        }
+    }
+
+    #[test]
+    fn anomalous_deleted_save_with_far_future_mtime_is_pruned() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let day = std::time::Duration::from_secs(24 * 60 * 60);
+        let now = std::time::SystemTime::now();
+        let create = |name: &str, modified: std::time::SystemTime| {
+            let file = std::fs::File::create(dir.path().join(name)).unwrap();
+            file.set_modified(modified).unwrap();
+        };
+        let far = format!("{id}.deleted-abc.bak");
+        let near = format!("{id}.deleted-def.bak");
+        create(&far, now + 2 * day);
+        create(&near, now + day / 24);
+
+        assert_eq!(prune_deleted_saves(dir.path(), 30 * day), 1);
+        assert!(!dir.path().join(&far).exists());
+        assert!(dir.path().join(&near).exists());
+    }
+
+    #[test]
+    fn read_save_bounded_reports_typed_errors() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let missing = dir.path().join("manca.json");
+        assert!(matches!(
+            read_save_bounded(&missing),
+            Err(SaveReadError::NotFound)
+        ));
+
+        assert!(matches!(
+            read_save_bounded(dir.path()),
+            Err(SaveReadError::NotRegular)
+        ));
+
+        let broken = dir.path().join("rotto.json");
+        std::fs::write(&broken, "{").unwrap();
+        assert!(matches!(
+            read_save_bounded(&broken),
+            Err(SaveReadError::Parse(_))
+        ));
+
+        // Esattamente al limite: non è «troppo grande» (qui non è JSON, quindi Parse).
+        let at_limit = dir.path().join("limite.json");
+        std::fs::File::create(&at_limit)
+            .unwrap()
+            .set_len(MAX_SAVE_FILE_BYTES)
+            .unwrap();
+        assert!(matches!(
+            read_save_bounded(&at_limit),
+            Err(SaveReadError::Parse(_))
+        ));
+
+        let too_big = dir.path().join("grande.json");
+        std::fs::File::create(&too_big)
+            .unwrap()
+            .set_len(MAX_SAVE_FILE_BYTES + 1)
+            .unwrap();
+        assert!(matches!(
+            read_save_bounded(&too_big),
+            Err(SaveReadError::TooLarge(size)) if size == MAX_SAVE_FILE_BYTES + 1
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn read_save_bounded_rejects_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("vero.json");
+        std::fs::write(&target, "{}").unwrap();
+        let link = dir.path().join("link.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(matches!(
+            read_save_bounded(&link),
+            Err(SaveReadError::NotRegular)
+        ));
+
+        let dangling = dir.path().join("pendente.json");
+        std::os::unix::fs::symlink(dir.path().join("non-esiste.json"), &dangling).unwrap();
+        assert!(matches!(
+            read_save_bounded(&dangling),
+            Err(SaveReadError::NotRegular)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn backup_before_resume_refuses_symlinks_and_oversized_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let path = dir.path().join(format!("{id}.json"));
+
+        let target = dir.path().join("vero.json");
+        std::fs::write(&target, "contenuto").unwrap();
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        assert!(backup_before_resume(&path).is_err());
+        assert!(resume_backup_names(dir.path(), &id).is_empty());
+        std::fs::remove_file(&path).unwrap();
+
+        std::fs::File::create(&path)
+            .unwrap()
+            .set_len(MAX_SAVE_FILE_BYTES + 1)
+            .unwrap();
+        assert!(backup_before_resume(&path).is_err());
+        assert!(resume_backup_names(dir.path(), &id).is_empty());
     }
 }
