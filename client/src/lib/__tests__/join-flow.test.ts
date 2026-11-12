@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   createJoinFlow,
   GAME_STARTED_MESSAGE,
+  SEAT_REASSIGNED_MESSAGE,
   JOIN_TIMEOUT_MS,
   NAME_ALREADY_JOINED_MESSAGE,
   joinWithSavedIdentity,
@@ -141,6 +142,26 @@ describe('createJoinFlow', () => {
     expect(registeredNames).not.toHaveBeenCalled();
     expect(onError).toHaveBeenCalledWith('Nome già in uso');
   });
+  it('join lento che fallisce con RESUME_TOKEN_MISMATCH non diventa «nome già in partita»', async () => {
+    const onError = vi.fn();
+    const flow = createJoinFlow({
+      attempt: () =>
+        new Promise<void>((_, reject) =>
+          setTimeout(
+            () => reject(new LobbyError(401, SEAT_REASSIGNED_MESSAGE, 'RESUME_TOKEN_MISMATCH')),
+            JOIN_TIMEOUT_MS + 1_000,
+          ),
+        ),
+      registeredNames: async () => ['Anna'],
+      name: 'Anna',
+      onSlow: vi.fn(),
+      onError,
+    });
+    const result = flow.run();
+    await vi.advanceTimersByTimeAsync(JOIN_TIMEOUT_MS + 1_000);
+    expect(await result).toBe(false);
+    expect(onError).toHaveBeenCalledWith(SEAT_REASSIGNED_MESSAGE);
+  });
 });
 
 describe('joinWithSavedIdentity', () => {
@@ -171,6 +192,7 @@ describe('joinWithSavedIdentity', () => {
             );
           },
           loadIdentity,
+          clearIdentity: vi.fn(),
           saveIdentity,
         });
         if (result) applied++;
@@ -209,6 +231,7 @@ describe('joinWithSavedIdentity', () => {
         throw new LobbyError(409, 'Nome già in uso', 'NAME_TAKEN');
       },
       loadIdentity,
+      clearIdentity: vi.fn(),
       saveIdentity,
     });
     expect(tokens).toEqual([undefined, 'tok1']);
@@ -224,6 +247,7 @@ describe('joinWithSavedIdentity', () => {
         throw new LobbyError(409, 'Nome già in uso', 'NAME_TAKEN');
       },
       loadIdentity,
+      clearIdentity: vi.fn(),
       saveIdentity,
     });
     await expect(other).rejects.toBeInstanceOf(LobbyError);
@@ -239,8 +263,79 @@ describe('joinWithSavedIdentity', () => {
         throw new LobbyError(409, 'La partita è già avviata.', 'GAME_STARTED');
       },
       loadIdentity: () => null,
+      clearIdentity: vi.fn(),
       saveIdentity: vi.fn(),
     });
     await expect(result).rejects.toMatchObject({ message: GAME_STARTED_MESSAGE, code: 'GAME_STARTED' });
+  });
+  it('RESUME_TOKEN_MISMATCH con identità salvata: la rimuove e chiede un nuovo QR', async () => {
+    const saved: StoredIdentity = {
+      playerId: 'p1', token: 'vecchio', gameId: 'g1', host: 'http://h:1', name: 'Anna',
+    };
+    const store = new Map<string, StoredIdentity>([['g1', saved]]);
+    const clearIdentity = (gameId: string) => { store.delete(gameId); };
+    const onError = vi.fn();
+    const flow = createJoinFlow({
+      attempt: async (isCancelled) => {
+        await joinWithSavedIdentity({
+          gameId: 'g1',
+          host: 'http://h:1',
+          name: 'Anna',
+          isCancelled,
+          post: async () => {
+            throw new LobbyError(401, 'Identità non riconosciuta', 'RESUME_TOKEN_MISMATCH');
+          },
+          loadIdentity: (gameId) => store.get(gameId) ?? null,
+          clearIdentity,
+          saveIdentity: vi.fn(),
+        });
+      },
+      registeredNames: async () => [],
+      name: 'Anna',
+      onSlow: vi.fn(),
+      onError,
+    });
+    expect(await flow.run()).toBe(false);
+    expect(store.get('g1') ?? null).toBeNull();
+    expect(onError).toHaveBeenCalledWith(SEAT_REASSIGNED_MESSAGE);
+    expect(SEAT_REASSIGNED_MESSAGE).toBe('Il tuo posto è stato riassegnato: chiedi un nuovo QR alla TV.');
+  });
+
+  it('RESUME_TOKEN_MISMATCH senza identità salvata non tocca nulla', async () => {
+    const clearIdentity = vi.fn();
+    const result = joinWithSavedIdentity({
+      gameId: 'g1',
+      host: 'http://h:1',
+      name: 'Anna',
+      isCancelled: () => false,
+      post: async () => {
+        throw new LobbyError(401, 'Identità non riconosciuta', 'RESUME_TOKEN_MISMATCH');
+      },
+      loadIdentity: () => null,
+      clearIdentity,
+      saveIdentity: vi.fn(),
+    });
+    await expect(result).rejects.toMatchObject({ code: 'RESUME_TOKEN_MISMATCH' });
+    expect(clearIdentity).not.toHaveBeenCalled();
+  });
+  it('RESUME_TOKEN_MISMATCH con un nome diverso da quello salvato lascia l identità intatta', async () => {
+    const saved: StoredIdentity = {
+      playerId: 'p1', token: 'tok', gameId: 'g1', host: 'http://h:1', name: 'Anna',
+    };
+    const clearIdentity = vi.fn();
+    const result = joinWithSavedIdentity({
+      gameId: 'g1',
+      host: 'http://h:1',
+      name: 'Bruno',
+      isCancelled: () => false,
+      post: async () => {
+        throw new LobbyError(401, 'Identità non riconosciuta', 'RESUME_TOKEN_MISMATCH');
+      },
+      loadIdentity: () => saved,
+      clearIdentity,
+      saveIdentity: vi.fn(),
+    });
+    await expect(result).rejects.toMatchObject({ code: 'RESUME_TOKEN_MISMATCH' });
+    expect(clearIdentity).not.toHaveBeenCalled();
   });
 });

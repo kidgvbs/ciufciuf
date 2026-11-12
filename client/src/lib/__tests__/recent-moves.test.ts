@@ -46,6 +46,23 @@ describe('describeMove', () => {
       .toBe('Pia prende 1 biglietto');
   });
 
+  it('mossa di tipo sconosciuto: riga neutra, nessun errore', () => {
+    const m = { kind: 'FOO', player_id: 'p1' } as unknown as RecentMove;
+    const l = describeMove(m, ctx);
+    expect(typeof l.text).toBe('string');
+    expect(l.text).toBe('Gino ha fatto una mossa');
+    expect(l.name).toBe('Gino');
+  });
+
+  it('tunnel senza `revealed` non lancia errori', () => {
+    const m = {
+      kind: 'TUNNEL', player_id: 'p2', route_id: 'r2', color: 'RED', extra_cost: 0, outcome: 'CLAIMED',
+    } as unknown as RecentMove;
+    const l = describeMove(m, ctx);
+    expect(l.cards).toEqual([]);
+    expect(l.text).toBe('Pia: tunnel Madrid → Pamplona — nessuna carta rivelata · nessun extra → preso subito');
+  });
+
   it('rotta presa', () => {
     expect(describeMove({ kind: 'CLAIM_ROUTE', player_id: 'p1', route_id: 'r1', points: 4 }, ctx).text)
       .toBe('Gino: Brest → Paris (+4)');

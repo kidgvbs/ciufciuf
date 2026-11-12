@@ -112,6 +112,7 @@
   class="dialog-overlay"
   role="presentation"
   onpointerdown={overlay.onpointerdown}
+  onpointerup={overlay.onpointerup}
   onclick={overlay.onclick}
   onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); }}
 >

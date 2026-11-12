@@ -401,6 +401,7 @@ export class LobbyClient {
     path: string,
     timeoutMs: number,
     timeoutMessage: string,
+    body?: unknown,
   ): Promise<T> {
     const controller = new AbortController();
     let timedOut = false;
@@ -409,7 +410,7 @@ export class LobbyClient {
       controller.abort();
     }, timeoutMs);
     try {
-      return await this.request<T>(method, path, undefined, controller.signal);
+      return await this.request<T>(method, path, body, controller.signal);
     } catch (e) {
       if (timedOut) throw new LobbyError(0, timeoutMessage);
       throw e;
@@ -493,10 +494,13 @@ export class LobbyClient {
     hostToken: string,
     name: string,
   ): Promise<ReassignedPlayer> {
-    return this.request<ReassignedPlayer>('POST', `${this.gamePath(gameId)}/reassign`, {
-      hostToken,
-      name,
-    });
+    return this.requestWithTimeout<ReassignedPlayer>(
+      'POST',
+      `${this.gamePath(gameId)}/reassign`,
+      SAVES_FETCH_TIMEOUT_MS,
+      SAVES_TIMEOUT_MESSAGE,
+      { hostToken, name },
+    );
   }
 
   // POST /api/games/{id}/start

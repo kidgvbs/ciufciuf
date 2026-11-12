@@ -77,7 +77,7 @@ export function describeMove(move: RecentMove, ctx: MoveContext): MoveLine {
     case 'CLAIM_ROUTE':
       return line(`: ${route(move.route_id)} (+${move.points})`);
     case 'TUNNEL': {
-      const cards = move.revealed.map((c) => ({ color: c, raises: tunnelCardRaisesCost(c, move.color) }));
+      const cards = (move.revealed ?? []).map((c) => ({ color: c, raises: tunnelCardRaisesCost(c, move.color) }));
       const outcome = OUTCOME_LABEL[move.outcome];
       const extra = move.extra_cost > 0 ? `+${move.extra_cost}` : 'nessun extra';
       const head = `: tunnel ${route(move.route_id)} — ${cards.length > 0 ? 'rivelate' : 'nessuna carta rivelata'}`;
@@ -94,5 +94,8 @@ export function describeMove(move: RecentMove, ctx: MoveContext): MoveLine {
     }
     case 'BUILD_STATION':
       return line(` costruisce una stazione a ${city(move.city_id)}`);
+    default:
+      // Mossa di una versione più recente del server: riga neutra, la TV non si blocca.
+      return line(' ha fatto una mossa');
   }
 }

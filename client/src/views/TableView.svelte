@@ -22,7 +22,7 @@
   import { adoptGame } from '../lib/adopt-game';
   import { createGameConnection, type GameConnection, type FatalReason } from '../lib/ws';
   import { currentHostEnv } from '../lib/server-host';
-  import { buildRejoinUrl, pruneRejoinLinks } from '../lib/rejoin';
+  import { pruneRejoinLinks, reassignSeat } from '../lib/rejoin';
   import { fatalMessage, errorMessage } from '../lib/errors';
   import { qrDataUrl } from '../lib/qr';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
@@ -46,7 +46,12 @@
   let gameId = $state<string>('');
   let connection: GameConnection | null = $state(null);
   let hostToken = $state<string>('');
+  // Campo del form "Nuova partita": non lo tocca nessun aggancio a partite esistenti.
   let gameNameInput = $state<string>('CiufCiuf!');
+  // Nome della partita a cui la TV è agganciata (titolo della lobby).
+  let gameTitle = $state<string>('');
+  // Creazione in corso: evita il doppio clic su "Crea partita".
+  let creating = $state<boolean>(false);
   let seedInput = $state<string>('');
   // Ruleset scelto nel form ('' finché il catalogo del server non è arrivato).
   let rulesetId = $state<string>('');
@@ -83,7 +88,7 @@
   onDestroy(() => { alive = false; });
   // Riassegnazione in partita avviata: nome in attesa di conferma (stacca il telefono attuale).
   let confirmingReassign = $state<string | null>(null);
-  const saveBusy = $derived(resumingSave !== '' || deletingSave !== '');
+  const saveBusy = $derived(creating || resumingSave !== '' || deletingSave !== '');
 
   const lobby = $derived(new LobbyClient(host));
   const gameState = $derived(publicStore.state);
@@ -132,6 +137,8 @@
   }
 
   async function createGame() {
+    if (creating) return;
+    creating = true;
     try {
       // Il seed è un attrezzo di sviluppo: in produzione il campo non esiste e il server lo rifiuta.
       const seed = import.meta.env.DEV ? parseSeed(seedInput) : undefined;
@@ -139,10 +146,15 @@
         notice = 'Seed non valido: serve un intero non negativo';
         return;
       }
-      await adoptHostedGame(await lobby.createGame(rulesetId, gameNameInput, seed));
+      const name = gameNameInput;
+      const created = await lobby.createGame(rulesetId, name, seed);
+      gameTitle = name;
+      await adoptHostedGame(created);
     } catch (e) {
       console.error('Creazione fallita:', e);
       notice = `Creazione partita fallita: ${describe(e)}`;
+    } finally {
+      creating = false;
     }
   }
 
@@ -152,6 +164,7 @@
     resumingSave = save.gameId;
     try {
       const resumed = await lobby.resumeSave(save.gameId);
+      gameTitle = save.name;
       await adoptHostedGame(resumed);
     } catch (e) {
       console.error('Ripresa fallita:', e);
@@ -253,22 +266,33 @@
   // Resume: rilascia una nuova identità per un nome salvato e la mostra come QR per il telefono.
   async function reassign(name: string) {
     const token = effectiveHostToken;
-    if (!gameId || !token || reassigning) return;
+    const gid = gameId;
+    if (!gid || !token || reassigning) return;
     reassigning = name;
     try {
-      const who = await lobby.reassignPlayer(gameId, token, name);
-      rejoinLinks = { ...rejoinLinks, [name]: buildRejoinUrl(controllerBase, { gameId, ...who }) };
+      const url = await reassignSeat({
+        gameId: gid,
+        token,
+        name,
+        controllerBase,
+        request: (g, t, n) => lobby.reassignPlayer(g, t, n),
+        currentGameId: () => gameId,
+      });
+      // La TV ha lasciato o cambiato partita durante l'attesa: l'esito non le appartiene.
+      if (url === null) return;
+      rejoinLinks = { ...rejoinLinks, [name]: url };
       // Token digitato dall'operatore e accettato dal server: la TV lo adotta (abilita anche Start).
       if (!hostToken) {
         hostToken = token;
         hostTokenInput = '';
-        saveLastGame({ gameId, hostToken });
+        saveLastGame({ gameId: gid, hostToken });
       }
     } catch (e) {
       console.error('Riassegnazione:', e);
-      notice = `Riassegnazione di ${name} fallita: ${describe(e)}`;
+      if (gameId === gid) notice = `Riassegnazione di ${name} fallita: ${describe(e)}`;
+    } finally {
+      reassigning = '';
     }
-    reassigning = '';
   }
 
   // Aggancia la TV a una partita esistente (lista "Partite in LAN").
@@ -276,7 +300,7 @@
     const saved = loadLastGame();
     gameId = g.gameId;
     hostToken = saved && saved.gameId === g.gameId ? saved.hostToken : '';
-    gameNameInput = g.name;
+    gameTitle = g.name;
     saveLastGame({ gameId: g.gameId, hostToken });
     updateUrlGame(g.gameId);
     void refreshLobby();
@@ -291,6 +315,7 @@
     if (forget) clearLastGame();
     updateUrlGame('');
     gameId = '';
+    gameTitle = '';
     hostToken = '';
     lobbyPlayers = [];
     missingPlayers = [];
@@ -360,7 +385,7 @@
           const detail = await lobby.getGame(candidate);
           gameId = candidate;
           hostToken = saved && saved.gameId === candidate ? saved.hostToken : '';
-          gameNameInput = detail.name;
+          gameTitle = detail.name;
           lobbyPlayers = detail.players;
           missingPlayers = detail.missingPlayers ?? [];
           updateUrlGame(candidate);
@@ -543,7 +568,7 @@
               {#if import.meta.env.DEV}
                 <label>Seed (solo sviluppo — partita ripetibile): <input bind:value={seedInput} inputmode="numeric" placeholder="casuale" /></label>
               {/if}
-              <button class="btn" onclick={createGame} disabled={resumingSave !== '' || rulesetId === ''}>Crea partita</button>
+              <button class="btn" onclick={createGame} disabled={creating || resumingSave !== '' || rulesetId === ''}>Crea partita</button>
             </div>
             {#if availableGames.length > 0}
               <div class="existing-games">
@@ -557,7 +582,7 @@
                         · {g.started ? 'in corso' : 'in lobby'}
                       </span>
                     </div>
-                    <button class="btn follow-btn" onclick={() => followGame(g)} disabled={resumingSave !== ''}>Segui</button>
+                    <button class="btn follow-btn" onclick={() => followGame(g)} disabled={saveBusy}>Segui</button>
                   </div>
                 {/each}
               </div>
@@ -591,7 +616,7 @@
             {/if}
           {:else}
             <div class="game-info">
-              <h2>{gameNameInput}</h2>
+              <h2>{gameTitle}</h2>
               <p>Giocatori: {lobbyList.length}</p>
               <div class="player-list">
                 {#each lobbyList as p (p.key)}

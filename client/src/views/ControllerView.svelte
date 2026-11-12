@@ -206,6 +206,7 @@
       isCancelled,
       post: (savedToken) => lobby.joinGame(gid, name, color, savedToken),
       loadIdentity,
+      clearIdentity,
       saveIdentity,
     });
     if (!result) return;

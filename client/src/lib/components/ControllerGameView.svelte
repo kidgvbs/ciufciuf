@@ -373,6 +373,28 @@
     if (buildingStation && stationCity !== null) revealEl(stationPayEl);
   });
 
+  // Da tastiera il pannello di pagamento viene dopo la mappa nel DOM: scelta la città il focus
+  // lo raggiunge, senza dover scorrere con Tab tutte le città. Con il tocco basta lo scroll.
+  let lastInputWasKeyboard = false;
+  $effect(() => {
+    const onKey = () => { lastInputWasKeyboard = true; };
+    const onPointer = () => { lastInputWasKeyboard = false; };
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('pointerdown', onPointer, true);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('pointerdown', onPointer, true);
+    };
+  });
+  $effect(() => {
+    if (!buildingStation || stationCity === null || !lastInputWasKeyboard) return;
+    void tick().then(() => {
+      stationPayEl
+        ?.querySelector<HTMLElement>('button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])')
+        ?.focus();
+    });
+  });
+
   function startStation() {
     buildingStation = true;
     stationCity = null;

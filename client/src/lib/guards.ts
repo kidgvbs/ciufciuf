@@ -9,6 +9,12 @@ function isArrayField(value: Record<string, unknown>, key: string): boolean {
   return Array.isArray(value[key]);
 }
 
+/** Campo assente o nullo (server più vecchio), oppure array. */
+function isOptionalArrayField(value: Record<string, unknown>, key: string): boolean {
+  const v = value[key];
+  return v === undefined || v === null || Array.isArray(v);
+}
+
 /** `true` se `value` ha tutti i campi di `PublicState` che gli store leggono. */
 export function isPublicState(value: unknown): boolean {
   return (
@@ -18,7 +24,10 @@ export function isPublicState(value: unknown): boolean {
     typeof value.deck_size === 'number' &&
     isArrayField(value, 'players_summary') &&
     isArrayField(value, 'claimed_routes') &&
-    isArrayField(value, 'visible_deck')
+    isArrayField(value, 'visible_deck') &&
+    isOptionalArrayField(value, 'stations') &&
+    isOptionalArrayField(value, 'recent_moves') &&
+    isOptionalArrayField(value, 'longest_path_route_ids')
   );
 }
 

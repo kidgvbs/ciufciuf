@@ -14,6 +14,8 @@ export const SLOW_JOIN_MESSAGE = 'Connessione lenta…';
 export const NAME_ALREADY_JOINED_MESSAGE = 'Nome già in partita: chiedi all\'host di riassegnarlo';
 export const GAME_STARTED_MESSAGE =
   'Partita già avviata: possono rientrare solo i giocatori già presenti. Chiedi all\'host di riassegnarti dalla TV';
+export const SEAT_REASSIGNED_MESSAGE =
+  'Il tuo posto è stato riassegnato: chiedi un nuovo QR alla TV.';
 
 export interface JoinFlow {
   /** Esegue `attempt`; risolve `true` se il join è riuscito. */
@@ -65,7 +67,9 @@ export function createJoinFlow(opts: JoinFlowOptions): JoinFlow {
       stopJoinTimer();
       if (cancelled) return false;
       let message = e instanceof Error ? e.message : 'Errore';
-      if (slow) {
+      // Posto riassegnato: il messaggio è già quello giusto, la verifica del nome lo falserebbe.
+      const seatReassigned = e instanceof LobbyError && e.code === 'RESUME_TOKEN_MISMATCH';
+      if (slow && !seatReassigned) {
         try {
           const names = await opts.registeredNames();
           if (names.some((n) => sameName(n, opts.name))) message = NAME_ALREADY_JOINED_MESSAGE;
@@ -98,6 +102,8 @@ export interface JoinIdentityOptions {
   /** POST di join; `token` è quello già salvato per la partita, se c'è. */
   post: (token: string | undefined) => Promise<JoinIdentity>;
   loadIdentity: (gameId: string) => StoredIdentity | null;
+  /** Rimuove l'identità salvata di una partita (il posto è stato riassegnato). */
+  clearIdentity: (gameId: string) => void;
   /** `remember` false: salva senza diventare l'ultima partita (riconnessione automatica). */
   saveIdentity: (identity: StoredIdentity, now: number, remember: boolean) => void;
   now?: () => number;
@@ -118,6 +124,7 @@ function nameKey(name: string): string {
  * l'ultima partita e senza sovrascrivere un'identità già presente) e la UI non viene toccata.
  * Se il server risponde NAME_TAKEN e l'identità salvata ha lo stesso nome, la registrazione è
  * nostra (es. join annullato ma riuscito): si riusa l'identità salvata.
+ * Se risponde RESUME_TOKEN_MISMATCH (posto riassegnato) l'identità salvata dello stesso nome viene rimossa.
  */
 export async function joinWithSavedIdentity(
   opts: JoinIdentityOptions,
@@ -130,6 +137,12 @@ export async function joinWithSavedIdentity(
     const mine = saved?.name !== undefined && sameName(saved.name, opts.name);
     if (saved && mine && !opts.isCancelled() && e instanceof LobbyError && e.code === 'NAME_TAKEN') {
       return { playerId: saved.playerId, token: saved.token };
+    }
+    if (saved && mine && e instanceof LobbyError && e.code === 'RESUME_TOKEN_MISMATCH') {
+      // L'identità salvata (dello stesso nome) non vale più: va tolta, altrimenti il rientro resta
+      // bloccato per 24 ore. Con un nome diverso l'identità non c'entra e resta intatta.
+      opts.clearIdentity(opts.gameId);
+      throw new LobbyError(e.status, SEAT_REASSIGNED_MESSAGE, e.code);
     }
     if (e instanceof LobbyError && e.code === 'GAME_STARTED') {
       throw new LobbyError(e.status, GAME_STARTED_MESSAGE, e.code);

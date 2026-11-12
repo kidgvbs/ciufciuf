@@ -22,7 +22,36 @@
     const previous = document.activeElement;
     const first = dialogEl?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? dialogEl)?.focus();
+
+    // Se il focus finisce su `body` (clic su un'area non focalizzabile) torna nel dialog.
+    const reclaimFocus = () => {
+      if (!dialogEl || (document.activeElement && document.activeElement !== document.body)) return;
+      (dialogEl.querySelector<HTMLElement>(FOCUSABLE) ?? dialogEl).focus();
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onFocusOut = () => {
+      clearTimeout(timer);
+      timer = setTimeout(reclaimFocus, 0);
+    };
+    // Con il focus su `body` Escape e Tab non raggiungono il dialog: li gestisce questo listener.
+    // Gli altri tasti (Invio, Spazio) non devono attivare un bottone al posto dell'utente.
+    const onDocumentKeydown = (e: KeyboardEvent) => {
+      if (document.activeElement && document.activeElement !== document.body) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onCancel();
+      } else if (e.key === 'Tab') {
+        e.preventDefault();
+        reclaimFocus();
+      }
+    };
+    document.addEventListener('focusout', onFocusOut);
+    document.addEventListener('keydown', onDocumentKeydown, true);
     return () => {
+      clearTimeout(timer);
+      document.removeEventListener('focusout', onFocusOut);
+      document.removeEventListener('keydown', onDocumentKeydown, true);
       if (previous instanceof HTMLElement) previous.focus();
     };
   });
@@ -54,6 +83,7 @@
   class="overlay"
   role="presentation"
   onpointerdown={overlay.onpointerdown}
+  onpointerup={overlay.onpointerup}
   onclick={overlay.onclick}
 >
   <div

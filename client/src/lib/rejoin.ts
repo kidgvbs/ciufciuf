@@ -48,3 +48,25 @@ export function pruneRejoinLinks(
   if (names.every((n) => waiting.has(n))) return links;
   return Object.fromEntries(names.filter((n) => waiting.has(n)).map((n) => [n, links[n]!]));
 }
+
+export interface ReassignSeatOptions {
+  /** Partita (e token host) catturati al momento del clic. */
+  gameId: string;
+  token: string;
+  name: string;
+  controllerBase: string;
+  request: (gameId: string, token: string, name: string) => Promise<{ playerId: string; token: string }>;
+  /** Partita attualmente agganciata dalla TV (vuota se l'ha lasciata). */
+  currentGameId: () => string;
+}
+
+/**
+ * Riassegna un posto e costruisce l'URL del QR di rientro. Ritorna `null` se, durante l'attesa,
+ * la TV ha lasciato o cambiato partita: l'esito non va applicato a quella nuova.
+ */
+export async function reassignSeat(opts: ReassignSeatOptions): Promise<string | null> {
+  const { gameId } = opts;
+  const who = await opts.request(gameId, opts.token, opts.name);
+  if (opts.currentGameId() !== gameId) return null;
+  return buildRejoinUrl(opts.controllerBase, { gameId, playerId: who.playerId, token: who.token });
+}

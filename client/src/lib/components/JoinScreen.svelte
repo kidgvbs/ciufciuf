@@ -34,11 +34,19 @@
 
   const lobby = $derived(new LobbyClient(host));
 
+  // localStorage non è reattivo: dopo un join fallito si rilegge l'identità (può essere stata
+  // rimossa, es. posto riassegnato dalla TV).
+  let identityVersion = $state(0);
+  function savedIdentity(gid: string) {
+    void identityVersion;
+    return loadIdentity(gid);
+  }
+
   // Partita avviata scelta: ci si entra solo con l'identità salvata su questo telefono.
   const rejoinIdentity = $derived.by(() => {
     const gid = gameId.trim();
     const selected = games.find((g) => g.gameId === gid);
-    return selected?.started ? loadIdentity(gid) : null;
+    return selected?.started ? savedIdentity(gid) : null;
   });
   // Il server riconosce chi rientra dal nome: quello dell'identità salvata, se noto.
   const effectiveName = $derived((rejoinIdentity?.name ?? name).trim());
@@ -135,6 +143,7 @@
       name: playerName,
       onSlow: () => { slowJoin = true; },
       onError: (message) => {
+        identityVersion++;
         error = message;
         joining = false;
         slowJoin = false;
@@ -190,7 +199,7 @@
       <select id="game-select" bind:value={gameId} disabled={joining}>
         <option value="">— Scegli una partita —</option>
         {#each games as g}
-          {@const rejoinable = g.started && loadIdentity(g.gameId) !== null}
+          {@const rejoinable = g.started && savedIdentity(g.gameId) !== null}
           {@const started = g.started ? (rejoinable ? ' ↩ rientra' : ' 🔒') : ''}
           <option value={g.gameId} disabled={g.started && !rejoinable}>
             {g.name} ({g.playersJoined}/{g.maxPlayers}){started}

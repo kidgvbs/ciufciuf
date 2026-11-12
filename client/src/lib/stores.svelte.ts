@@ -20,6 +20,7 @@ import type {
   LegalMoves,
   RecentMove,
 } from './proto';
+import { normalizePublicState } from './public-state';
 
 // ── Store pubblico ────────────────────────────────────────────────────
 
@@ -41,11 +42,12 @@ class PublicStore {
   finalScores = $state<FinalScoreInfo[] | null>(null);
   longestPathPlayerIds = $state<string[] | null>(null);
   /** Rotte del percorso più lungo di ogni giocatore in `longestPathPlayerIds` (solo a GAME_OVER). */
-  longestPathRouteIds = $state<string[] | null>(null);
+  longestPathRouteIds = $state<string[]>([]);
   /** Ultime mosse (la più vecchia per prima), dal server. */
   recentMoves = $state<RecentMove[]>([]);
 
-  apply(ps: PublicState): void {
+  apply(raw: PublicState): void {
+    const ps = normalizePublicState(raw);
     this.gameId = ps.game_id;
     this.protocolVersion = ps.protocol_version;
     this.state = ps.state;
@@ -60,8 +62,8 @@ class PublicStore {
     this.stations = ps.stations;
     this.finalScores = ps.final_scores;
     this.longestPathPlayerIds = ps.longest_path_player_ids;
-    this.longestPathRouteIds = ps.longest_path_route_ids ?? null;
-    this.recentMoves = ps.recent_moves ?? [];
+    this.longestPathRouteIds = ps.longest_path_route_ids;
+    this.recentMoves = ps.recent_moves;
   }
 
   reset(): void {
@@ -79,7 +81,7 @@ class PublicStore {
     this.stations = [];
     this.finalScores = null;
     this.longestPathPlayerIds = null;
-    this.longestPathRouteIds = null;
+    this.longestPathRouteIds = [];
     this.recentMoves = [];
   }
 }

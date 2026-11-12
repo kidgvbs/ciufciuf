@@ -31,6 +31,7 @@
 <div class="scores-list">
   {#each rankedScores(scores) as fs}
     {@const p = players.find((ps) => ps.player_id === fs.playerId)}
+    {@const borrowed = fs.borrowedRoutes ?? []}
     <div class="score-card" class:mine={fs.playerId === playerId} class:winner={fs.winner}>
       <div class="score-header">
         <span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span>
@@ -41,12 +42,12 @@
         Rotte {fs.routePoints} · Biglietti +{fs.ticketCompleted}
         {#if fs.ticketFailed < 0} · {fs.ticketFailed}{/if}
         {#if fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
-        {#if fs.stationPoints > 0} · 🏠 +{fs.stationPoints}{/if}
+        {#if (fs.stationPoints ?? 0) > 0} · 🏠 +{fs.stationPoints}{/if}
       </div>
-      {#if fs.borrowedRoutes.length > 0}
+      {#if borrowed.length > 0}
         <div class="score-detail">
           Rotte in prestito:
-          {fs.borrowedRoutes.map((b) => borrowedRouteLabel(b, mapData)).join(', ')}
+          {borrowed.map((b) => borrowedRouteLabel(b, mapData)).join(', ')}
         </div>
       {/if}
     </div>
