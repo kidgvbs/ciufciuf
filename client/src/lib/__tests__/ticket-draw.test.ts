@@ -97,4 +97,15 @@ describe('createDrawLatch', () => {
     expect(latch.submit(send)).toBe(true);
     expect(send).toHaveBeenCalledTimes(3);
   });
+
+  it('un errore già visibile all’invio non rilascia, uno nuovo sì', () => {
+    const stale = { code: 'OLD' };
+    const latch = createDrawLatch(() => {});
+    expect(latch.submit(() => true, stale)).toBe(true);
+    latch.releaseOnError(stale);
+    latch.releaseOnError(null);
+    expect(latch.pending).toBe(true);
+    latch.releaseOnError({ code: 'NEW' });
+    expect(latch.pending).toBe(false);
+  });
 });

@@ -272,19 +272,24 @@
   let drawingTickets = $state(false);
   const drawLatch = createDrawLatch((pending) => (drawingTickets = pending));
   $effect(() => {
-    if (offered.length > 0 || connectionStore.lastError || !ticketDraw || !canAct) {
-      drawLatch.release();
-    }
+    // Tutte le dipendenze vanno lette prima: niente corto circuito che ne nasconda una.
+    const hasOffer = offered.length > 0;
+    const error = connectionStore.lastError;
+    const canDraw = !!ticketDraw && canAct;
+    if (hasOffer || !canDraw) drawLatch.release();
+    else drawLatch.releaseOnError(error);
   });
 
   function drawTicketsWith(counts: TicketDeckCount[]) {
-    const sent = drawLatch.submit(() =>
-      sendAction({
-        actionType: 'DRAW_TICKETS',
-        player_id: playerId,
-        counts,
-        client_seq: nextClientSeq(playerId),
-      }),
+    const sent = drawLatch.submit(
+      () =>
+        sendAction({
+          actionType: 'DRAW_TICKETS',
+          player_id: playerId,
+          counts,
+          client_seq: nextClientSeq(playerId),
+        }),
+      connectionStore.lastError,
     );
     if (sent) pickingTickets = false;
   }

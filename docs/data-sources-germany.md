@@ -33,9 +33,9 @@ Una mappa (`data/maps/germany.json`) e due modalità:
 - **Incrocio delle due fonti:** 2017 = i 91 meno **Köln–Stuttgart 6** e **Dänemark–Regensburg 20**. Fa 55 corti e 34 lunghi, come dichiara il regolamento, e coincide con la lista del thread.
 - **Particolarità:**
   - Mannheim–Stuttgart vale 2, anche se il regolamento dice che i corti vanno da 3 a 11;
-  - Kiel–Stuttgart vale 17 con un percorso minimo di 16.
+  - Kiel–Stuttgart vale 16, cioè il percorso minimo sulla mappa; la fonte dice 17.
 
-  In entrambi i casi si lasciano i valori della fonte: **non verificato** su una foto delle carte 2017 (revisione 17/11/2026: nessuna foto disponibile).
+  Mannheim–Stuttgart resta al valore della fonte; Kiel–Stuttgart usa il percorso minimo invece del 17 della fonte. Entrambi **non verificati** su una foto delle carte 2017 (nessuna foto disponibile al 17/11/2026).
 
 ## Passeggeri
 
