@@ -915,7 +915,7 @@
   h3 { font-size:1rem; color:var(--gold); margin:0.5rem 0; }
 
   /* Lobby */
-  .lobby { padding:2rem; }
+  .lobby { padding:2rem; height:100%; overflow-y:auto; box-sizing:border-box; }
   .lobby-layout { display:flex; gap:2rem; margin-top:1.5rem; }
   .lobby-left { flex:1; }
   .lobby-right { flex:1; }
