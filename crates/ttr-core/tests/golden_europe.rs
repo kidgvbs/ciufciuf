@@ -62,6 +62,7 @@ fn claim(
         player_index: pi,
         route_id: route.into(),
         cards_discarded: cards.to_vec(),
+        passengers: Default::default(),
     })
 }
 
@@ -882,7 +883,11 @@ fn europe_setup_deals_one_long_and_three_regular_tickets() {
     assert!(eng.ticket_pile().iter().all(|t| !long_ids.contains(t)));
 
     // A metà partita si pescano solo biglietti regolari.
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(Action::DrawTickets {
+        player_index: 0,
+        counts: Default::default(),
+    })
+    .unwrap();
     assert_eq!(eng.pending_tickets().len(), 3);
     assert!(eng.pending_tickets().iter().all(|t| !long_ids.contains(t)));
 }

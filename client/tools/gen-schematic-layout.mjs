@@ -54,7 +54,7 @@
 //      spinge di 1–2px le città coinvolte (NO re-tick), re-run cleanup.
 //      Le spinte consumano lo slack di lunghezza (gate ≤1.7× per rotte ≥5 carte).
 //  9c. Incroci rotte (NUOVO): routesClash sulle tracce disegnate (doppie
-//      a ±offsetOf = sw/2+gap/2), adiacenti esclusa la zona hub; ogni bend
+//      a k·(sw+gap), k = −(n−1)/2…(n−1)/2 per gruppi da n=2–4 binari), adiacenti esclusa la zona hub; ogni bend
 //      che crea un clash nuovo è rifiutato; pass finale raddrizza/ripiega.
 //  Label: metriche reali (opentype, Barlow Semi Condensed 600), tier
 //      12–32px, ownership (box più vicino al proprio dot di ogni altro).
@@ -66,7 +66,7 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe] [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland] [--svg OUT.svg]
 //   --map ID       (default usa) mappa: input data/maps/<ID>.json, output data/layouts/<ID>.json.
 //                  Le regolazioni manuali (LABEL_OVERRIDES, F2 shifts, pre-bend Phoenix) sono
 //                  per-mappa (MAP_TUNING): applicate SOLO alla mappa a cui appartengono.
@@ -81,6 +81,8 @@ import {
   forceLink,
   forceManyBody,
   forceCollide,
+  forceX,
+  forceY,
 } from 'd3-force';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -89,11 +91,54 @@ const MAP_ID = argVal('--map') ?? 'usa';
 const MAP_PATH = join(__dirname, '..', '..', 'data', 'maps', `${MAP_ID}.json`);
 const OUT_PATH = join(__dirname, '..', '..', 'data', 'layouts', `${MAP_ID}.json`);
 
-// Bounding box geografico (lat/lon) usato per le posizioni iniziali della sim.
-// USA = stessa bbox di map-utils.projectCity (non toccare: il layout è byte-identico).
+// Posizioni iniziali della sim: bbox geografica (lat/lon) proiettata sul canvas di lavoro,
+// oppure (`image`) i pallini in pixel dell'immagine da cui è stata ricavata la mappa, quando
+// la geografia reale non rispetta le lunghezze delle rotte (Basilicata: Lecce a 4 vagoni da
+// Altamura ma a 140 km). USA = stessa bbox di map-utils.projectCity (non toccare: il layout è
+// byte-identico).
 const MAP_BOUNDS = {
   usa: { latMin: 25, latMax: 52, lonMin: -124, lonMax: -70 },
   europe: { latMin: 35, latMax: 61, lonMin: -11, lonMax: 43 },
+  // Pallini di IMG_0165.JPG (512×382); Lagonegro = il suo pallino arancione (lo snodo bianco
+  // poco sopra è stato unito a Lagonegro, vedi docs/data-sources-basilicata.md). Acerenza
+  // (224, 112) spostata a est di Tricarico: nell'immagine Acerenza–Tricarico incrocia
+  // Potenza–Irsina, e Acerenza ha solo quella rotta.
+  basilicata: {
+    image: {
+      w: 512,
+      h: 382,
+      xy: {
+        salerno: [10, 168], battipaglia: [91, 174], potenza: [196, 158], melfi: [162, 67],
+        venosa: [194, 74], monte_vulture: [132, 104], avigliano: [178, 139], acerenza: [310, 150],
+        irsina: [295, 112], tricarico: [265, 160], bari: [383, 45], altamura: [420, 93],
+        matera: [364, 137], lecce: [500, 137], ferrandina: [344, 192], metaponto: [420, 205],
+        corleto_perticara: [250, 220], pisticci: [319, 234], policoro: [390, 254], senise: [315, 279],
+        lagonegro: [197, 300], monte_sirino: [235, 266], lauria: [218, 319], maratea: [193, 328],
+        monte_pollino: [293, 335],
+      },
+    },
+  },
+  // Germany: bbox geografica (i Paesi confinanti hanno una lat/lon rappresentativa nel JSON).
+  germany: { latMin: 47.2, latMax: 55.3, lonMin: 5.6, lonMax: 14.6, anchor: 0.2 },
+  // Poland: posizioni sulla foto del tabellone (percentuali scalate a 1110×1000); la geografia
+  // reale non rispetta le lunghezze (i Paesi sono bordi del tabellone, non punti).
+  poland: {
+    image: {
+      w: 1110,
+      h: 1000,
+      xy: {
+        bialystok: [963, 274], bielsko_biala: [537, 856], bydgoszcz: [436, 274], czestochowa: [562, 679],
+        elk: [859, 168], gdansk: [504, 79], gorzow_wielkopolski: [149, 346], kalisz: [431, 519],
+        katowice: [544, 769], kielce: [715, 669], koszalin: [250, 94], krakow: [640, 800],
+        lublin: [920, 599], olsztyn: [689, 184], opole: [422, 706], pila: [294, 289],
+        poznan: [312, 406], plock: [608, 378], radom: [769, 580], rzeszow: [869, 801],
+        siedlce: [891, 438], suwalki: [938, 111], szczecin: [92, 213], warszawa: [743, 436],
+        wroclaw: [309, 622], zakopane: [653, 938], zielona_gora: [171, 483], lodz: [585, 522],
+        bialorus: [1048, 406], czechy: [141, 783], litwa: [1031, 78], niemcy: [53, 363],
+        rosja: [751, 50], slowacja: [521, 950], ukraina: [1033, 867],
+      },
+    },
+  },
 };
 if (!MAP_BOUNDS[MAP_ID]) { console.error(`--map sconosciuta: ${MAP_ID} (valide: ${Object.keys(MAP_BOUNDS).join(', ')})`); process.exit(2); }
 const BOUNDS = MAP_BOUNDS[MAP_ID];
@@ -103,6 +148,13 @@ const BOUNDS = MAP_BOUNDS[MAP_ID];
 // SOLO per la mappa che le dichiara: nessun id di una mappa può influenzare l'altra.
 //   labelOverrides: id città → { anchor, dir } (vedi resolveOverride) oppure
 //                   { anchor, dx, dy } = offset esplicito (hub dove nessuno degli 8 angoli è pulito)
+//   unit:           px per carta (default 34)
+//   linkScale:      { 'a|b': fattore } (id ordinati) accorcia/allunga solo il bersaglio della sim d3 per
+//                   quella coppia: apre i triangoli degeneri (due rotte lunghe quanto la terza, es.
+//                   lindau-österreich 2 + münchen-österreich 3 = lindau-münchen 5) senza uscire dal
+//                   gate di lunghezza (ratio ≥0.8)
+//   lenOneDense:    true = anche senza cluster-escape le rotte len-1 tollerano fino a 2.5× (catene di
+//                   len-1 con gruppi da 3 binari, Ruhr: lo spazio dei binari paralleli le allarga)
 //   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (USA ≤8px,
 //                   Europe fino a ~18px: tetto cumulato 30px per città con il cluster-escape)
 const MAP_TUNING = {
@@ -161,6 +213,51 @@ const MAP_TUNING = {
       ['athina', 2, -10, 'hub Smyrna (athina↔smyrna vs palermo↔smyrna)'],
     ],
   },
+  basilicata: {
+    labelOverrides: {
+      // L'automatico la metteva in alto a destra, attaccata al pallino di Matera.
+      acerenza: { anchor: 'middle', dir: 'down' },
+      // Sotto il pallino finiva a ridosso dell'etichetta di Battipaglia.
+      salerno: { anchor: 'middle', dir: 'up' },
+    },
+    f2Shifts: [],
+  },
+  germany: {
+    unit: 40,
+    lenOneDense: true,
+    labelOverrides: {
+      // Sotto il pallino finiva oltre 32px, schiacciata tra le rotte per Berlino.
+      schwerin: { anchor: 'start', dir: 'up' },
+    },
+    // Bersagli della sim per coppia (le rotte disegnate restano nel gate di lunghezza).
+    // Triangoli degeneri (rotta lunga = somma delle due corte): con il bersaglio pieno la
+    // città di mezzo finisce sulla rotta lunga e le tracce si sovrappongono.
+    //   berlin–hamburg 7 = hamburg–schwerin 2 + schwerin–berlin 5
+    //   berlin–hannover 7 = hannover–magdeburg 4 + magdeburg–berlin 3
+    //   erfurt–regensburg 7 = erfurt–nürnberg 4 + nürnberg–regensburg 3
+    //   münchen–nürnberg 5 ≈ nürnberg–regensburg 3 + regensburg–münchen 3
+    //   lindau–münchen 5 = lindau–österreich 2 + österreich–münchen 3
+    // Le altre aprono gli angoli agli hub Berlino (8 binari da nord-ovest) e Österreich.
+    // Trovati per tentativi sul generatore (tutti i gate a 0): sono fragili, ricontrollare
+    // se cambiano rotte o regole del generatore.
+    linkScale: {
+      'berlin|hamburg': 0.85,
+      'berlin|hannover': 0.85,
+      'erfurt|regensburg': 0.85,
+      'munchen|nurnberg': 0.85,
+      'lindau|munchen': 0.85,
+      'osterreich|regensburg': 0.8,
+      'hamburg|hannover': 1.25,
+      'munchen|regensburg': 1.1,
+      'rostock|schwerin': 0.85,
+      'berlin|schwerin': 0.85,
+      'hamburg|schwerin': 1.2,
+    },
+    f2Shifts: [
+      ['schwerin', 15, -15, 'hub Berlino: berlin↔schwerin fuori dalla doppia berlin↔hamburg'],
+    ],
+  },
+  poland: { unit: 40, labelOverrides: {}, f2Shifts: [] },
 };
 const TUNING = MAP_TUNING[MAP_ID];
 
@@ -191,15 +288,21 @@ const LABEL_GAP = 4;        // distanza pallino → ancora testo (dot.r + gap = 
 const LABEL_WARN_DIST = 28; // oltre: WARNING
 const MAX_LABEL_DIST = 32;  // cap duro distanza label→dot (exit 1 se superato)
 const OWN_MARGIN = 10;      // ownership: ogni altro dot ≥ dOwn + 10 dal box
-const DOUBLE_GAP = 5;       // gap libero inchiostro-inchiostro tra le due tracce di una doppia
-// Offset doppie per lunghezza (= runtime offsetOf): metà tratto + metà gap.
-const offsetOf = (e) => swOf(e.len) / 2 + DOUBLE_GAP / 2;
+const DOUBLE_GAP = 5;       // gap libero inchiostro-inchiostro tra due tracce adiacenti di un gruppo parallelo
+// Passo tra le mezzerie di due binari adiacenti (= runtime doubleRouteOffset): tratto + gap.
+const pitchOf = (e) => swOf(e.len) + DOUBLE_GAP;
+// Offset dei binari di un gruppo di n=2..4 per lunghezza: k·passo con k = (n−1)/2 … −(n−1)/2
+// (il primo binario sta sul lato +). Con n=2 sono ±(metà tratto + metà gap) = il vecchio ±offsetOf.
+const laneOffsets = (e) => Array.from({ length: e.lanes }, (_, i) => ((e.lanes - 1) / 2 - i) * pitchOf(e));
+// Un gruppo ha 2..4 binari: oltre non è mai stato disegnato (stessa soglia del motore).
+const MAX_LANES = 4;
 
 // d3-force
 const CHARGE = -115;         // repulsione calibrata (3f+8v2: cluster sud-est)
 const LINK_STRENGTH = 0.9;  // forza dei link
 const COLLIDE_R = 29;       // raggio collisione calibrato (3f+8v2)
 const TICKS = 1000;         // tick deterministici (↑ da 800, più convergenza con charge maggiore)
+const IMAGE_ANCHOR = 0.2;   // forza verso i pallini dell'immagine (`image`) o verso la geografia (`anchor`)
 
 // Canvas di lavoro (le posizioni iniziali geografiche vengono proiettate qui).
 const WORK_W = 1400, WORK_H = 900, WORK_PAD = 60;
@@ -332,10 +435,12 @@ function offsetPts(pts, off) {
 // 3f+8: usata per validare che le tracce ±offsetOf non si incrocino al bend (Blocker 2).
 function doubleTrackMinDist(e) {
   if (!e.isDouble || e.points.length < 3) return Infinity;
-  // NON trimmed: l'incrocio può avvenire anche vicino agli estremi dopo il bend
-  const plus = offsetPts(e.points, offsetOf(e));
-  const minus = offsetPts(e.points, -offsetOf(e));
-  return minDistPolyline(plus, minus);
+  // NON trimmed: l'incrocio può avvenire anche vicino agli estremi dopo il bend.
+  // Con 3–4 binari bastano le coppie adiacenti (le altre sono più distanti).
+  const tr = laneOffsets(e).map((o) => offsetPts(e.points, o));
+  let m = Infinity;
+  for (let i = 0; i + 1 < tr.length; i++) m = Math.min(m, minDistPolyline(tr[i], tr[i + 1]));
+  return m;
 }
 function doubleTrackSafe(e) {
   return doubleTrackMinDist(e) >= doubleTrackMin(e);
@@ -403,8 +508,35 @@ function distPointCurve(px, py, curve) {
 // ── 0. Caricamento ─────────────────────────────────────────────────────
 const mapData = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
-// Proiezione geografica → canvas di lavoro (stessa bbox di map-utils.projectCity per USA).
-const proj = (c) => ({
+// Proiezione geografica → canvas di lavoro (stessa bbox di map-utils.projectCity per USA);
+// con `image` i pixel dell'immagine sorgente scalati in modo che la mediana delle rotte
+// misuri len*UNIT, centrati nel canvas.
+// `anchor` (mappe geografiche): stessa ancora debole, ma verso la geografia reale a proporzioni
+// corrette (cos(lat) sui meridiani) invece che verso la proiezione stirata sul canvas: tiene
+// ciascun Paese/città dal lato giusto dei triangoli quasi degeneri (rotta lunga = somma delle due corte).
+const geoSeed = () => {
+  const { latMin, latMax, lonMin, lonMax } = BOUNDS;
+  const k = Math.cos((((latMin + latMax) / 2) * Math.PI) / 180) * 100;
+  return {
+    w: (lonMax - lonMin) * k,
+    h: (latMax - latMin) * 100,
+    xy: Object.fromEntries(mapData.cities.map((c) => [c.id, [(c.lon - lonMin) * k, (latMax - c.lat) * 100]])),
+  };
+};
+const SEED = BOUNDS.image ?? (BOUNDS.anchor ? geoSeed() : null);
+const ANCHOR = BOUNDS.anchor ?? IMAGE_ANCHOR;
+const proj = SEED ? (() => {
+  const { w, h, xy } = SEED;
+  for (const c of mapData.cities) {
+    if (!xy[c.id]) { console.error(`città senza posizione nell'immagine: ${c.id}`); process.exit(2); }
+  }
+  const ratios = mapData.routes
+    .map((r) => (r.len * UNIT) / Math.hypot(xy[r.to][0] - xy[r.from][0], xy[r.to][1] - xy[r.from][1]))
+    .sort((p, q) => p - q);
+  const s = ratios[ratios.length >> 1];
+  const ox = (WORK_W - s * w) / 2, oy = (WORK_H - s * h) / 2;
+  return (c) => ({ x: ox + s * xy[c.id][0], y: oy + s * xy[c.id][1] });
+})() : (c) => ({
   x: WORK_PAD + ((c.lon - BOUNDS.lonMin) / (BOUNDS.lonMax - BOUNDS.lonMin)) * (WORK_W - 2 * WORK_PAD),
   y: WORK_PAD + ((BOUNDS.latMax - c.lat) / (BOUNDS.latMax - BOUNDS.latMin)) * (WORK_H - 2 * WORK_PAD),
 });
@@ -429,17 +561,19 @@ for (const [key, routes] of pairRoutes) {
   const ai = idIndex.get(a), bi = idIndex.get(b);
   if (ai === undefined || bi === undefined || ai === bi) continue;
   const len = Math.min(...routes.map((r) => r.len));
+  if (routes.length > MAX_LANES) { console.error(`gruppo ${key}: ${routes.length} binari (max ${MAX_LANES})`); process.exit(2); }
   edges.push({
     key,
     a: ai,
     b: bi,
     len,
     isDouble: routes.length > 1,
+    lanes: routes.length,
     routeIds: routes.map((r) => r.id),
     points: null,
     bendSign: null,
   });
-  links.push({ source: a, target: b, len });
+  links.push({ source: a, target: b, len, dist: len * UNIT * (TUNING.linkScale?.[key] ?? 1) });
 }
 
 // ── 1. d3-force (deterministico) ──────────────────────────────────────
@@ -451,12 +585,20 @@ const nodes = mapData.cities.map((c) => {
 // 3f+7: Nessuna ancora geografica (forceX/forceY rimossi). Le posizioni
 // iniziali sono geografiche (determinismo), poi la sim le rilascia.
 // CHARGE=-90 + COLLIDE_R=25 → cluster aperti, spazio per label e tratte.
+// Mappe da immagine: un'ancora debole ai pallini dell'immagine ne conserva la topologia
+// (le rotte lunghe e serpeggianti del disegno non devono scavalcare le vicine).
 const simulation = forceSimulation(nodes)
-  .force('link', forceLink(links).id((d) => d.id).distance((l) => l.len * UNIT).strength(LINK_STRENGTH))
+  .force('link', forceLink(links).id((d) => d.id).distance((l) => l.dist).strength(LINK_STRENGTH))
   .force('charge', forceManyBody().strength(CHARGE))
   .force('collide', forceCollide().radius(COLLIDE_R))
   .randomSource(() => 0.5) // jiggle deterministico (mai attivo: nodi iniziali distinti)
   .stop();
+if (SEED) {
+  const seed = new Map(nodes.map((n) => [n.id, { x: n.x, y: n.y }]));
+  simulation
+    .force('anchorX', forceX((d) => seed.get(d.id).x).strength(ANCHOR))
+    .force('anchorY', forceY((d) => seed.get(d.id).y).strength(ANCHOR));
+}
 
 for (let i = 0; i < TICKS; i++) simulation.tick();
 
@@ -547,7 +689,7 @@ function trimmed(e) { return trimPts(e.points, e); }
 // Tracce DISEGNATE (offset doppie ±OFFSET, poi trim) — stesse formule del runtime.
 function tracksOf(e) {
   if (!e.isDouble) return [trimmed(e)];
-  return [trimPts(offsetPts(e.points, offsetOf(e)), e), trimPts(offsetPts(e.points, -offsetOf(e)), e)];
+  return laneOffsets(e).map((o) => trimPts(offsetPts(e.points, o), e));
 }
 
 // F2: Campionamento della curva DISEGNATA (De Casteljau sui punti trimmed).
@@ -571,9 +713,7 @@ function drawnEntry(e) {
   let curves;
   if (!e.isDouble) curves = [sampleDrawnCurve(e)];
   else {
-    const plus = trimPts(offsetPts(e.points, offsetOf(e)), e);
-    const minus = trimPts(offsetPts(e.points, -offsetOf(e)), e);
-    curves = [sampleCurve(plus, 2), sampleCurve(minus, 2)];
+    curves = laneOffsets(e).map((o) => sampleCurve(trimPts(offsetPts(e.points, o), e), 2));
   }
   const flat = [];
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
@@ -782,7 +922,7 @@ function clashTracks(e) {
   let c = clashCache.get(e);
   if (c && c.key === key) return c;
   const tracks = e.isDouble
-    ? [trimPts(offsetPts(e.points, offsetOf(e)), e), trimPts(offsetPts(e.points, -offsetOf(e)), e)].map((p) => sampleCurve(p, 3))
+    ? laneOffsets(e).map((o) => sampleCurve(trimPts(offsetPts(e.points, o), e), 3))
     : [sampleCurve(trimmed(e), 3)];
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const t of tracks) for (const [x, y] of t) {
@@ -1221,7 +1361,7 @@ function labelCurvesOf(e) {
   const hit = labelCurveCache.get(e);
   if (hit && hit.key === key) return hit.curves;
   const curves = (e.isDouble
-    ? [trimPts(offsetPts(e.points, offsetOf(e)), e), trimPts(offsetPts(e.points, -offsetOf(e)), e)]
+    ? laneOffsets(e).map((o) => trimPts(offsetPts(e.points, o), e))
     : [trimmed(e)]).map((pts) => sampleCurve(pts, 4));
   labelCurveCache.set(e, { key, curves });
   return curves;
@@ -3087,7 +3227,7 @@ for (const e of edges) {
   const md = doubleTrackMinDist(e);
   if (md < doubleTrackMin(e)) {
     doubleTrackViolations++;
-    doubleTrackViolationList.push(`${e.key}: min-dist tracce ±${offsetOf(e).toFixed(1)} = ${md.toFixed(1)}px < ${doubleTrackMin(e).toFixed(1)}px`);
+    doubleTrackViolationList.push(`${e.key}: min-dist tracce adiacenti (passo ${pitchOf(e).toFixed(1)}) = ${md.toFixed(1)}px < ${doubleTrackMin(e).toFixed(1)}px`);
   }
 }
 
@@ -3250,7 +3390,7 @@ if (lengthRatioViolations.length > 0) {
       return false;
     }
     // 3f+8v3: cluster-escape — rotte len=1 tollerano fino a 2.5×
-    if (!isNaN(ratio) && maxLen === 1 && ratio <= 2.5 && ratio >= 0.8 && clusterApplied) {
+    if (!isNaN(ratio) && maxLen === 1 && ratio <= 2.5 && ratio >= 0.8 && (clusterApplied || TUNING.lenOneDense)) {
       console.log(`  ⚠ RATIO-OK ${v} (rotta len=1 dopo cluster-escape, entro 2.5× — accettato)`);
       return false;
     }
@@ -3293,15 +3433,17 @@ function previewSvg() {
   const COLOR = { Red: '#c0392b', Orange: '#e67e22', Yellow: '#d4a017', Green: '#27ae60', Blue: '#2980b9', Purple: '#8e44ad', Black: '#34495e', White: '#bdc3c7', Gray: '#95a5a6' };
   let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui">\n<rect width="${W}" height="${H}" fill="#f6ebd0"/>\n`;
   for (const e of edges) {
-    for (const pts of tracksOf(e)) {
+    tracksOf(e).forEach((pts, lane) => {
       const p = pts.map((q) => q.map((v) => v.toFixed(1)).join(',')).join(' ');
-      const col = COLOR[mapData.routes.find((r) => r.id === e.routeIds[0]).color] || '#888';
+      const col = COLOR[mapData.routes.find((r) => r.id === e.routeIds[lane]).color] || '#888';
       s += `<polyline points="${p}" fill="none" stroke="${col}" stroke-width="${swOf(e.len)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>\n`;
-    }
+    });
   }
   for (let i = 0; i < cityIds.length; i++) {
     const [x, y] = cityPos[i];
-    s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${DOT_R}" fill="#fbf6e9" stroke="#453416" stroke-width="2"/>\n`;
+    s += mapData.cities[i].country
+      ? `<rect x="${(x - DOT_R).toFixed(1)}" y="${(y - DOT_R).toFixed(1)}" width="${2 * DOT_R}" height="${2 * DOT_R}" rx="3" fill="#e8d9b0" stroke="#453416" stroke-width="2"/>\n`
+      : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${DOT_R}" fill="#fbf6e9" stroke="#453416" stroke-width="2"/>\n`;
   }
   for (const [id, lb] of labels) {
     const c = cityIndexPos().find((cc) => cc.id === id);

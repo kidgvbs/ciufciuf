@@ -4,12 +4,12 @@
 //! coerenza tra ruleset, mappa e mazzi è la stessa che `ttr-core` applica
 //! all'avvio di una partita (`Ruleset::validate`).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::PathBuf;
 
-use ttr_core::scoring::MAX_CYCLOMATIC_NUMBER;
-use ttr_core::types::{MapData, Route, Ruleset};
+use ttr_core::scoring::{MAX_CYCLOMATIC_NUMBER, UnionFind};
+use ttr_core::types::{MAX_PARALLEL_LANES, MapData, Route, Ruleset};
 
 // ── Validazione ─────────────────────────────────────────────────────
 
@@ -68,11 +68,11 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
     r.check("Mazzo treno: conteggi coerenti", |r| {
         check_deck_counts(r, ruleset);
     });
-    r.check("Rotte doppie: max 2 per coppia, double marcato", |r| {
-        let (total, double_pairs, single_pairs) = check_double_routes(r, map);
+    r.check("Rotte parallele: max 4 per coppia, double marcato", |r| {
+        let (total, groups, single_pairs) = check_double_routes(r, map);
         println!(
-            "  Segmenti totali: {} ({} doppie + {} singole)",
-            total, double_pairs, single_pairs
+            "  Segmenti totali: {} ({} gruppi paralleli + {} singole)",
+            total, groups, single_pairs
         );
     });
     r.check("Mappa: numero di segmenti plausibile", |r| {
@@ -99,13 +99,28 @@ fn warn_unused_route_points(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
     }
 }
 
-/// Ogni biglietto deve collegare due città raggiungibili sul grafo delle rotte.
+/// Ogni biglietto deve collegare due città raggiungibili sul grafo delle rotte, con la stessa
+/// semantica del motore: un Paese (`country`) è un vicolo cieco, quindi due rotte che vi
+/// entrano non sono collegate tra loro, e un biglietto con estremo Paese è completato da
+/// una qualunque rotta che vi entra.
 fn check_ticket_reachability(r: &mut Report, map: &MapData) {
     let city_set: BTreeSet<&str> = map.cities.iter().map(|c| c.id.as_str()).collect();
-    let mut route_graph: HashMap<&str, Vec<&str>> = HashMap::new();
+    let countries: BTreeSet<&str> = map
+        .cities
+        .iter()
+        .filter(|c| c.country)
+        .map(|c| c.id.as_str())
+        .collect();
+    let node = |rt: &Route, city: &str| {
+        if countries.contains(city) {
+            format!("{city}#{}", rt.id)
+        } else {
+            city.to_string()
+        }
+    };
+    let mut connectivity = UnionFind::new();
     for rt in &map.routes {
-        route_graph.entry(&rt.from).or_default().push(&rt.to);
-        route_graph.entry(&rt.to).or_default().push(&rt.from);
+        connectivity.union(&node(rt, &rt.from), &node(rt, &rt.to));
     }
 
     for t in &map.tickets {
@@ -113,25 +128,7 @@ fn check_ticket_reachability(r: &mut Report, map: &MapData) {
         if !city_set.contains(t.from.as_str()) || !city_set.contains(t.to.as_str()) {
             continue;
         }
-        let mut visited: BTreeSet<&str> = BTreeSet::new();
-        let mut queue: VecDeque<&str> = VecDeque::new();
-        visited.insert(&t.from);
-        queue.push_back(&t.from);
-        let mut found = false;
-        while let Some(city) = queue.pop_front() {
-            if city == t.to.as_str() {
-                found = true;
-                break;
-            }
-            if let Some(neighbors) = route_graph.get(city) {
-                for &n in neighbors {
-                    if visited.insert(n) {
-                        queue.push_back(n);
-                    }
-                }
-            }
-        }
-        if !found {
+        if !connectivity.connected(&t.from, &t.to) {
             r.err(format!(
                 "Biglietto '{}': {} → {} non raggiungibile",
                 t.id, t.from, t.to
@@ -169,25 +166,30 @@ fn check_deck_counts(r: &mut Report, ruleset: &Ruleset) {
     }
 }
 
-/// Max 2 rotte per coppia di città, entrambe `double`. Restituisce (rotte, coppie doppie,
-/// coppie singole).
+/// Al massimo `MAX_PARALLEL_LANES` rotte per coppia non ordinata di città; con più rotte
+/// sulla stessa coppia tutte `double`. Restituisce (rotte, gruppi paralleli, coppie singole).
 fn check_double_routes(r: &mut Report, map: &MapData) -> (usize, usize, usize) {
     let mut pair_segments: BTreeMap<(&str, &str), Vec<&Route>> = BTreeMap::new();
     for rt in &map.routes {
-        pair_segments
-            .entry((&rt.from, &rt.to))
-            .or_default()
-            .push(rt);
+        let key = if rt.from <= rt.to {
+            (rt.from.as_str(), rt.to.as_str())
+        } else {
+            (rt.to.as_str(), rt.from.as_str())
+        };
+        pair_segments.entry(key).or_default().push(rt);
     }
     for ((a, b), routes) in &pair_segments {
         let count = routes.len();
-        if count > 2 {
-            r.err(format!("Coppia {}–{}: {} rotte (max 2)", a, b, count));
-        }
-        if count == 2 && !routes.iter().all(|rt| rt.double) {
+        if count > MAX_PARALLEL_LANES {
             r.err(format!(
-                "Coppia {}–{}: 2 rotte ma non entrambe double=true",
-                a, b
+                "Coppia {}–{}: {} rotte (max {})",
+                a, b, count, MAX_PARALLEL_LANES
+            ));
+        }
+        if count >= 2 && !routes.iter().all(|rt| rt.double) {
+            r.err(format!(
+                "Coppia {}–{}: {} rotte ma non tutte double=true",
+                a, b, count
             ));
         }
         if count == 1 && routes[0].double {
@@ -197,9 +199,9 @@ fn check_double_routes(r: &mut Report, map: &MapData) -> (usize, usize, usize) {
             ));
         }
     }
-    let double_pairs = pair_segments.values().filter(|v| v.len() == 2).count();
+    let groups = pair_segments.values().filter(|v| v.len() >= 2).count();
     let single_pairs = pair_segments.values().filter(|v| v.len() == 1).count();
-    (map.routes.len(), double_pairs, single_pairs)
+    (map.routes.len(), groups, single_pairs)
 }
 
 fn main() {

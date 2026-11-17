@@ -19,6 +19,8 @@ import type {
   TicketInfo,
   LegalMoves,
   RecentMove,
+  CountryCards,
+  CityPassengers,
 } from './proto';
 import { normalizePublicState } from './public-state';
 
@@ -45,6 +47,10 @@ class PublicStore {
   longestPathRouteIds = $state<string[]>([]);
   /** Ultime mosse (la più vecchia per prima), dal server. */
   recentMoves = $state<RecentMove[]>([]);
+  /** Poland: carte Paese rimaste in ogni pila (dall'alto in basso). */
+  countryStacks = $state<CountryCards[]>([]);
+  /** Germany 2017: passeggeri ancora sulle città. */
+  passengers = $state<CityPassengers[]>([]);
 
   apply(raw: PublicState): void {
     const ps = normalizePublicState(raw);
@@ -64,6 +70,8 @@ class PublicStore {
     this.longestPathPlayerIds = ps.longest_path_player_ids;
     this.longestPathRouteIds = ps.longest_path_route_ids;
     this.recentMoves = ps.recent_moves;
+    this.countryStacks = ps.country_stacks;
+    this.passengers = ps.passengers;
   }
 
   reset(): void {
@@ -83,6 +91,8 @@ class PublicStore {
     this.longestPathPlayerIds = null;
     this.longestPathRouteIds = [];
     this.recentMoves = [];
+    this.countryStacks = [];
+    this.passengers = [];
   }
 }
 

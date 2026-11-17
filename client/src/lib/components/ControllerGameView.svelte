@@ -19,8 +19,10 @@
     rectOf,
     type DrawSource,
   } from '../draw-animation';
-  import type { InboundAction, CardColor, TunnelReveal } from '../proto';
+  import type { InboundAction, CardColor, TicketDeckCount, TunnelReveal } from '../proto';
+  import { passengerChoices, passengerColorCss, passengerColorName, passengerPicks } from '../passengers';
   import TicketChoiceDialog from './TicketChoiceDialog.svelte';
+  import TicketDrawPicker from './TicketDrawPicker.svelte';
   import MapSvg from './MapSvg.svelte';
   import TrainCard from './TrainCard.svelte';
   import TicketCard from './TicketCard.svelte';
@@ -246,12 +248,33 @@
     if (connectionStore.lastError) drawSource = null;
   });
 
+  // Pesca con le quote per mazzo (Germany): il bottone apre la scelta corti/lunghi.
+  const ticketDraw = $derived(legalMoves?.ticket_draw ?? null);
+  let pickingTickets = $state(false);
+  $effect(() => {
+    if (!ticketDraw || !canAct) pickingTickets = false;
+  });
+
   function drawTickets() {
+    if (ticketDraw) {
+      pickingTickets = true;
+      return;
+    }
     sendAction({
       actionType: 'DRAW_TICKETS',
       player_id: playerId,
       client_seq: nextClientSeq(playerId),
     });
+  }
+
+  function drawTicketsWith(counts: TicketDeckCount[]) {
+    const sent = sendAction({
+      actionType: 'DRAW_TICKETS',
+      player_id: playerId,
+      counts,
+      client_seq: nextClientSeq(playerId),
+    });
+    if (sent) pickingTickets = false;
   }
 
   // ── Pagamento rotta ────────────────────────────────────────────
@@ -322,6 +345,16 @@
     }
   }
 
+  // Passeggeri (Germany 2017): negli estremi con più colori il giocatore sceglie quale prendere.
+  let passengerPicked = $state<Record<string, string>>({});
+  const passengerChoiceList = $derived(
+    payingRoute ? passengerChoices(publicStore.passengers, payingRoute) : [],
+  );
+  $effect(() => {
+    void payingRouteId;
+    passengerPicked = {};
+  });
+
   function confirmPayment() {
     const route = payingRoute;
     if (!route || !payValid) return;
@@ -332,6 +365,7 @@
       player_id: playerId,
       route_id: route.id,
       cards_discarded: cards,
+      passengers: passengerPicks(passengerChoiceList, passengerPicked),
       client_seq: nextClientSeq(playerId),
     });
     // Se l'azione non è partita il pannello resta aperto per riprovare.
@@ -477,9 +511,8 @@
   const statusLabel = $derived.by(() => {
     if (gameState === 'WAITING_FOR_PLAYERS') return 'In attesa di giocatori...';
     if (gameState === 'INITIAL_DRAFT') {
-      return offered.length > 0
-        ? 'Scegli i biglietti iniziali'
-        : 'Attendi che tutti scelgano...';
+      if (offered.length > 0) return 'Scegli i biglietti iniziali';
+      return ticketDraw ? 'Scegli quanti biglietti corti e lunghi pescare' : 'Attendi che tutti scelgano...';
     }
     if (gameState === 'PLAYER_TURN' || gameState === 'LAST_ROUND') {
       if (isMyTurn) return gameState === 'LAST_ROUND' ? '⚠️ Ultimo giro — tocca a te!' : 'È il tuo turno!';
@@ -552,6 +585,17 @@
     <button class="btn reopen-tickets" onclick={() => (dismissedOfferId = '')}>
       🎫 Devi scegliere i biglietti ({offered.length})
     </button>
+  {/if}
+
+  {#if gameState === 'INITIAL_DRAFT' && ticketDraw && offered.length === 0}
+    <div class="section initial-ticket-draw">
+      <TicketDrawPicker
+        draw={ticketDraw}
+        busy={drawBusy}
+        title="Biglietti iniziali"
+        onConfirm={drawTicketsWith}
+      />
+    </div>
   {/if}
 
   <!-- Toggle mappa: solo portrait (in landscape la plancia è sempre visibile) -->
@@ -639,9 +683,19 @@
       {/if}
 
       {#if legalMoves.can_draw_tickets}
-        <button onclick={drawTickets} class="btn action-btn draw-tickets">
-          🎫 Pesca biglietti
-        </button>
+        {#if ticketDraw && pickingTickets}
+          <TicketDrawPicker
+            draw={ticketDraw}
+            busy={drawBusy}
+            title="Pesca biglietti"
+            onConfirm={drawTicketsWith}
+            onCancel={() => (pickingTickets = false)}
+          />
+        {:else}
+          <button onclick={drawTickets} class="btn action-btn draw-tickets">
+            🎫 Pesca biglietti
+          </button>
+        {/if}
       {/if}
 
       {#if legalMoves.routes.length > 0}
@@ -748,6 +802,25 @@
             </div>
 
             <p class="pay-summary">Paghi: {paySummaryText}</p>
+            {#each passengerChoiceList as choice (choice.cityId)}
+              <p class="pay-label">Passeggero da prendere a {cityName(choice.cityId)}:</p>
+              <div class="pay-colors" role="radiogroup" aria-label="Passeggero a {cityName(choice.cityId)}">
+                {#each choice.passengers as p (p.color)}
+                  {@const selected = (passengerPicked[choice.cityId] ?? choice.passengers[0]?.color) === p.color}
+                  <button
+                    class="passenger-swatch"
+                    class:selected
+                    role="radio"
+                    aria-checked={selected}
+                    onclick={() => (passengerPicked = { ...passengerPicked, [choice.cityId]: p.color })}
+                    aria-label="Passeggero {passengerColorName(p.color)} ({p.count})"
+                  >
+                    <span class="passenger-dot" style="background:{passengerColorCss(p.color)}"></span>
+                    ×{p.count}
+                  </button>
+                {/each}
+              </div>
+            {/each}
             {#if !payValid}
               <p class="pay-invalid">
                 {payFerries > locoInHand
@@ -1291,6 +1364,29 @@
   .pay-swatch:disabled {
     opacity: 0.3;
     cursor: not-allowed;
+  }
+  .passenger-swatch {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: none;
+    color: inherit;
+    border: 2px solid transparent;
+    border-radius: 10px;
+    padding: 4px 8px;
+    cursor: pointer;
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .passenger-swatch.selected {
+    border-color: var(--gold);
+    background: rgba(232, 168, 62, 0.18);
+  }
+  .passenger-dot {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid rgba(0, 0, 0, 0.45);
   }
   .pay-locos {
     display: flex;

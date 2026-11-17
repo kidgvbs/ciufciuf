@@ -598,11 +598,15 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     assert_eq!(
         summary,
         vec![
+            row("basilicata", "Standard", 25, 3, 2, 3, &[lp], 0),
             row("europe", "Standard", 46, 4, 2, 3, &[lp], 0),
             row("europe_expanded", "Estesa", 65, 4, 2, 3, &[lp], 0),
             row("europe_1912", "1912", 55, 4, 2, 3, &[lp], 0),
             row("europe_big_cities", "Grandi Città", 45, 5, 2, 4, &[lp], 9),
             row("europe_mega", "Mega", 101, 7, 3, 3, &[lp], 0),
+            row("germany", "Deutschland", 62, 4, 2, 4, &[gt], 0),
+            row("germany_2017", "Passeggeri", 89, 4, 2, 4, &[gt], 0),
+            row("poland", "Standard", 35, 4, 2, 3, &[], 0),
             row("usa_v2", "Standard", 33, 4, 2, 3, &[lp], 0),
             row("usa_1910", "1910", 35, 4, 2, 3, &[gt], 0),
             row("usa_big_cities", "Grandi Città", 35, 4, 2, 4, &[], 7),
@@ -634,7 +638,10 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
                     "drawKeepMin": 1,
                     "tunnels": true,
                     "ferries": true,
-                    "stations": true
+                    "stations": true,
+                    "ticketDrawChoice": false,
+                    "countryCards": false,
+                    "passengers": false
             }),
             serde_json::json!({
                     "id": "usa_v2",
@@ -657,10 +664,21 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
                     "drawKeepMin": 1,
                     "tunnels": false,
                     "ferries": false,
-                    "stations": false
+                    "stations": false,
+                    "ticketDrawChoice": false,
+                    "countryCards": false,
+                    "passengers": false
             }),
         ]
     );
+    // Le regole nuove compaiono nel catalogo solo dove il ruleset le prevede.
+    let flags = |id: &str| {
+        let r = by_id(id);
+        [&r["ticketDrawChoice"], &r["countryCards"], &r["passengers"]].map(|v| v.as_bool())
+    };
+    assert_eq!(flags("germany"), [Some(true), Some(false), Some(false)]);
+    assert_eq!(flags("germany_2017"), [Some(true), Some(false), Some(true)]);
+    assert_eq!(flags("poland"), [Some(false), Some(true), Some(false)]);
 }
 
 /// GET /api/rulesets/{id}/layout serve il layout schematico della mappa del ruleset

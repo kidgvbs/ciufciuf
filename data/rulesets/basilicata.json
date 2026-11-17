@@ -1,0 +1,53 @@
+{
+  "name": "Basilicata",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "standard",
+  "map": "basilicata",
+  "players": {
+    "min": 2,
+    "max": 4
+  },
+  "trainsPerPlayer": 25,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "regular",
+        "count": 3
+      }
+    ],
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 3,
+    "keepMin": 1
+  },
+  "setupDiscards": "reshuffleBottom",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10,
+    "6": 15,
+    "7": 18,
+    "8": 21
+  },
+  "bonuses": [
+    {
+      "type": "longest_path",
+      "label": "Longest Path",
+      "points": 10
+    }
+  ],
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

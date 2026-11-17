@@ -1,0 +1,1615 @@
+{
+  "cities": [
+    {
+      "id": "bialorus",
+      "name": "Białoruś",
+      "lat": 52.5,
+      "lon": 23.8,
+      "country": true
+    },
+    {
+      "id": "bialystok",
+      "name": "Białystok",
+      "lat": 53.13,
+      "lon": 23.16
+    },
+    {
+      "id": "bielsko_biala",
+      "name": "Bielsko-Biała",
+      "lat": 49.82,
+      "lon": 19.04
+    },
+    {
+      "id": "bydgoszcz",
+      "name": "Bydgoszcz",
+      "lat": 53.12,
+      "lon": 18.01
+    },
+    {
+      "id": "czechy",
+      "name": "Czechy",
+      "lat": 50.3,
+      "lon": 15.8,
+      "country": true
+    },
+    {
+      "id": "czestochowa",
+      "name": "Częstochowa",
+      "lat": 50.81,
+      "lon": 19.12
+    },
+    {
+      "id": "elk",
+      "name": "Ełk",
+      "lat": 53.83,
+      "lon": 22.36
+    },
+    {
+      "id": "gdansk",
+      "name": "Gdańsk",
+      "lat": 54.35,
+      "lon": 18.65
+    },
+    {
+      "id": "gorzow_wielkopolski",
+      "name": "Gorzów Wielkopolski",
+      "lat": 52.73,
+      "lon": 15.24
+    },
+    {
+      "id": "kalisz",
+      "name": "Kalisz",
+      "lat": 51.76,
+      "lon": 18.09
+    },
+    {
+      "id": "katowice",
+      "name": "Katowice",
+      "lat": 50.26,
+      "lon": 19.02
+    },
+    {
+      "id": "kielce",
+      "name": "Kielce",
+      "lat": 50.87,
+      "lon": 20.63
+    },
+    {
+      "id": "koszalin",
+      "name": "Koszalin",
+      "lat": 54.19,
+      "lon": 16.17
+    },
+    {
+      "id": "krakow",
+      "name": "Kraków",
+      "lat": 50.06,
+      "lon": 19.94
+    },
+    {
+      "id": "litwa",
+      "name": "Litwa",
+      "lat": 54.3,
+      "lon": 23.4,
+      "country": true
+    },
+    {
+      "id": "lodz",
+      "name": "Łódź",
+      "lat": 51.76,
+      "lon": 19.46
+    },
+    {
+      "id": "lublin",
+      "name": "Lublin",
+      "lat": 51.25,
+      "lon": 22.57
+    },
+    {
+      "id": "niemcy",
+      "name": "Niemcy",
+      "lat": 52.6,
+      "lon": 14.3,
+      "country": true
+    },
+    {
+      "id": "olsztyn",
+      "name": "Olsztyn",
+      "lat": 53.78,
+      "lon": 20.49
+    },
+    {
+      "id": "opole",
+      "name": "Opole",
+      "lat": 50.67,
+      "lon": 17.93
+    },
+    {
+      "id": "pila",
+      "name": "Piła",
+      "lat": 53.15,
+      "lon": 16.74
+    },
+    {
+      "id": "plock",
+      "name": "Płock",
+      "lat": 52.55,
+      "lon": 19.71
+    },
+    {
+      "id": "poznan",
+      "name": "Poznań",
+      "lat": 52.41,
+      "lon": 16.93
+    },
+    {
+      "id": "radom",
+      "name": "Radom",
+      "lat": 51.4,
+      "lon": 21.15
+    },
+    {
+      "id": "rosja",
+      "name": "Rosja",
+      "lat": 54.4,
+      "lon": 20.6,
+      "country": true
+    },
+    {
+      "id": "rzeszow",
+      "name": "Rzeszów",
+      "lat": 50.04,
+      "lon": 22.0
+    },
+    {
+      "id": "siedlce",
+      "name": "Siedlce",
+      "lat": 52.17,
+      "lon": 22.29
+    },
+    {
+      "id": "slowacja",
+      "name": "Słowacja",
+      "lat": 49.25,
+      "lon": 19.2,
+      "country": true
+    },
+    {
+      "id": "suwalki",
+      "name": "Suwałki",
+      "lat": 54.1,
+      "lon": 22.93
+    },
+    {
+      "id": "szczecin",
+      "name": "Szczecin",
+      "lat": 53.43,
+      "lon": 14.55
+    },
+    {
+      "id": "ukraina",
+      "name": "Ukraina",
+      "lat": 49.6,
+      "lon": 23.3,
+      "country": true
+    },
+    {
+      "id": "warszawa",
+      "name": "Warszawa",
+      "lat": 52.23,
+      "lon": 21.01
+    },
+    {
+      "id": "wroclaw",
+      "name": "Wrocław",
+      "lat": 51.11,
+      "lon": 17.04
+    },
+    {
+      "id": "zakopane",
+      "name": "Zakopane",
+      "lat": 49.3,
+      "lon": 19.95
+    },
+    {
+      "id": "zielona_gora",
+      "name": "Zielona Góra",
+      "lat": 51.94,
+      "lon": 15.51
+    }
+  ],
+  "routes": [
+    {
+      "id": "bialorus_siedlce_1",
+      "from": "bialorus",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "bialorus_siedlce_2",
+      "from": "bialorus",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "bialorus_siedlce_3",
+      "from": "bialorus",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "bialystok_elk_1",
+      "from": "bialystok",
+      "to": "elk",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bialystok_olsztyn_1",
+      "from": "bialystok",
+      "to": "olsztyn",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bialystok_siedlce_1",
+      "from": "bialystok",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bialystok_suwalki_1",
+      "from": "bialystok",
+      "to": "suwalki",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bialystok_warszawa_1",
+      "from": "bialystok",
+      "to": "warszawa",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bielsko_biala_katowice_1",
+      "from": "bielsko_biala",
+      "to": "katowice",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bielsko_biala_katowice_2",
+      "from": "bielsko_biala",
+      "to": "katowice",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bielsko_biala_krakow_1",
+      "from": "bielsko_biala",
+      "to": "krakow",
+      "len": 1,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bielsko_biala_opole_1",
+      "from": "bielsko_biala",
+      "to": "opole",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bielsko_biala_slowacja_1",
+      "from": "bielsko_biala",
+      "to": "slowacja",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "bielsko_biala_slowacja_2",
+      "from": "bielsko_biala",
+      "to": "slowacja",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "bielsko_biala_slowacja_3",
+      "from": "bielsko_biala",
+      "to": "slowacja",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "bielsko_biala_zakopane_1",
+      "from": "bielsko_biala",
+      "to": "zakopane",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_gdansk_1",
+      "from": "bydgoszcz",
+      "to": "gdansk",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_gdansk_2",
+      "from": "bydgoszcz",
+      "to": "gdansk",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_pila_1",
+      "from": "bydgoszcz",
+      "to": "pila",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_pila_2",
+      "from": "bydgoszcz",
+      "to": "pila",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_plock_1",
+      "from": "bydgoszcz",
+      "to": "plock",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_poznan_1",
+      "from": "bydgoszcz",
+      "to": "poznan",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bydgoszcz_poznan_2",
+      "from": "bydgoszcz",
+      "to": "poznan",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "czechy_wroclaw_1",
+      "from": "czechy",
+      "to": "wroclaw",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "czechy_wroclaw_2",
+      "from": "czechy",
+      "to": "wroclaw",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "czechy_wroclaw_3",
+      "from": "czechy",
+      "to": "wroclaw",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "czechy_wroclaw_4",
+      "from": "czechy",
+      "to": "wroclaw",
+      "len": 3,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "czestochowa_katowice_1",
+      "from": "czestochowa",
+      "to": "katowice",
+      "len": 1,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "czestochowa_katowice_2",
+      "from": "czestochowa",
+      "to": "katowice",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "czestochowa_kielce_1",
+      "from": "czestochowa",
+      "to": "kielce",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "czestochowa_lodz_1",
+      "from": "czestochowa",
+      "to": "lodz",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "czestochowa_lodz_2",
+      "from": "czestochowa",
+      "to": "lodz",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "czestochowa_opole_1",
+      "from": "czestochowa",
+      "to": "opole",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "elk_olsztyn_1",
+      "from": "elk",
+      "to": "olsztyn",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "elk_suwalki_1",
+      "from": "elk",
+      "to": "suwalki",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gdansk_koszalin_1",
+      "from": "gdansk",
+      "to": "koszalin",
+      "len": 4,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gdansk_koszalin_2",
+      "from": "gdansk",
+      "to": "koszalin",
+      "len": 4,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gdansk_olsztyn_1",
+      "from": "gdansk",
+      "to": "olsztyn",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gdansk_plock_1",
+      "from": "gdansk",
+      "to": "plock",
+      "len": 5,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gorzow_wielkopolski_niemcy_1",
+      "from": "gorzow_wielkopolski",
+      "to": "niemcy",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "gorzow_wielkopolski_niemcy_2",
+      "from": "gorzow_wielkopolski",
+      "to": "niemcy",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "gorzow_wielkopolski_niemcy_3",
+      "from": "gorzow_wielkopolski",
+      "to": "niemcy",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "gorzow_wielkopolski_pila_1",
+      "from": "gorzow_wielkopolski",
+      "to": "pila",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gorzow_wielkopolski_poznan_1",
+      "from": "gorzow_wielkopolski",
+      "to": "poznan",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gorzow_wielkopolski_poznan_2",
+      "from": "gorzow_wielkopolski",
+      "to": "poznan",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gorzow_wielkopolski_szczecin_1",
+      "from": "gorzow_wielkopolski",
+      "to": "szczecin",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "gorzow_wielkopolski_zielona_gora_1",
+      "from": "gorzow_wielkopolski",
+      "to": "zielona_gora",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_lodz_1",
+      "from": "kalisz",
+      "to": "lodz",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_lodz_2",
+      "from": "kalisz",
+      "to": "lodz",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_opole_1",
+      "from": "kalisz",
+      "to": "opole",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_plock_1",
+      "from": "kalisz",
+      "to": "plock",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_poznan_1",
+      "from": "kalisz",
+      "to": "poznan",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_poznan_2",
+      "from": "kalisz",
+      "to": "poznan",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_wroclaw_1",
+      "from": "kalisz",
+      "to": "wroclaw",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kalisz_wroclaw_2",
+      "from": "kalisz",
+      "to": "wroclaw",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katowice_krakow_1",
+      "from": "katowice",
+      "to": "krakow",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katowice_krakow_2",
+      "from": "katowice",
+      "to": "krakow",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katowice_opole_1",
+      "from": "katowice",
+      "to": "opole",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kielce_krakow_1",
+      "from": "kielce",
+      "to": "krakow",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kielce_lodz_1",
+      "from": "kielce",
+      "to": "lodz",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kielce_lublin_1",
+      "from": "kielce",
+      "to": "lublin",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kielce_radom_1",
+      "from": "kielce",
+      "to": "radom",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kielce_rzeszow_1",
+      "from": "kielce",
+      "to": "rzeszow",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koszalin_pila_1",
+      "from": "koszalin",
+      "to": "pila",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koszalin_szczecin_1",
+      "from": "koszalin",
+      "to": "szczecin",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koszalin_szczecin_2",
+      "from": "koszalin",
+      "to": "szczecin",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "krakow_rzeszow_1",
+      "from": "krakow",
+      "to": "rzeszow",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "krakow_rzeszow_2",
+      "from": "krakow",
+      "to": "rzeszow",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "krakow_zakopane_1",
+      "from": "krakow",
+      "to": "zakopane",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "litwa_suwalki_1",
+      "from": "litwa",
+      "to": "suwalki",
+      "len": 1,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "lodz_plock_1",
+      "from": "lodz",
+      "to": "plock",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lodz_radom_1",
+      "from": "lodz",
+      "to": "radom",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lodz_warszawa_1",
+      "from": "lodz",
+      "to": "warszawa",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lodz_warszawa_2",
+      "from": "lodz",
+      "to": "warszawa",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lublin_radom_1",
+      "from": "lublin",
+      "to": "radom",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lublin_rzeszow_1",
+      "from": "lublin",
+      "to": "rzeszow",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lublin_rzeszow_2",
+      "from": "lublin",
+      "to": "rzeszow",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lublin_siedlce_1",
+      "from": "lublin",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lublin_siedlce_2",
+      "from": "lublin",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olsztyn_plock_1",
+      "from": "olsztyn",
+      "to": "plock",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olsztyn_rosja_1",
+      "from": "olsztyn",
+      "to": "rosja",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "olsztyn_rosja_2",
+      "from": "olsztyn",
+      "to": "rosja",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "olsztyn_rosja_3",
+      "from": "olsztyn",
+      "to": "rosja",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "olsztyn_warszawa_1",
+      "from": "olsztyn",
+      "to": "warszawa",
+      "len": 4,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olsztyn_warszawa_2",
+      "from": "olsztyn",
+      "to": "warszawa",
+      "len": 4,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "opole_wroclaw_1",
+      "from": "opole",
+      "to": "wroclaw",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pila_poznan_1",
+      "from": "pila",
+      "to": "poznan",
+      "len": 1,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pila_szczecin_1",
+      "from": "pila",
+      "to": "szczecin",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pila_szczecin_2",
+      "from": "pila",
+      "to": "szczecin",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "plock_warszawa_1",
+      "from": "plock",
+      "to": "warszawa",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "poznan_wroclaw_1",
+      "from": "poznan",
+      "to": "wroclaw",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "poznan_wroclaw_2",
+      "from": "poznan",
+      "to": "wroclaw",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "poznan_zielona_gora_1",
+      "from": "poznan",
+      "to": "zielona_gora",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "radom_siedlce_1",
+      "from": "radom",
+      "to": "siedlce",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "radom_warszawa_1",
+      "from": "radom",
+      "to": "warszawa",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "rzeszow_ukraina_1",
+      "from": "rzeszow",
+      "to": "ukraina",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "rzeszow_ukraina_2",
+      "from": "rzeszow",
+      "to": "ukraina",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "rzeszow_ukraina_3",
+      "from": "rzeszow",
+      "to": "ukraina",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "rzeszow_zakopane_1",
+      "from": "rzeszow",
+      "to": "zakopane",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "siedlce_warszawa_1",
+      "from": "siedlce",
+      "to": "warszawa",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "siedlce_warszawa_2",
+      "from": "siedlce",
+      "to": "warszawa",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "wroclaw_zielona_gora_1",
+      "from": "wroclaw",
+      "to": "zielona_gora",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "bielsko_biala_plock",
+      "from": "bielsko_biala",
+      "to": "plock",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bielsko_biala_rzeszow",
+      "from": "bielsko_biala",
+      "to": "rzeszow",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bydgoszcz_katowice",
+      "from": "bydgoszcz",
+      "to": "katowice",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bydgoszcz_siedlce",
+      "from": "bydgoszcz",
+      "to": "siedlce",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bialystok_czestochowa",
+      "from": "bialystok",
+      "to": "czestochowa",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "czestochowa_gdansk",
+      "from": "czestochowa",
+      "to": "gdansk",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "gdansk_katowice",
+      "from": "gdansk",
+      "to": "katowice",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kalisz_olsztyn",
+      "from": "kalisz",
+      "to": "olsztyn",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kalisz_zakopane",
+      "from": "kalisz",
+      "to": "zakopane",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kielce_suwalki",
+      "from": "kielce",
+      "to": "suwalki",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kielce_koszalin",
+      "from": "kielce",
+      "to": "koszalin",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "koszalin_zielona_gora",
+      "from": "koszalin",
+      "to": "zielona_gora",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bialystok_krakow",
+      "from": "bialystok",
+      "to": "krakow",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "katowice_krakow",
+      "from": "katowice",
+      "to": "krakow",
+      "points": 1,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "krakow_wroclaw",
+      "from": "krakow",
+      "to": "wroclaw",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "krakow_lodz",
+      "from": "krakow",
+      "to": "lodz",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "elk_opole",
+      "from": "elk",
+      "to": "opole",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bialystok_pila",
+      "from": "bialystok",
+      "to": "pila",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "opole_pila",
+      "from": "opole",
+      "to": "pila",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lublin_poznan",
+      "from": "lublin",
+      "to": "poznan",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "gorzow_wielkopolski_radom",
+      "from": "gorzow_wielkopolski",
+      "to": "radom",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "plock_rzeszow",
+      "from": "plock",
+      "to": "rzeszow",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "gorzow_wielkopolski_suwalki",
+      "from": "gorzow_wielkopolski",
+      "to": "suwalki",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "elk_szczecin",
+      "from": "elk",
+      "to": "szczecin",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lublin_szczecin",
+      "from": "lublin",
+      "to": "szczecin",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "gdansk_warszawa",
+      "from": "gdansk",
+      "to": "warszawa",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "krakow_warszawa",
+      "from": "krakow",
+      "to": "warszawa",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lublin_warszawa",
+      "from": "lublin",
+      "to": "warszawa",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "poznan_warszawa",
+      "from": "poznan",
+      "to": "warszawa",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "szczecin_warszawa",
+      "from": "szczecin",
+      "to": "warszawa",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "warszawa_wroclaw",
+      "from": "warszawa",
+      "to": "wroclaw",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lodz_warszawa",
+      "from": "lodz",
+      "to": "warszawa",
+      "points": 2,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bydgoszcz_wroclaw",
+      "from": "bydgoszcz",
+      "to": "wroclaw",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "olsztyn_zakopane",
+      "from": "olsztyn",
+      "to": "zakopane",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lodz_poznan",
+      "from": "lodz",
+      "to": "poznan",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    }
+  ]
+}

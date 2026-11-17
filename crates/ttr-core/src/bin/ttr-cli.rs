@@ -37,6 +37,9 @@ struct ReplayAction {
     city_id: Option<String>,
     #[serde(default)]
     pay: Option<bool>,
+    /// Con `chooseFrom`: biglietti da pescare per mazzo (`DRAW_TICKETS`).
+    #[serde(default)]
+    counts: Option<std::collections::BTreeMap<String, u32>>,
 }
 
 /// Stampa un errore d'uso ed esce con codice 2.
@@ -236,7 +239,10 @@ fn parse_replay_action(ra: &ReplayAction, engine: &Engine) -> Result<Action, Str
             player_index: pi,
             keep: ra.keep.clone().unwrap_or_default(),
         }),
-        "DRAW_TICKETS" => Ok(Action::DrawTickets { player_index: pi }),
+        "DRAW_TICKETS" => Ok(Action::DrawTickets {
+            player_index: pi,
+            counts: ra.counts.clone().unwrap_or_default(),
+        }),
         "DRAW_DECK" => Ok(Action::DrawTrainCard {
             player_index: pi,
             source: DrawSource::Deck,
@@ -252,6 +258,7 @@ fn parse_replay_action(ra: &ReplayAction, engine: &Engine) -> Result<Action, Str
             player_index: pi,
             route_id: ra.route_id.clone().unwrap_or_default(),
             cards_discarded: replay_cards(ra)?,
+            passengers: Default::default(),
         }),
         "BUILD_STATION" => Ok(Action::BuildStation {
             player_index: pi,
@@ -362,6 +369,13 @@ fn run_interactive(engine: &mut Engine) {
                         }
                         "tickets" | "t" => engine.apply(Action::DrawTickets {
                             player_index: engine.current_player(),
+                            counts: parts[2..]
+                                .iter()
+                                .filter_map(|p| {
+                                    let (deck, n) = p.split_once('=')?;
+                                    Some((deck.to_string(), n.parse().ok()?))
+                                })
+                                .collect(),
                         }),
                         _ => Err(ttr_core::EngineError::InvalidPayload {
                             reason: "sconosciuto".into(),
@@ -403,6 +417,7 @@ fn run_interactive(engine: &mut Engine) {
                             player_index: engine.current_player(),
                             route_id: rid,
                             cards_discarded,
+                            passengers: Default::default(),
                         }),
                         Err(reason) => Err(ttr_core::EngineError::InvalidPayload { reason }),
                     }

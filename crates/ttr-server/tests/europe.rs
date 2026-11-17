@@ -181,6 +181,7 @@ fn decide_europe(
                     player_id,
                     route_id: route.id.clone(),
                     cards_discarded: cards,
+                    passengers: None,
                     client_seq: None,
                 }));
             }
@@ -194,6 +195,7 @@ fn decide_europe(
             moves.can_draw_tickets.then_some(InboundAction::DrawTickets(
                 ttr_proto::DrawTicketsPayload {
                     player_id,
+                    counts: None,
                     client_seq: None,
                 },
             ))
@@ -416,6 +418,7 @@ async fn europe_save_with_pending_tunnel_resumes_and_accepts_the_decision() {
                         player_index: pi,
                         route_id: r.id.clone(),
                         cards_discarded,
+                        passengers: Default::default(),
                     })
                 })
                 .find(|claim| {

@@ -90,6 +90,17 @@ pub enum GameEvent {
         trigger_player: usize,
         trains_remaining: u32,
     },
+    /// Carte Paese prese (Poland): per Paese, il valore della carta in cima alla pila.
+    CountryCardsTaken {
+        player_index: usize,
+        cards: Vec<(CityId, u32)>,
+    },
+    /// Passeggeri presi con una rotta (Germany 2017): (città, colore) per estremo.
+    PassengersTaken {
+        player_index: usize,
+        route_id: RouteId,
+        taken: Vec<(CityId, String)>,
+    },
     /// Partita terminata.
     GameOver {
         final_scores: Vec<FinalScore>,
@@ -115,8 +126,14 @@ pub struct FinalScore {
     /// Rotte avversarie usate dalle stazioni (città, rotta) nell'assegnazione migliore.
     #[serde(default)]
     pub borrowed_routes: Vec<(CityId, RouteId)>,
-    /// Vincitore (o pari merito dopo gli spareggi): totale più alto, poi
-    /// più biglietti completati, poi bonus percorso più lungo.
+    /// Punti delle carte Paese prese (Poland).
+    #[serde(default)]
+    pub country_points: i32,
+    /// Punti delle maggioranze di passeggeri (Germany 2017).
+    #[serde(default)]
+    pub passenger_points: i32,
+    /// Vincitore (o pari merito dopo gli spareggi): totale più alto, poi gli spareggi del
+    /// ruleset (`tieBreakers`; di default biglietti completati, poi bonus percorso più lungo).
     #[serde(default)]
     pub winner: bool,
 }

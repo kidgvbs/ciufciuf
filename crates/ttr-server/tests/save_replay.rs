@@ -721,6 +721,7 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
                 player_index,
                 route_id,
                 cards_discarded,
+                passengers: Default::default(),
             },
             None => Action::DrawTrainCard {
                 player_index,

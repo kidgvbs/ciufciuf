@@ -23,6 +23,26 @@ pub struct LegalMoves {
     pub tunnel: Option<TunnelMoves>,
     /// Scelta dei biglietti offerti (draft iniziale o `TicketChoice` di turno).
     pub ticket_choice: Option<TicketChoiceMoves>,
+    /// Pesca di biglietti con le quote per mazzo (`chooseFrom`): nel draft iniziale e a
+    /// inizio turno, `None` altrove.
+    pub ticket_draw: Option<TicketDrawMoves>,
+}
+
+/// Quanti biglietti si possono pescare e da quali mazzi (`chooseFrom`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketDrawMoves {
+    /// Biglietti da pescare in tutto: la somma delle quote deve essere questa.
+    pub total: u32,
+    /// Biglietti rimasti in ogni mazzo di `chooseFrom`, nell'ordine del ruleset: la quota
+    /// di un mazzo non può superarli.
+    pub available: Vec<TicketDeckAvailability>,
+}
+
+/// Biglietti rimasti in un mazzo.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketDeckAvailability {
+    pub deck: String,
+    pub count: u32,
 }
 
 /// Vincoli della scelta dei biglietti offerti al giocatore.
@@ -65,6 +85,7 @@ impl LegalMoves {
             station_cost: 0,
             tunnel: None,
             ticket_choice: None,
+            ticket_draw: None,
         }
     }
 }
@@ -109,8 +130,17 @@ impl Engine {
             .pending_initial_tickets
             .get(player_index)
             .map_or(&[][..], Vec::as_slice);
-        if self.players[player_index].initial_draft_done || offered.is_empty() {
+        if self.players[player_index].initial_draft_done {
             return LegalMoves::empty();
+        }
+        // Con `chooseFrom` il giocatore pesca prima con le quote, poi sceglie.
+        if offered.is_empty() {
+            let ticket_draw = self.initial_draw_moves();
+            return LegalMoves {
+                can_draw_tickets: ticket_draw.is_some(),
+                ticket_draw,
+                ..LegalMoves::empty()
+            };
         }
         let limits = self
             .ruleset
@@ -160,6 +190,7 @@ impl Engine {
             station_cost: self.next_station_cost(player_index).unwrap_or(0),
             tunnel: None,
             ticket_choice: None,
+            ticket_draw: self.ticket_draw_moves(),
         }
     }
 
@@ -182,6 +213,7 @@ impl Engine {
             station_cost: 0,
             tunnel: None,
             ticket_choice: None,
+            ticket_draw: None,
         }
     }
 
@@ -271,15 +303,8 @@ impl Engine {
             return false;
         }
 
-        if let Some(sid) = &info.sister
-            && let Some(cri) = self.claimed_routes.get(sid)
-        {
-            if cri.claimed_by == player_index {
-                return false;
-            }
-            if self.players.len() < self.ruleset.double_route_min_players as usize {
-                return false;
-            }
+        if self.lane_block(player_index, info).is_some() {
+            return false;
         }
         true
     }
@@ -328,16 +353,13 @@ impl Engine {
     }
 
     fn can_draw_tickets(&self) -> bool {
-        let deck_name = &self.ruleset.ticket_draw.deck;
+        if self.ruleset.ticket_draw.choose_from.is_some() {
+            return self.ticket_draw_moves().is_some();
+        }
         let available = self
-            .ticket_draw_pile
-            .iter()
-            .filter(|tid| {
-                self.tickets_by_id
-                    .get(*tid)
-                    .is_some_and(|t| &t.deck == deck_name)
-            })
-            .count();
+            .ticket_piles
+            .get(&self.ruleset.ticket_draw.deck)
+            .map_or(0, Vec::len);
         available >= self.min_tickets_to_draw()
     }
 }

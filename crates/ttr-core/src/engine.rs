@@ -12,18 +12,30 @@ use crate::error::{EngineError, EngineInitError, GamePhase};
 use crate::event::GameEvent;
 use crate::rng::SeededRng;
 use crate::scoring::PlayerConnectivity;
+use crate::setup::{pair_key, parallel_groups};
 use crate::types::{
     CityId, ClaimedRouteInfo, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
     LONGEST_PATH_BONUS_TYPE, MapData, PendingTunnel, PlayerState, Route, RouteColor, RouteId,
-    Ruleset, TicketDef, TicketId, sister_route_id,
+    Ruleset, TicketDef, TicketId,
 };
 
 /// Dati di una rotta risolti al caricamento della mappa.
 #[derive(Debug, Clone)]
 pub(crate) struct RouteInfo {
     pub(crate) color: RouteColor,
-    /// L'altra rotta di una coppia doppia, se la mappa la contiene.
-    pub(crate) sister: Option<RouteId>,
+    /// Gli altri binari del gruppo parallelo della rotta (vuoto se non è `double`).
+    pub(crate) group: Vec<RouteId>,
+    /// Tutti i binari del gruppo sono aperti con qualunque numero di giocatori.
+    pub(crate) always_open: bool,
+}
+
+/// Perché un binario di un gruppo parallelo non è reclamabile da un giocatore.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LaneBlock {
+    /// Il giocatore ha già un altro binario del gruppo.
+    SamePlayer,
+    /// Con pochi giocatori un altro binario del gruppo è già stato preso.
+    Blocked,
 }
 
 /// Il motore di CiufCiuf!
@@ -42,7 +54,10 @@ pub struct Engine {
     pub(crate) train_discards: Vec<CardColor>,
 
     // Ticket deck
-    pub(crate) ticket_draw_pile: Vec<TicketId>,
+    /// Pile per mazzo (`ticketDecks`), dalla cima in fondo; la pesca prende dalla cima
+    /// (indice 0) e gli scarti tornano in fondo. Con le forme classiche si usa solo la pila
+    /// di `ticketDraw.deck`.
+    pub(crate) ticket_piles: BTreeMap<String, Vec<TicketId>>,
     pub(crate) ticket_discards: Vec<TicketId>,
 
     // Global state
@@ -50,6 +65,12 @@ pub struct Engine {
     pub(crate) connectivity: PlayerConnectivity,
     /// Città con una stazione → indice del giocatore proprietario.
     pub(crate) station_owners: BTreeMap<CityId, usize>,
+    /// Paesi della mappa (`City::country`): vicoli ciechi.
+    pub(crate) country_ids: BTreeSet<CityId>,
+    /// Pile delle carte Paese, valori dall'alto in basso (pubbliche).
+    pub(crate) country_stacks: BTreeMap<CityId, Vec<u32>>,
+    /// Passeggeri sulle città: colore → quanti (pubblici); le città vuote mancano.
+    pub(crate) passengers_on_city: BTreeMap<CityId, BTreeMap<String, u32>>,
 
     // Turn / round
     pub(crate) last_round: bool,
@@ -209,11 +230,27 @@ impl Engine {
             }
             pending_initial.push(dealt);
         }
-        let Some(ticket_ids) = ticket_piles.remove(&ruleset.ticket_draw.deck) else {
-            return Err(EngineInitError::DrawTicketDeckUnknown {
-                deck: ruleset.ticket_draw.deck.clone(),
-            });
-        };
+
+        // --- Passeggeri: sacchetto mescolato dopo tutto il consumo RNG precedente ---
+        let mut passengers_on_city: BTreeMap<CityId, BTreeMap<String, u32>> = BTreeMap::new();
+        if let Some(config) = &ruleset.passengers {
+            let mut bag: Vec<&String> = config
+                .colors
+                .iter()
+                .flat_map(|c| std::iter::repeat_n(c, config.per_color as usize))
+                .collect();
+            rng.shuffle(&mut bag);
+            let mut bag = bag.into_iter();
+            for (city, &count) in &config.placement {
+                for color in bag.by_ref().take(count as usize) {
+                    *passengers_on_city
+                        .entry(city.clone())
+                        .or_default()
+                        .entry(color.clone())
+                        .or_default() += 1;
+                }
+            }
+        }
 
         // --- Players ---
         let trains_per_player = ruleset.trains_per_player;
@@ -234,6 +271,8 @@ impl Engine {
                 score: 0,
                 initial_draft_done: false,
                 stations: Vec::new(),
+                country_cards: BTreeMap::new(),
+                passengers: BTreeMap::new(),
             })
             .collect();
 
@@ -243,6 +282,7 @@ impl Engine {
             .iter()
             .map(|r| (r.id.clone(), r.clone()))
             .collect();
+        let groups = parallel_groups(&map.routes);
         let mut route_info: BTreeMap<RouteId, RouteInfo> = BTreeMap::new();
         for route in &map.routes {
             let Some(color) = RouteColor::parse(&route.color) else {
@@ -251,10 +291,31 @@ impl Engine {
                     color: route.color.clone(),
                 });
             };
-            let sister = sister_route_id(&route.id)
-                .filter(|id| route.double && routes_by_id.contains_key(id));
-            route_info.insert(route.id.clone(), RouteInfo { color, sister });
+            // Gli altri binari del gruppo parallelo (la validazione garantisce ids e dati).
+            let group: Vec<RouteId> = groups
+                .get(&pair_key(route))
+                .filter(|_| route.double)
+                .into_iter()
+                .flatten()
+                .filter(|r| r.id != route.id)
+                .map(|r| r.id.clone())
+                .collect();
+            route_info.insert(
+                route.id.clone(),
+                RouteInfo {
+                    color,
+                    group,
+                    always_open: route.always_open,
+                },
+            );
         }
+        let country_ids: BTreeSet<CityId> = map
+            .cities
+            .iter()
+            .filter(|c| c.country)
+            .map(|c| c.id.clone())
+            .collect();
+        let country_stacks = ruleset.country_cards.clone();
         let tickets_by_id: BTreeMap<TicketId, TicketDef> = map
             .tickets
             .iter()
@@ -271,10 +332,10 @@ impl Engine {
             draw_pile: train_cards,
             face_up,
             train_discards,
-            ticket_draw_pile: ticket_ids,
+            ticket_piles,
             ticket_discards: Vec::new(),
             claimed_routes: BTreeMap::new(),
-            connectivity: PlayerConnectivity::new(num_players),
+            connectivity: PlayerConnectivity::with_countries(num_players, country_ids.clone()),
             station_owners: BTreeMap::new(),
             last_round: false,
             last_round_trigger_player: None,
@@ -288,6 +349,9 @@ impl Engine {
             globetrotter_bonus_points,
             longest_path_inexact: Vec::new(),
             longest_path_routes: Vec::new(),
+            country_ids,
+            country_stacks,
+            passengers_on_city,
             action_log: Vec::new(),
         })
     }
@@ -304,7 +368,10 @@ impl Engine {
                 player_index,
                 source,
             } => self.handle_draw_train_card(*player_index, *source)?,
-            Action::DrawTickets { player_index } => self.handle_draw_tickets(*player_index)?,
+            Action::DrawTickets {
+                player_index,
+                counts,
+            } => self.handle_draw_tickets(*player_index, counts)?,
             Action::ChooseTickets { player_index, keep } => {
                 self.handle_choose_tickets(*player_index, keep)?
             }
@@ -312,7 +379,8 @@ impl Engine {
                 player_index,
                 route_id,
                 cards_discarded,
-            } => self.handle_claim_route(*player_index, route_id, cards_discarded)?,
+                passengers,
+            } => self.handle_claim_route(*player_index, route_id, cards_discarded, passengers)?,
             Action::BuildStation {
                 player_index,
                 city_id,
@@ -465,6 +533,35 @@ impl Engine {
         self.ruleset.trains_per_player
     }
 
+    /// Pile delle carte Paese, per Paese i valori rimasti dall'alto in basso (pubbliche).
+    #[must_use]
+    pub fn country_stacks(&self) -> &BTreeMap<CityId, Vec<u32>> {
+        &self.country_stacks
+    }
+
+    /// Passeggeri presenti nelle città, per colore (pubblici); le città vuote mancano.
+    #[must_use]
+    pub fn passengers_on_cities(&self) -> &BTreeMap<CityId, BTreeMap<String, u32>> {
+        &self.passengers_on_city
+    }
+
+    /// Perché il giocatore non può reclamare un binario di un gruppo parallelo, se non può:
+    /// un solo binario per giocatore; con meno di `doubleRouteMinPlayers` giocatori, e se il
+    /// gruppo non è `alwaysOpen`, una volta preso un binario gli altri sono bloccati.
+    pub(crate) fn lane_block(&self, player_index: usize, info: &RouteInfo) -> Option<LaneBlock> {
+        let mut group_taken = false;
+        for lane in &info.group {
+            if let Some(claim) = self.claimed_routes.get(lane) {
+                if claim.claimed_by == player_index {
+                    return Some(LaneBlock::SamePlayer);
+                }
+                group_taken = true;
+            }
+        }
+        let few_players = self.players.len() < self.ruleset.double_route_min_players as usize;
+        (group_taken && few_players && !info.always_open).then_some(LaneBlock::Blocked)
+    }
+
     // ── Test helpers (modificano o espongono lo stato interno) ───────
 
     /// Imposta una carta scoperta.
@@ -554,11 +651,32 @@ impl Engine {
         self.current_player_index = current_player;
     }
 
-    /// Mazzo biglietti di pesca, dalla cima in fondo.
+    /// Mazzo biglietti di pesca (`ticketDraw.deck`), dalla cima in fondo; vuoto con
+    /// `ticketDraw.chooseFrom` (vedi `ticket_pile_of`).
     #[cfg(any(test, feature = "test-helpers"))]
     #[must_use]
     pub fn ticket_pile(&self) -> &[TicketId] {
-        &self.ticket_draw_pile
+        self.ticket_pile_of(&self.ruleset.ticket_draw.deck)
+    }
+
+    /// Pila di un mazzo biglietti, dalla cima in fondo; vuota per un mazzo sconosciuto.
+    #[cfg(any(test, feature = "test-helpers"))]
+    #[must_use]
+    pub fn ticket_pile_of(&self, deck: &str) -> &[TicketId] {
+        self.ticket_piles.get(deck).map_or(&[][..], Vec::as_slice)
+    }
+
+    /// Tutte le pile di biglietti per mazzo, dalla cima in fondo.
+    #[cfg(any(test, feature = "test-helpers"))]
+    #[must_use]
+    pub fn ticket_piles(&self) -> &BTreeMap<String, Vec<TicketId>> {
+        &self.ticket_piles
+    }
+
+    /// Rimpiazza la pila di un mazzo biglietti, dalla cima in fondo.
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn set_ticket_pile(&mut self, deck: &str, pile: Vec<TicketId>) {
+        self.ticket_piles.insert(deck.to_string(), pile);
     }
 
     /// Mazzo treni coperto, dal fondo alla cima.
@@ -599,8 +717,10 @@ struct SerializableState {
     last_round_trigger_player: Option<usize>,
     draw_pile_len: usize,
     discards_len: usize,
-    ticket_draw_pile_len: usize,
+    ticket_piles_len: BTreeMap<String, usize>,
     ticket_discards_len: usize,
+    country_stacks: BTreeMap<CityId, Vec<u32>>,
+    passengers_on_city: BTreeMap<CityId, BTreeMap<String, u32>>,
 }
 
 #[derive(serde::Serialize)]
@@ -611,6 +731,8 @@ struct SerializablePlayer {
     trains_remaining: u32,
     score: i32,
     stations: Vec<CityId>,
+    country_cards: BTreeMap<CityId, Vec<u32>>,
+    passengers: BTreeMap<String, u32>,
 }
 
 impl From<&Engine> for SerializableState {
@@ -631,6 +753,8 @@ impl From<&Engine> for SerializableState {
                         trains_remaining: p.trains_remaining,
                         score: p.score,
                         stations: p.stations.clone(),
+                        country_cards: p.country_cards.clone(),
+                        passengers: p.passengers.clone(),
                     }
                 })
                 .collect(),
@@ -646,8 +770,14 @@ impl From<&Engine> for SerializableState {
             last_round_trigger_player: e.last_round_trigger_player,
             draw_pile_len: e.draw_pile.len(),
             discards_len: e.train_discards.len(),
-            ticket_draw_pile_len: e.ticket_draw_pile.len(),
+            ticket_piles_len: e
+                .ticket_piles
+                .iter()
+                .map(|(deck, pile)| (deck.clone(), pile.len()))
+                .collect(),
             ticket_discards_len: e.ticket_discards.len(),
+            country_stacks: e.country_stacks.clone(),
+            passengers_on_city: e.passengers_on_city.clone(),
         }
     }
 }

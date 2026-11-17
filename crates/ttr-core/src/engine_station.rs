@@ -5,7 +5,7 @@ use ttr_proto::CardColor;
 use crate::engine::Engine;
 use crate::error::{EngineError, GamePhase};
 use crate::event::GameEvent;
-use crate::scoring::{StationCandidates, StationOption};
+use crate::scoring::{StationCandidates, StationOption, route_node};
 use crate::types::points_to_score;
 
 impl Engine {
@@ -56,7 +56,7 @@ impl Engine {
                         };
                         Some(StationOption {
                             route_id: route.id.clone(),
-                            other_city: other_city.clone(),
+                            other_city: route_node(&self.country_ids, &route.id, other_city),
                         })
                     })
                     .collect(),

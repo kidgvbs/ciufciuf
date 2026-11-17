@@ -5,7 +5,7 @@
 | Tipo | Schema | Esempio |
 |---|---|---|
 | **CityId** | lowercase snake case | `new_york`, `salt_lake_city`, `sault_st_marie` |
-| **RouteId** | `{cityA}_{cityB}_{n}`, città in ordine lessicografico, `_1` singola / `_1` `_2` doppia | `denver_phoenix_1`, `seattle_vancouver_2` |
+| **RouteId** | `{cityA}_{cityB}_{n}`, città in ordine lessicografico, `_1` singola / `_1`…`_n` binari paralleli (2–4) | `denver_phoenix_1`, `seattle_vancouver_2`, `czechy_wroclaw_4` |
 | **TicketId** | `{cityA}_{cityB}`, città in ordine lessicografico | `los_angeles_new_york` |
 
 **Regola deterministica**: mai iterare `HashMap` in percorsi che influenzano stato o serializzazione → `BTreeMap` o ordinamenti espliciti (piano §3.3, R3).
@@ -16,14 +16,13 @@
 - **Giocatori**: `Red`, `Blue`, `Green`, `Yellow`, `Black`
 - **Rotte grigie** (colore qualunque ma uniforme): `"Gray"` nei dati mappa
 
-## Rotte doppie — rappresentazione geometrica
+## Rotte parallele e Paesi
 
-Due segmenti tra le stesse città si sovrapporrebbero. Il renderer applica un **offset perpendicolare ±d** lungo la normale:
-- `n = (−Δy, Δx) / |Δ|` dove `Δ = (lon_B − lon_A, lat_B − lat_A)`
-- Per la rotta `_1`: offset `+d`; per la `_2`: offset `−d`
-- `d` è calcolato in base allo zoom (es. ~0.15° a zoom default)
+- Un gruppo parallelo ha 2–4 binari (`double: true`, stessi estremi e lunghezza, id `_1`…`_n`). Un giocatore non ne prende mai due; con meno di `doubleRouteMinPlayers` giocatori, preso un binario gli altri sono bloccati.
+- `alwaysOpen: true` (Poland, rotte verso i Paesi): tutti i binari del gruppo sono aperti con qualunque numero di giocatori, uno per giocatore.
+- `country: true` su una città: Paese confinante, vicolo cieco. Due rotte che entrano nello stesso Paese **non** sono collegate tra loro (Freiburg–Frankreich e Saarbrücken–Frankreich non uniscono Freiburg e Saarbrücken). Un biglietto con estremo Paese è completato da una qualunque rotta del giocatore che vi entra, collegata all'altro estremo.
 
-**Bézier opzionale**: i dati mappa possono includere un punto di controllo (`controlPoint`) dove l'offset lineare non basta (es. rotte molto curve).
+Disegno: i binari di un gruppo stanno a `k · passo` dalla mezzeria, con `k = −(n−1)/2 … (n−1)/2` e passo = spessore del tratto + gap (`doubleGap` del layout); con 2 binari è il vecchio ±(metà tratto + metà gap). I Paesi sono targhette quadrate invece del pallino.
 
 ## Nomi città
 
@@ -37,8 +36,9 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 - L'ordine di `ticketDecks` è parte del replay: i mazzi vengono mescolati in quell'ordine, quindi riordinarlo o aggiungere un mazzo a un ruleset esistente invalida i suoi save (vedi `RULES_VERSION` in `ttr-core`).
 - Ogni mazzo compare una sola volta in `ticketDecks`; `initialTickets.dealt[].deck` e `ticketDraw.deck` devono essere elencati in `ticketDecks`, e un mazzo elencato in `dealt` deve contenere almeno `giocatori × count` biglietti.
 - `initialTickets.keepMin` non supera il totale dei biglietti distribuiti e `ticketDraw.keepMin` non supera `ticketDraw.count`; `ticketDraw.count` è almeno 1.
-- Con `setupDiscards: "reshuffleBottom"` tornano in fondo alla pila di pesca solo gli scarti del setup appartenenti a `ticketDraw.deck`; gli scarti degli altri mazzi escono dalla partita.
+- Con `setupDiscards: "reshuffleBottom"` tornano in fondo alla pila di pesca solo gli scarti del setup appartenenti a `ticketDraw.deck`; gli scarti degli altri mazzi escono dalla partita. Con `"reshuffleBottomOwnDeck"` gli scarti di ogni mazzo sono mescolati e tornano in fondo al proprio mazzo.
 - `initialTickets.dealt[].keepMax` (opzionale) limita i biglietti di quel mazzo tenibili nel draft iniziale (Europe Mega: al massimo 1 lungo); `keepMax <= count` e `keepMin` deve restare raggiungibile.
+- **Pesca con scelta del mazzo** (Germany): `initialTickets: { "chooseFrom": ["regular", "long"], "count": 4, "keepMin": 2 }` al posto di `dealt`, e `ticketDraw: { "chooseFrom": [...], "count": 4, "keepMin": 1 }` al posto di `deck`. Il giocatore manda `DRAW_TICKETS` con le quote per mazzo (`counts`), con somma uguale al totale (`count`, o meno se i mazzi ne hanno meno); anche il draft iniziale comincia con questa pesca. I biglietti scartati tornano in fondo al proprio mazzo. In Germany `regular` sono i biglietti corti.
 
 ## Modalità e set di biglietti
 
@@ -50,7 +50,10 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 
 ## Bonus
 
-- Tipi ammessi in `bonuses`: `"longest_path"` (percorso più lungo, parità a tutti) e `"globetrotter"` (più biglietti completati, parità a tutti, nessuno se il massimo è 0). Un tipo sconosciuto o ripetuto rende il ruleset non valido; la lista può essere vuota (USA Grandi Città). Senza `longest_path` il percorso più lungo non viene calcolato.
+- Tipi ammessi in `bonuses`: `"longest_path"` (percorso più lungo, parità a tutti) e `"globetrotter"` (più biglietti completati, parità a tutti, nessuno se il massimo è 0). Un tipo sconosciuto o ripetuto rende il ruleset non valido; la lista può essere vuota (USA Grandi Città, Poland). Senza `longest_path` il percorso più lungo non viene calcolato.
+- `countryCards` (opzionale, Poland): per ogni Paese i valori delle carte dall'alto in basso (pile non mescolate). Quando un giocatore reclama una rotta che entra in un Paese e la sua rete che la contiene raggiunge almeno due Paesi, prende la carta in cima alla pila di **ogni** Paese della rete; pile vuote non danno nulla. Unire due proprie reti senza un Paese nuovo non dà carte. A fine partita la somma va nel totale (`countryPoints`).
+- `passengers` (opzionale, Germany 2017): `colors`, `perColor`, `placement` (passeggeri per città, Paesi compresi) e `majorityPoints` `[primo, secondo]`. Il sacchetto è mescolato dopo tutto il consumo RNG preesistente e distribuito sulle città in ordine di id. A ogni rotta presa il giocatore prende un passeggero per estremo (sceglie il colore solo dove ce n'è più di uno: `CLAIM_ROUTE.passengers`). A fine partita, per colore, conta solo chi ne ha almeno uno: il massimo prende il primo valore (pari merito: tutti il primo, nessuno il secondo), altrimenti chi ha il secondo valore più alto prende il secondo (anche a pari merito). Totale in `passengerPoints`.
+- `tieBreakers` (opzionale): spareggi dopo il totale, in ordine. Chiavi: `completedTickets`, `completedTicketPoints`, `longestPathBonus`, `passengers` (passeggeri raccolti). Default `["completedTickets", "longestPathBonus"]` (comportamento storico). Pari merito dopo tutte le chiavi: vincono tutti.
 
 ## Validazione
 
@@ -63,7 +66,9 @@ Vincoli su mappa e ruleset, ognuno con una variante dedicata di `EngineInitError
 - ogni rotta ha `len >= 1` e la sua lunghezza compare in `routePoints`;
 - `trainsPerPlayer >= 1`;
 - il ruleset ha un `name` non vuoto (nome mostrato nel selettore mappe, servito da `GET /api/rulesets`);
-- una rotta con `double: true` ha id con suffisso `_1`/`_2` e una gemella con `double: true`, stessi estremi e stessa lunghezza;
+- una rotta con `double: true` appartiene a un gruppo di 2–4 binari paralleli: id con suffissi `_1`…`_n` contigui, stessi estremi e stessa lunghezza, `alwaysOpen` uguale su tutti i binari;
+- `countryCards` ha come chiavi solo Paesi (`country: true`); `passengers` ha colori non vuoti e unici, `perColor ≥ 1`, `placement` su città esistenti con conteggi ≥ 1 e somma `colori × perColor`, `majorityPoints` di 2 valori;
+- `chooseFrom` non vuoto, senza duplicati, con mazzi elencati in `ticketDecks`, `count ≥ 1`, e abbastanza biglietti per `giocatori.max × count` nel draft iniziale; `tieBreakers` senza chiavi sconosciute o ripetute;
 - il mazzo treni ha `perColor × 8 >= 3 × locomotives`;
 - `Engine::new` richiede inoltre id e colori dei giocatori distinti.
 

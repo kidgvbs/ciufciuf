@@ -153,6 +153,24 @@ describe('isMapData', () => {
   });
 });
 
+describe('isMapData: Paesi e gruppi sempre aperti', () => {
+  it('accetta country sulle città e alwaysOpen sulle rotte, rifiuta valori non booleani', () => {
+    const withCity = (extra: Record<string, unknown>) => ({
+      ...MAP,
+      cities: [{ id: 'a', name: 'A', ...extra }, MAP.cities[1]],
+    });
+    expect(isMapData(withCity({ country: true }))).toBe(true);
+    expect(isMapData(withCity({ country: false }))).toBe(true);
+    expect(isMapData(withCity({ country: 'sì' }))).toBe(false);
+    const withRoute = (extra: Record<string, unknown>) => ({
+      ...MAP,
+      routes: [{ ...MAP.routes[0], ...extra }],
+    });
+    expect(isMapData(withRoute({ alwaysOpen: true }))).toBe(true);
+    expect(isMapData(withRoute({ alwaysOpen: 1 }))).toBe(false);
+  });
+});
+
 describe('isMapLayout', () => {
   it('accetta il layout completo e ignora i campi opzionali assenti', () => {
     expect(isMapLayout(LAYOUT)).toBe(true);

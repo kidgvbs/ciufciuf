@@ -12,6 +12,8 @@ export interface CityData {
   name: string;
   lat: number;
   lon: number;
+  /** Paese confinante (vicolo cieco): marcatore distinto dal pallino città. Assente = false. */
+  country?: boolean;
 }
 
 export interface RouteData {
@@ -25,6 +27,8 @@ export interface RouteData {
   tunnel?: boolean;
   /** Europe: numero di locomotive obbligatorie (traghetto). Assente = 0. */
   ferries?: number;
+  /** Germany/Poland: binari tutti aperti con qualunque numero di giocatori. Assente = false. */
+  alwaysOpen?: boolean;
 }
 
 export interface MapData {
@@ -94,35 +98,42 @@ export function projectCity(
 
 // ── Rotte doppie: offset ───────────────────────────────────────────
 
-/** Gap libero (bordo-bordo) tra i due binari di una doppia, se il layout non lo specifica. */
+/** Gap libero (bordo-bordo) tra due binari adiacenti di un gruppo parallelo, se il layout non lo specifica. */
 export const DEFAULT_DOUBLE_GAP = 5;
 
 /**
- * Distanza della mezzeria di ciascun binario di una doppia dalla linea
- * città-città: metà spessore (a stroke pieno) + metà gap. Con l'offset
- * fisso ±7 le doppie len≥4 avevano ~0.5px tra i due inchiostri e
- * sembravano una linea sola. Il generatore usa la stessa formula.
- * Segno: indice 0 → +offset, indice 1 → −offset (normale (−Δy, Δx)/|Δ|).
+ * Distanza della mezzeria di un binario dalla linea città-città in un gruppo di
+ * `count` = 2–4 binari paralleli: `k·passo`, passo = spessore pieno + gap e
+ * k = (count−1)/2 … −(count−1)/2 (simmetrico). Con 2 binari è metà spessore + metà
+ * gap (con l'offset fisso ±7 le doppie len≥4 avevano ~0.5px tra i due inchiostri e
+ * sembravano una linea sola). Il generatore usa la stessa formula.
+ * Segno: indice 0 → lato + (normale (−Δy, Δx)/|Δ|), ultimo indice → lato −.
  */
-export function doubleRouteOffset(len: number, index: number, gap = DEFAULT_DOUBLE_GAP): number {
-  const mag = routeStrokeWidth(len) / 2 + gap / 2;
-  return index === 1 ? -mag : mag;
+export function doubleRouteOffset(
+  len: number,
+  index: number,
+  gap = DEFAULT_DOUBLE_GAP,
+  count = 2,
+): number {
+  return ((count - 1) / 2 - index) * (routeStrokeWidth(len) + gap);
 }
 
 // ── Rotte doppie: raggruppamento ───────────────────────────────────
 
 export interface DoubleRouteGroup {
   routes: RouteData[];
-  indices: Map<string, number>; // routeId → index (0 o 1)
+  indices: Map<string, number>; // routeId → indice del binario (0 … n−1)
 }
 
 /**
- * Raggruppa le rotte per coppia di città e assegna un indice (0 o 1)
- * alle doppie. Le singole hanno indice 0 per default.
+ * Raggruppa le rotte per coppia di città e assegna un indice (0 … n−1) ai binari dei
+ * gruppi paralleli (n = 2–4) e la dimensione del gruppo. Le singole hanno indice 0 e
+ * dimensione 1.
  */
 export function groupDoubleRoutes(routes: RouteData[]): {
   groups: Map<string, DoubleRouteGroup>;
   routeIndex: Map<string, number>;
+  routeGroupSize: Map<string, number>;
 } {
   const pairMap = new Map<string, RouteData[]>();
   for (const r of routes) {
@@ -134,17 +145,19 @@ export function groupDoubleRoutes(routes: RouteData[]): {
 
   const groups = new Map<string, DoubleRouteGroup>();
   const routeIndex = new Map<string, number>();
+  const routeGroupSize = new Map<string, number>();
 
   for (const [key, list] of pairMap) {
     const indices = new Map<string, number>();
     list.forEach((r, i) => {
       indices.set(r.id, list.length > 1 ? i : 0);
       routeIndex.set(r.id, list.length > 1 ? i : 0);
+      routeGroupSize.set(r.id, list.length);
     });
     groups.set(key, { routes: list, indices });
   }
 
-  return { groups, routeIndex };
+  return { groups, routeIndex, routeGroupSize };
 }
 
 // ── Colori rotta ───────────────────────────────────────────────────

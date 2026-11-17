@@ -78,6 +78,18 @@ pub enum EngineError {
 
     #[error("carte insufficienti per il costo extra del tunnel '{route_id}': servono {needed}")]
     InsufficientTunnelCards { route_id: String, needed: u32 },
+
+    #[error(
+        "rotta '{route_id}': la città '{city_id}' ha passeggeri di più colori, serve sceglierne uno"
+    )]
+    PassengerChoiceRequired { route_id: String, city_id: String },
+
+    #[error("rotta '{route_id}': nessun passeggero {color} a '{city_id}'")]
+    PassengerNotAvailable {
+        route_id: String,
+        city_id: String,
+        color: String,
+    },
 }
 
 /// Errore di configurazione: ruleset, mappa o giocatori incoerenti.
@@ -213,11 +225,11 @@ pub enum EngineInitError {
     #[error("rotta '{route_id}': partenza e arrivo coincidono ('{city_id}')")]
     RouteSameCity { route_id: String, city_id: String },
 
-    #[error("rotta doppia '{route_id}': l'id deve finire con _1 o _2")]
+    #[error("rotta doppia '{route_id}': l'id deve finire con _1, _2, _3 o _4")]
     DoubleRouteBadId { route_id: String },
 
     #[error(
-        "rotta doppia '{route_id}': manca la gemella '{sister_id}' con stessi estremi, stessa lunghezza e double=true"
+        "rotta doppia '{route_id}': il gruppo parallelo non è completo: serve '{sister_id}' con stessi estremi, stessa lunghezza e double=true (ids {{base}}_1..{{base}}_k contigui)"
     )]
     DoubleRouteUnpaired { route_id: String, sister_id: String },
 
@@ -254,6 +266,81 @@ pub enum EngineInitError {
 
     #[error("stations.costs[{index}] deve essere almeno 1")]
     StationCostZero { index: usize },
+
+    #[error("id città '{city_id}' non valido: '#' è riservato ai nodi privati dei Paesi")]
+    CityIdInvalid { city_id: String },
+
+    #[error("rotta doppia '{route_id}': il gruppo ha {lanes} binari, il massimo è 4")]
+    DoubleGroupTooLarge { route_id: String, lanes: usize },
+
+    #[error(
+        "rotta doppia '{route_id}': alwaysOpen diverso da quello del binario '{other_id}' dello stesso gruppo"
+    )]
+    DoubleGroupAlwaysOpenMismatch { route_id: String, other_id: String },
+
+    #[error("initialTickets: usare `dealt` oppure `chooseFrom`, non entrambi")]
+    InitialTicketsBothForms,
+
+    #[error("ticketDraw: usare `deck` oppure `chooseFrom`, non entrambi")]
+    TicketDrawBothForms,
+
+    #[error("{field}.chooseFrom non può essere vuoto")]
+    ChooseFromEmpty { field: String },
+
+    #[error("{field}.chooseFrom: il deck '{deck}' è ripetuto")]
+    ChooseFromDuplicate { field: String, deck: String },
+
+    #[error("{field}.chooseFrom usa il deck '{deck}' che non è in ticketDecks")]
+    ChooseFromDeckUnknown { field: String, deck: String },
+
+    #[error("{field}.count deve essere almeno 1 con chooseFrom")]
+    ChooseFromCountZero { field: String },
+
+    #[error(
+        "initialTickets.chooseFrom: i mazzi '{decks}' hanno {have} biglietti, ne servono {needed}"
+    )]
+    ChooseFromDecksTooSmall {
+        decks: String,
+        have: usize,
+        needed: usize,
+    },
+
+    #[error(
+        "setupDiscards 'reshuffleBottom' non è ammesso con ticketDraw.chooseFrom: usare 'reshuffleBottomOwnDeck' o 'removed'"
+    )]
+    SetupDiscardsNeedOwnDeck,
+
+    #[error("tieBreakers: chiave '{key}' sconosciuta")]
+    UnknownTieBreaker { key: String },
+
+    #[error("tieBreakers: chiave '{key}' ripetuta")]
+    DuplicateTieBreaker { key: String },
+
+    #[error("countryCards: '{city_id}' non è un Paese della mappa")]
+    CountryCardsUnknownCountry { city_id: String },
+
+    #[error("passengers.colors non può essere vuoto")]
+    PassengersColorsEmpty,
+
+    #[error("passengers.colors: il colore '{color}' è ripetuto")]
+    PassengersDuplicateColor { color: String },
+
+    #[error("passengers.perColor deve essere almeno 1")]
+    PassengersPerColorZero,
+
+    #[error("passengers.placement: la città '{city_id}' non esiste")]
+    PassengersUnknownCity { city_id: String },
+
+    #[error("passengers.placement: la città '{city_id}' ha 0 passeggeri")]
+    PassengersPlacementZero { city_id: String },
+
+    #[error(
+        "passengers.placement distribuisce {placed} passeggeri ma il sacchetto ne ha {bag} (colori × perColor)"
+    )]
+    PassengersPlacementMismatch { placed: u32, bag: u32 },
+
+    #[error("passengers.majorityPoints deve avere 2 valori, ne ha {len}")]
+    PassengersMajorityPoints { len: usize },
 }
 
 /// Fase di gioco (macchina a stati interna).

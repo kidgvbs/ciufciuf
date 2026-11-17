@@ -80,6 +80,71 @@ async fn full_game_over_ws() {
     }
 }
 
+/// Partita completa via WS su un ruleset con regole nuove: draft e pescate con le quote,
+/// scelta dei passeggeri, carte Paese. Restituisce lo stato pubblico finale.
+async fn play_full_ruleset(ruleset_id: &str, map: &ttr_core::MapData) -> ttr_proto::PublicState {
+    let server = TestServer::start().await;
+    let game = create_game_for_ruleset(&server.base_url, ruleset_id, "Nuove", Some(42)).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", None).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", None).await;
+    start_game(&server.base_url, &game.game_id, &game.host_token).await;
+    let a = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
+    let b = WsClient::connect(&server, &game.game_id, &pb.player_id, &pb.token).await;
+    let (mut a, mut b) = (Player::new(a), Player::new(b));
+    let final_public = run_game(&mut a, &mut b, map).await;
+    assert_eq!(final_public.state, GameState::GameOver);
+    let scores = final_public.final_scores.as_ref().expect("final_scores");
+    for s in scores {
+        assert_eq!(
+            s.total,
+            s.route_points
+                + s.ticket_completed
+                + s.ticket_failed
+                + s.longest_path_bonus
+                + s.globetrotter_bonus
+                + s.country_points
+                + s.passenger_points,
+            "totale coerente per {}",
+            s.player_id
+        );
+    }
+    final_public
+}
+
+/// Germany 2017 via WS: i passeggeri presi più quelli rimasti sono i 60 iniziali.
+#[tokio::test]
+async fn full_game_over_ws_germany_2017() {
+    let public = play_full_ruleset("germany_2017", &germany_map()).await;
+    let on_cities: u32 = public
+        .passengers
+        .iter()
+        .flat_map(|c| &c.passengers)
+        .map(|p| p.count)
+        .sum();
+    let held: u32 = public
+        .players_summary
+        .iter()
+        .flat_map(|p| &p.passengers)
+        .map(|p| p.count)
+        .sum();
+    assert_eq!(on_cities + held, 60);
+    assert!(held > 0, "nessun passeggero preso in una partita intera");
+}
+
+/// Poland via WS: le carte Paese prese più quelle nelle pile sono le 20 iniziali.
+#[tokio::test]
+async fn full_game_over_ws_poland() {
+    let public = play_full_ruleset("poland", &poland_map()).await;
+    let in_stacks: usize = public.country_stacks.iter().map(|c| c.values.len()).sum();
+    let taken: usize = public
+        .players_summary
+        .iter()
+        .flat_map(|p| &p.country_cards)
+        .map(|c| c.values.len())
+        .sum();
+    assert_eq!(in_stacks + taken, 20);
+}
+
 /// Disconnect mid-game e reconnect con snapshot coerente.
 #[tokio::test]
 async fn reconnect_mid_game() {

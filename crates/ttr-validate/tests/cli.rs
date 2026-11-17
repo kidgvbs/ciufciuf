@@ -180,7 +180,7 @@ const CASES: &[Case] = &[
             let i = first_double_route(map);
             map["routes"][i]["id"] = Value::from("double_without_suffix");
         },
-        expected: "_1 o _2",
+        expected: "_1, _2, _3 o _4",
     },
     Case {
         name: "double-route-length-mismatch",
@@ -188,7 +188,7 @@ const CASES: &[Case] = &[
             let i = first_double_route(map);
             map["routes"][i]["len"] = Value::from(6);
         },
-        expected: "gemella",
+        expected: "gruppo parallelo",
     },
     Case {
         name: "route-length-zero",
@@ -314,4 +314,249 @@ fn ttr_validate_huge_per_color_does_not_panic() {
     assert_eq!(output.status.code(), Some(1), "{}", stdout(&output));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("panicked"), "{stderr}");
+}
+
+const GERMANY: (&str, &str) = (
+    "../../data/maps/germany.json",
+    "../../data/rulesets/germany.json",
+);
+const POLAND: (&str, &str) = (
+    "../../data/maps/poland.json",
+    "../../data/rulesets/poland.json",
+);
+
+#[test]
+fn ttr_validate_accepts_germany_and_poland() {
+    let germany = run(Path::new(GERMANY.0), Path::new(GERMANY.1));
+    assert!(germany.status.success(), "{}", stdout(&germany));
+    assert!(
+        stdout(&germany)
+            .contains("Modalità: Deutschland (set 'deutschland'), biglietti in gioco: 62"),
+        "{}",
+        stdout(&germany)
+    );
+    let poland = run(Path::new(POLAND.0), Path::new(POLAND.1));
+    assert!(poland.status.success(), "{}", stdout(&poland));
+    assert!(
+        stdout(&poland).contains("Modalità: Standard (set 'standard'), biglietti in gioco: 35"),
+        "{}",
+        stdout(&poland)
+    );
+}
+
+/// Ogni ruleset spedito passa con la sua mappa (USA, Europe, Basilicata, Germany, Poland).
+#[test]
+fn ttr_validate_accepts_every_shipped_ruleset() {
+    let mut checked = 0;
+    for entry in std::fs::read_dir("../../data/rulesets").unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let ruleset = load(path.to_str().unwrap());
+        let map = format!("../../data/maps/{}.json", ruleset["map"].as_str().unwrap());
+        let output = run(Path::new(&map), &path);
+        assert!(
+            output.status.success(),
+            "{}: {}",
+            path.display(),
+            stdout(&output)
+        );
+        checked += 1;
+    }
+    assert!(checked >= 12, "ruleset controllati: {checked}");
+}
+
+/// Applica `mutate` ai dati `base` e verifica che il validatore li rifiuti con `expected`.
+fn expect_rejected(
+    base: (&str, &str),
+    name: &str,
+    mutate: impl FnOnce(&mut Value, &mut Value),
+    expected: &str,
+) {
+    let dir = TempDir::new(name);
+    let (mut map, mut ruleset) = (load(base.0), load(base.1));
+    mutate(&mut map, &mut ruleset);
+    let output = run(
+        &dir.write("map.json", &map),
+        &dir.write("ruleset.json", &ruleset),
+    );
+    let out = stdout(&output);
+    assert_eq!(output.status.code(), Some(1), "{name}: {out}");
+    assert!(out.contains(expected), "{name}: {out}");
+    assert!(!out.contains("✅"), "{name}: {out}");
+}
+
+/// Un Paese è un vicolo cieco: due città raggiungibili solo attraverso lo stesso Paese
+/// non sono collegate, a differenza di un Paese come estremo del biglietto.
+#[test]
+fn ttr_validate_treats_countries_as_dead_ends_for_tickets() {
+    let island = |map: &mut Value, ticket_to: &str| {
+        map["cities"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "id": "inselstadt", "name": "Inselstadt", "lat": 50.0, "lon": 8.0
+            }));
+        map["routes"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "id": "frankreich_inselstadt_1", "from": "frankreich", "to": "inselstadt",
+                "len": 1, "color": "Gray", "double": false, "tunnel": false, "ferries": 0
+            }));
+        map["tickets"]
+            .as_array_mut()
+            .unwrap()
+            .push(serde_json::json!({
+                "id": "freiburg_inselstadt", "from": "inselstadt", "to": ticket_to,
+                "points": 5, "deck": "regular", "sets": ["deutschland"]
+            }));
+    };
+    expect_rejected(
+        GERMANY,
+        "dead-end-ticket",
+        |map, _| island(map, "freiburg"),
+        "Biglietto 'freiburg_inselstadt': inselstadt → freiburg non raggiungibile",
+    );
+
+    // Con il Paese come estremo il biglietto è raggiungibile.
+    let dir = TempDir::new("country-endpoint");
+    let (mut map, ruleset) = (load(GERMANY.0), load(GERMANY.1));
+    island(&mut map, "frankreich");
+    let output = run(
+        &dir.write("map.json", &map),
+        &dir.write("ruleset.json", &ruleset),
+    );
+    assert!(output.status.success(), "{}", stdout(&output));
+}
+
+#[test]
+fn ttr_validate_rejects_inconsistent_new_rules() {
+    type Mutation = fn(&mut Value, &mut Value);
+    let germany: &[(&str, Mutation, &str)] = &[
+        (
+            "choose-from-unknown-deck",
+            |_, rs| rs["ticketDraw"]["chooseFrom"] = serde_json::json!(["regular", "nessuno"]),
+            "ticketDraw.chooseFrom usa il deck 'nessuno'",
+        ),
+        (
+            "choose-from-duplicate",
+            |_, rs| rs["ticketDraw"]["chooseFrom"] = serde_json::json!(["regular", "regular"]),
+            "il deck 'regular' è ripetuto",
+        ),
+        (
+            "choose-from-empty",
+            |_, rs| rs["initialTickets"]["chooseFrom"] = serde_json::json!([]),
+            "initialTickets.chooseFrom non può essere vuoto",
+        ),
+        (
+            "choose-from-count-zero",
+            |_, rs| rs["initialTickets"]["count"] = Value::from(0),
+            "initialTickets.count deve essere almeno 1",
+        ),
+        (
+            "dealt-and-choose-from",
+            |_, rs| {
+                rs["initialTickets"]["dealt"] =
+                    serde_json::json!([{"deck": "regular", "count": 4}]);
+            },
+            "usare `dealt` oppure `chooseFrom`",
+        ),
+        (
+            "deck-and-choose-from",
+            |_, rs| rs["ticketDraw"]["deck"] = Value::from("regular"),
+            "usare `deck` oppure `chooseFrom`",
+        ),
+        (
+            "choose-from-decks-too-small",
+            |_, rs| {
+                rs["initialTickets"]["count"] = Value::from(20);
+                rs["initialTickets"]["keepMin"] = Value::from(2);
+            },
+            "hanno 62 biglietti, ne servono 100",
+        ),
+        (
+            "draw-keep-min-above-count",
+            |_, rs| rs["ticketDraw"]["keepMin"] = Value::from(5),
+            "ticketDraw.keepMin 5",
+        ),
+        (
+            "reshuffle-bottom-with-choose-from",
+            |_, rs| rs["setupDiscards"] = Value::from("reshuffleBottom"),
+            "'reshuffleBottom' non è ammesso",
+        ),
+        (
+            "unknown-tie-breaker",
+            |_, rs| rs["tieBreakers"] = serde_json::json!(["stations"]),
+            "chiave 'stations' sconosciuta",
+        ),
+        (
+            "duplicate-tie-breaker",
+            |_, rs| rs["tieBreakers"] = serde_json::json!(["completedTickets", "completedTickets"]),
+            "chiave 'completedTickets' ripetuta",
+        ),
+        (
+            "city-id-with-hash",
+            |map, _| map["cities"][0]["id"] = Value::from("a#b"),
+            "'#' è riservato",
+        ),
+    ];
+    for (name, mutate, expected) in germany {
+        expect_rejected(GERMANY, name, *mutate, expected);
+    }
+
+    expect_rejected(
+        POLAND,
+        "country-cards-unknown-country",
+        |_, rs| rs["countryCards"]["krakow"] = serde_json::json!([3]),
+        "'krakow' non è un Paese",
+    );
+    expect_rejected(
+        POLAND,
+        "country-cards-not-a-country-flag",
+        |map, _| {
+            let cities = map["cities"].as_array_mut().unwrap();
+            let city = cities.iter_mut().find(|c| c["id"] == "niemcy").unwrap();
+            city["country"] = Value::from(false);
+        },
+        "'niemcy' non è un Paese",
+    );
+    expect_rejected(
+        POLAND,
+        "always-open-mismatch",
+        |map, _| {
+            let routes = map["routes"].as_array_mut().unwrap();
+            let lane = routes
+                .iter_mut()
+                .find(|r| r["id"] == "bialorus_siedlce_1")
+                .unwrap();
+            lane["alwaysOpen"] = Value::from(false);
+        },
+        "alwaysOpen diverso",
+    );
+    expect_rejected(
+        POLAND,
+        "parallel-group-too-large",
+        |map, _| {
+            let routes = map["routes"].as_array_mut().unwrap();
+            let mut fifth = routes
+                .iter()
+                .find(|r| r["id"] == "czechy_wroclaw_4")
+                .unwrap()
+                .clone();
+            fifth["id"] = Value::from("czechy_wroclaw_5");
+            routes.push(fifth);
+        },
+        "il gruppo ha 5 binari, il massimo è 4",
+    );
+    expect_rejected(
+        POLAND,
+        "parallel-group-gap",
+        |map, _| {
+            let routes = map["routes"].as_array_mut().unwrap();
+            routes.retain(|r| r["id"] != "czechy_wroclaw_2");
+        },
+        "serve 'czechy_wroclaw_2'",
+    );
 }

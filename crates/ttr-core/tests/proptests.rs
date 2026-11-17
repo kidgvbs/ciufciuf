@@ -1,9 +1,10 @@
 //! Test property-based sul motore: conservazione, azioni fallite,
-//! legal-vs-apply e replay, su partite casuali sulle mappe USA ed Europe reali.
+//! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany e Poland reali.
 //!
-//! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel.
+//! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel; sulla
+//! Germany pescano i biglietti con le quote per mazzo.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
 
 use proptest::prelude::*;
@@ -11,10 +12,12 @@ use ttr_core::error::GamePhase;
 use ttr_core::types::{
     GLOBETROTTER_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Ruleset, SetupDiscards, TRAIN_COLORS,
 };
-use ttr_core::{Action, DrawSource, Engine, GameEvent, RouteColor, default_player_colors};
+use ttr_core::{
+    Action, DrawSource, Engine, GameEvent, RouteColor, TicketDrawMoves, default_player_colors,
+};
 use ttr_proto::CardColor;
 
-/// Carte di un mazzo completo (12 × 8 colori + 14 locomotive, come USA ed Europe).
+/// Carte di un mazzo completo (12 × 8 colori + 14 locomotive, come USA, Europe, Germany e Poland).
 const FULL_DECK: usize = 110;
 
 /// Massimo di mosse per partita casuale.
@@ -33,6 +36,14 @@ enum Game {
     EuropeMega,
     /// Europe Grandi Città: solo regolari, pesca 4.
     EuropeBigCities,
+    /// Germany: gruppi di 3 binari, Paesi, pesca con scelta del mazzo (corti/lunghi),
+    /// Globetrotter senza percorso più lungo.
+    Germany,
+    /// Poland: gruppi di 3–4 binari sempre aperti, Paesi con carte Paese, spareggi sui punti
+    /// dei biglietti.
+    Poland,
+    /// Germany 2017: 89 biglietti, passeggeri con scelta del colore al claim.
+    Germany2017,
 }
 
 static USA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_v2", "usa"));
@@ -43,6 +54,10 @@ static USA_BIG_CITIES: LazyLock<(Ruleset, MapData)> =
 static EUROPE_MEGA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("europe_mega", "europe"));
 static EUROPE_BIG_CITIES: LazyLock<(Ruleset, MapData)> =
     LazyLock::new(|| load("europe_big_cities", "europe"));
+static GERMANY: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("germany", "germany"));
+static POLAND: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("poland", "poland"));
+static GERMANY_2017: LazyLock<(Ruleset, MapData)> =
+    LazyLock::new(|| load("germany_2017", "germany"));
 
 fn load(ruleset: &str, map: &str) -> (Ruleset, MapData) {
     let ruleset = std::fs::read_to_string(format!("../../data/rulesets/{ruleset}.json")).unwrap();
@@ -61,6 +76,9 @@ fn data(game: Game) -> &'static (Ruleset, MapData) {
         Game::UsaBigCities => &USA_BIG_CITIES,
         Game::EuropeMega => &EUROPE_MEGA,
         Game::EuropeBigCities => &EUROPE_BIG_CITIES,
+        Game::Germany => &GERMANY,
+        Game::Poland => &POLAND,
+        Game::Germany2017 => &GERMANY_2017,
     }
 }
 
@@ -72,8 +90,15 @@ const MODE_GAMES: [Game; 4] = [
     Game::EuropeBigCities,
 ];
 
+/// Numero di giocatori ammesso dal ruleset più vicino a `players`.
+fn clamp_players(game: Game, players: usize) -> usize {
+    let range = &data(game).0.players;
+    players.clamp(range.min as usize, range.max as usize)
+}
+
 fn new_engine(game: Game, seed: u64, players: usize) -> Engine {
     let (ruleset, map) = data(game);
+    let players = clamp_players(game, players);
     Engine::new(
         seed,
         ruleset.clone(),
@@ -122,6 +147,22 @@ fn route_payment(eng: &Engine, player: usize, route_id: &str) -> Option<Vec<Card
     )
 }
 
+/// Passeggeri da prendere con la rotta: il primo colore (alfabetico) di ogni estremo che ne
+/// ha più d'uno; vuoto senza passeggeri.
+fn passenger_picks(eng: &Engine, route_id: &str) -> BTreeMap<String, String> {
+    let Some(route) = eng.get_route(route_id) else {
+        return BTreeMap::new();
+    };
+    [&route.from, &route.to]
+        .into_iter()
+        .filter_map(|city| {
+            let colors = eng.passengers_on_cities().get(city)?;
+            let first = colors.keys().next()?;
+            (colors.len() > 1).then(|| (city.clone(), first.clone()))
+        })
+        .collect()
+}
+
 /// `cost` carte di un solo colore (più locomotive) per una stazione, se la mano le ha.
 fn station_payment(eng: &Engine, player: usize, cost: usize) -> Option<Vec<CardColor>> {
     build_payment(eng.player_hand(player)?, RouteColor::Gray, cost, 0)
@@ -162,6 +203,69 @@ fn keep_within_limits(eng: &Engine, pi: usize, offered: &[String], want: usize) 
     keep
 }
 
+/// Quote per una pesca con scelta del mazzo: riempie i mazzi nell'ordine (o al contrario).
+fn greedy_counts(draw: &TicketDrawMoves, reverse: bool) -> BTreeMap<String, u32> {
+    let mut left = draw.total;
+    let mut counts = BTreeMap::new();
+    let mut decks: Vec<_> = draw.available.iter().collect();
+    if reverse {
+        decks.reverse();
+    }
+    for deck in decks {
+        let take = deck.count.min(left);
+        if take > 0 {
+            counts.insert(deck.deck.clone(), take);
+        }
+        left -= take;
+    }
+    counts
+}
+
+/// Quote per una pesca con scelta del mazzo: un biglietto alla volta, un mazzo dopo l'altro.
+fn round_robin_counts(draw: &TicketDrawMoves) -> BTreeMap<String, u32> {
+    let mut left = draw.total;
+    let mut taken: Vec<u32> = vec![0; draw.available.len()];
+    while left > 0 {
+        let mut progressed = false;
+        for (slot, deck) in taken.iter_mut().zip(&draw.available) {
+            if left > 0 && *slot < deck.count {
+                *slot += 1;
+                left -= 1;
+                progressed = true;
+            }
+        }
+        assert!(progressed, "quote impossibili da distribuire");
+    }
+    draw.available
+        .iter()
+        .zip(taken)
+        .filter(|(_, n)| *n > 0)
+        .map(|(deck, n)| (deck.deck.clone(), n))
+        .collect()
+}
+
+/// Pescate di biglietti valide per il giocatore: con le quote (`chooseFrom`) tre ripartizioni
+/// diverse, altrimenti la pesca classica senza quote se è ammessa.
+fn draw_ticket_actions(
+    player_index: usize,
+    draw: Option<&TicketDrawMoves>,
+    can_draw: bool,
+) -> Vec<Action> {
+    let draw_with = |counts| Action::DrawTickets {
+        player_index,
+        counts,
+    };
+    match draw {
+        Some(moves) => vec![
+            draw_with(greedy_counts(moves, false)),
+            draw_with(greedy_counts(moves, true)),
+            draw_with(round_robin_counts(moves)),
+        ],
+        None if can_draw => vec![draw_with(BTreeMap::new())],
+        None => Vec::new(),
+    }
+}
+
 /// Azioni sensate per la fase corrente, usate per far avanzare la partita.
 fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
     let (ruleset, _) = data(game);
@@ -171,6 +275,13 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
             for pi in 0..eng.num_players() {
                 let offered = eng.initial_tickets_for(pi).unwrap_or_default();
                 if offered.is_empty() {
+                    // Con `chooseFrom` il draft inizia pescando con le quote.
+                    let legal = eng.legal_moves(pi);
+                    actions.extend(draw_ticket_actions(
+                        pi,
+                        legal.ticket_draw.as_ref(),
+                        legal.can_draw_tickets,
+                    ));
                     continue;
                 }
                 let keep_min = ruleset.initial_tickets.keep_min as usize;
@@ -205,6 +316,7 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
                     player_index: pi,
                     route_id: route_id.clone(),
                     cards_discarded: cards,
+                    passengers: passenger_picks(eng, route_id),
                 });
             }
             if let Some(tunnel) = &legal.tunnel {
@@ -239,9 +351,11 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
                     source: DrawSource::Deck,
                 });
             }
-            if legal.can_draw_tickets {
-                actions.push(Action::DrawTickets { player_index: pi });
-            }
+            actions.extend(draw_ticket_actions(
+                pi,
+                legal.ticket_draw.as_ref(),
+                legal.can_draw_tickets,
+            ));
             for city in &legal.station_cities {
                 let cards = station_payment(eng, pi, legal.station_cost as usize)
                     .expect("stazione elencata ma non pagabile");
@@ -290,7 +404,22 @@ fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
                 }
             },
         },
-        1 => Action::DrawTickets { player_index },
+        1 => {
+            // Quote per mazzo a caso (anche vuote, sbagliate o di un mazzo ignoto).
+            let counts: BTreeMap<String, u32> = match picks[3] % 4 {
+                0 => BTreeMap::new(),
+                1 => BTreeMap::from([("regular".to_string(), u32::from(picks[2] % 6))]),
+                2 => BTreeMap::from([("nessuno".to_string(), u32::from(picks[2] % 3))]),
+                _ => BTreeMap::from([
+                    ("regular".to_string(), u32::from(picks[2] % 5)),
+                    ("long".to_string(), u32::from(picks[2] % 3)),
+                ]),
+            };
+            Action::DrawTickets {
+                player_index,
+                counts,
+            }
+        }
         2 => {
             let mut pool: Vec<String> = eng.pending_tickets().to_vec();
             if let Some(initial) = eng.initial_tickets_for(player_index) {
@@ -328,6 +457,7 @@ fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
                 player_index,
                 route_id,
                 cards_discarded: cards,
+                passengers: Default::default(),
             }
         }
         4 => {
@@ -376,7 +506,7 @@ struct Snapshot {
     rng_word: u64,
     draw_pile: Vec<CardColor>,
     face_up: Vec<Option<CardColor>>,
-    ticket_pile: Vec<String>,
+    ticket_piles: BTreeMap<String, Vec<String>>,
     pending: Vec<String>,
     hands: Vec<Vec<CardColor>>,
     tickets: Vec<Vec<String>>,
@@ -391,7 +521,7 @@ fn snapshot(eng: &Engine) -> Snapshot {
         rng_word: eng.peek_rng_word(),
         draw_pile: eng.draw_pile_cards().to_vec(),
         face_up: eng.face_up_cards().to_vec(),
-        ticket_pile: eng.ticket_pile().to_vec(),
+        ticket_piles: eng.ticket_piles().clone(),
         pending: eng.pending_tickets().to_vec(),
         hands: players
             .clone()
@@ -517,7 +647,7 @@ fn check_conservation(
         prop_assert!(eng.face_up_cards().iter().all(Option::is_some));
         check_station_and_tunnel_state(game, eng)?;
 
-        let mut ids: Vec<&String> = eng.ticket_pile().iter().collect();
+        let mut ids: Vec<&String> = eng.ticket_piles().values().flatten().collect();
         ids.extend(eng.pending_tickets());
         for p in 0..eng.num_players() {
             ids.extend(eng.player(p).unwrap().tickets.keys());
@@ -529,10 +659,44 @@ fn check_conservation(
             SetupDiscards::ReshuffleBottom if ruleset.ticket_decks.len() == 1 => {
                 prop_assert_eq!(ids.len(), in_play.len(), "biglietti persi o creati");
             }
+            SetupDiscards::ReshuffleBottomOwnDeck => {
+                prop_assert_eq!(ids.len(), in_play.len(), "biglietti persi o creati");
+            }
             // Scarti di setup fuori dalla partita (Europe) o mazzi non pescabili (lunghi).
             _ => prop_assert!(ids.len() <= in_play.len(), "biglietti creati"),
         }
         prop_assert_eq!(unique.len(), ids.len(), "biglietto duplicato");
+
+        // Le carte Paese si conservano: le prese sono le prime della pila iniziale e la
+        // pila ha le altre, nello stesso ordine.
+        for (country, original) in &ruleset.country_cards {
+            let stack = &eng.country_stacks()[country];
+            let taken: usize = (0..eng.num_players())
+                .map(|p| {
+                    eng.player(p)
+                        .unwrap()
+                        .country_cards
+                        .get(country)
+                        .map_or(0, Vec::len)
+                })
+                .sum();
+            prop_assert_eq!(taken + stack.len(), original.len(), "carte {}", country);
+            prop_assert_eq!(&original[taken..], stack.as_slice());
+        }
+
+        // I passeggeri si conservano: quelli sulle città più quelli dei giocatori.
+        if let Some(config) = &ruleset.passengers {
+            let on_cities: u32 = eng
+                .passengers_on_cities()
+                .values()
+                .flat_map(|colors| colors.values())
+                .sum();
+            let held: u32 = (0..eng.num_players())
+                .map(|p| eng.player(p).unwrap().passengers.values().sum::<u32>())
+                .sum();
+            let bag = config.per_color * config.colors.len() as u32;
+            prop_assert_eq!(on_cities + held, bag, "passeggeri persi o creati");
+        }
         Ok(())
     })?;
     Ok(())
@@ -564,7 +728,7 @@ fn check_legal_moves_agree_with_apply(
     players: usize,
     choices: &[u16],
 ) -> Result<(), TestCaseError> {
-    let (_, map) = data(game);
+    let (ruleset, map) = data(game);
     play(game, seed, players, choices, |eng, window| {
         let pi = eng.current_player();
         for other in (0..eng.num_players()).filter(|p| *p != pi) {
@@ -573,21 +737,29 @@ fn check_legal_moves_agree_with_apply(
                 lm.routes.is_empty()
                     && lm.draw_face_up.is_empty()
                     && !lm.can_draw_deck
-                    && !lm.can_draw_tickets
                     && lm.station_cities.is_empty()
                     && lm.station_cost == 0
                     && lm.tunnel.is_none(),
                 "mosse per il giocatore {other} non di turno"
             );
-            // Il draft iniziale è simultaneo: la scelta spetta a chi non l'ha ancora fatta.
+            // Il draft iniziale è simultaneo: la scelta spetta a chi non l'ha ancora fatta,
+            // dopo aver pescato i biglietti (con `chooseFrom` la pesca con le quote viene prima).
             let drafting = eng.phase() == GamePhase::InitialDraft
                 && !eng.player(other).unwrap().initial_draft_done;
+            let has_offers = !eng.initial_tickets_for(other).unwrap().is_empty();
             prop_assert_eq!(
                 lm.ticket_choice.is_some(),
-                drafting,
+                drafting && has_offers,
                 "ticket_choice di {}",
                 other
             );
+            prop_assert_eq!(
+                lm.ticket_draw.is_some(),
+                drafting && !has_offers && ruleset.initial_tickets.choose_from.is_some(),
+                "ticket_draw di {}",
+                other
+            );
+            prop_assert_eq!(lm.can_draw_tickets, lm.ticket_draw.is_some());
         }
         if eng.phase() == GamePhase::GameOver {
             return Ok(());
@@ -655,6 +827,7 @@ fn check_legal_moves_agree_with_apply(
                 player_index: pi,
                 route_id: route.id.clone(),
                 cards_discarded: cards,
+                passengers: passenger_picks(eng, &route.id),
             };
             check(eng, action, listed, &format!("rotta {}", route.id))?;
         }
@@ -675,8 +848,26 @@ fn check_legal_moves_agree_with_apply(
             source: DrawSource::Deck,
         };
         check(eng, deck, lm.can_draw_deck, "pesca dal mazzo")?;
-        let tickets = Action::DrawTickets { player_index: pi };
+        let ticket_counts = lm
+            .ticket_draw
+            .as_ref()
+            .map(|draw| greedy_counts(draw, false))
+            .unwrap_or_default();
+        let tickets = Action::DrawTickets {
+            player_index: pi,
+            counts: ticket_counts,
+        };
         check(eng, tickets, lm.can_draw_tickets, "pesca biglietti")?;
+        // Quote con la somma sbagliata non sono mai valide.
+        if let Some(draw) = &lm.ticket_draw {
+            let mut counts = greedy_counts(draw, false);
+            *counts.entry(draw.available[0].deck.clone()).or_default() += 1;
+            let wrong = Action::DrawTickets {
+                player_index: pi,
+                counts,
+            };
+            check(eng, wrong, false, "quote con somma errata")?;
+        }
 
         // Stazioni: elencate solo in città libere e pagabili; il costo è quello della prossima.
         let in_turn = matches!(eng.phase(), GamePhase::PlayerTurn | GamePhase::LastRound);
@@ -821,6 +1012,70 @@ proptest! {
     fn europe_replay_reproduces_state((seed, players, choices) in game_inputs()) {
         check_replay_reproduces_state(Game::Europe, seed, players, &choices)?;
     }
+
+    #[test]
+    fn germany_cards_and_tickets_are_conserved((seed, players, choices) in game_inputs()) {
+        check_conservation(Game::Germany, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_failed_action_leaves_state_identical((seed, players, choices) in game_inputs()) {
+        check_failed_action_leaves_state_identical(Game::Germany, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::Germany, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::Germany, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn poland_cards_and_tickets_are_conserved((seed, players, choices) in game_inputs()) {
+        check_conservation(Game::Poland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn poland_failed_action_leaves_state_identical((seed, players, choices) in game_inputs()) {
+        check_failed_action_leaves_state_identical(Game::Poland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn poland_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::Poland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn poland_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::Poland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_2017_cards_tickets_and_passengers_are_conserved(
+        (seed, players, choices) in game_inputs()
+    ) {
+        check_conservation(Game::Germany2017, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_2017_failed_action_leaves_state_identical(
+        (seed, players, choices) in game_inputs()
+    ) {
+        check_failed_action_leaves_state_identical(Game::Germany2017, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_2017_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::Germany2017, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_2017_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::Germany2017, seed, players, &choices)?;
+    }
 }
 
 /// Azioni massime per una partita giocata fino a `GameOver`.
@@ -845,6 +1100,7 @@ fn play_to_game_over(
     players: usize,
     choices: &[u16],
 ) -> Result<(Engine, FinishedGame), TestCaseError> {
+    let players = clamp_players(game, players);
     let trains = data(game).0.trains_per_player;
     let mut eng = new_engine(game, seed, players);
     let mut route_points = vec![0i32; players];
@@ -925,6 +1181,7 @@ fn check_full_game_invariants(
     players: usize,
     choices: &[u16],
 ) -> Result<(), TestCaseError> {
+    let players = clamp_players(game, players);
     let (eng, finished) = play_to_game_over(game, seed, players, choices)?;
     let unbuilt_points = data(game)
         .0
@@ -998,6 +1255,11 @@ fn check_full_game_invariants(
         prop_assert_eq!(fs.ticket_failed, -failed);
         prop_assert_eq!(fs.longest_path_bonus, bonus);
         prop_assert_eq!(fs.station_points, unbuilt * unbuilt_points);
+        let country: u32 = state.country_cards.values().flatten().sum();
+        prop_assert_eq!(fs.country_points, i32::try_from(country).unwrap());
+        if ruleset.country_cards.is_empty() {
+            prop_assert!(state.country_cards.is_empty());
+        }
         let globetrotter = match globetrotter_points {
             Some(points)
                 if most_completed > 0 && completed_counts[fs.player_index] == most_completed =>
@@ -1015,7 +1277,13 @@ fn check_full_game_invariants(
                 + fs.longest_path_bonus
                 + fs.globetrotter_bonus
                 + fs.station_points
+                + fs.country_points
+                + fs.passenger_points
         );
+        if ruleset.passengers.is_none() {
+            prop_assert_eq!(fs.passenger_points, 0);
+            prop_assert!(state.passengers.is_empty());
+        }
         if fs.winner {
             prop_assert_eq!(
                 fs.total,
@@ -1074,6 +1342,33 @@ proptest! {
         choices in prop::collection::vec(any::<u16>(), 64..256),
     ) {
         check_full_game_invariants(Game::Europe, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::Germany, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn poland_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::Poland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn germany_2017_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::Germany2017, seed, players, &choices)?;
     }
 }
 
@@ -1193,6 +1488,7 @@ mod longest_path_threshold {
                     len: lens[j],
                     color: "Gray".into(),
                     double: false,
+                    always_open: false,
                     tunnel: false,
                     ferries: 0,
                 },

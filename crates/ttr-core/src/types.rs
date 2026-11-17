@@ -22,6 +22,11 @@ pub struct MapData {
 pub struct City {
     pub id: String,
     pub name: String,
+    /// Paese confinante: vicolo cieco. Due rotte che entrano nello stesso Paese non sono
+    /// collegate tra loro; un biglietto con estremo Paese è completato da una qualunque
+    /// rotta del giocatore che vi entra.
+    #[serde(default)]
+    pub country: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +36,13 @@ pub struct Route {
     pub to: String,
     pub len: u32,
     pub color: String, // "Gray" or a card color in PascalCase ("Red", "Blue", ...)
+    /// Binario di un gruppo parallelo di 2–4 binari: le rotte `double` con la stessa
+    /// coppia (non ordinata) di città, con id `{base}_{n}`, n = 1..k contigui.
     pub double: bool,
+    /// Tutti i binari del gruppo sono aperti con qualunque numero di giocatori; uguale su
+    /// tutti i binari del gruppo. Su una rotta singola non cambia nulla.
+    #[serde(rename = "alwaysOpen", default)]
+    pub always_open: bool,
     /// Tunnel (Europe): dopo il pagamento si rivelano carte che possono costare extra.
     #[serde(default)]
     pub tunnel: bool,
@@ -109,6 +120,17 @@ pub struct Ruleset {
     /// Tunnel (Europe); obbligatorio se la mappa ha rotte tunnel.
     #[serde(default)]
     pub tunnels: Option<TunnelsConfig>,
+    /// Spareggi tra pari punti, in ordine di importanza (`completedTickets`,
+    /// `completedTicketPoints`, `longestPathBonus`); assente = `DEFAULT_TIE_BREAKERS`.
+    #[serde(rename = "tieBreakers", default)]
+    pub tie_breakers: Option<Vec<String>>,
+    /// Carte Paese (Poland): per Paese (città `country`), i valori dall'alto in basso.
+    /// Le pile non si mescolano. Vuoto = nessuna carta Paese.
+    #[serde(rename = "countryCards", default)]
+    pub country_cards: BTreeMap<CityId, Vec<u32>>,
+    /// Passeggeri (Germany 2017); assenti sulle altre mappe.
+    #[serde(default)]
+    pub passengers: Option<PassengersConfig>,
 }
 
 /// Stazioni per giocatore: `costs[i]` è il costo in carte della stazione `i`-esima.
@@ -126,6 +148,23 @@ pub struct TunnelsConfig {
     pub revealed: u32,
 }
 
+/// Passeggeri (Germany 2017): un sacchetto di `colors × perColor` passeggeri mescolato a
+/// inizio partita e distribuito sulle città in ordine di id (`placement`); a ogni claim il
+/// giocatore ne prende uno da ciascun estremo; a fine partita premi di maggioranza per colore.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PassengersConfig {
+    /// Colori dei passeggeri (nomi liberi, es. `"Red"`), senza ripetizioni.
+    pub colors: Vec<String>,
+    /// Passeggeri per colore.
+    #[serde(rename = "perColor")]
+    pub per_color: u32,
+    /// Passeggeri iniziali per città (anche i Paesi); la somma è `colors × perColor`.
+    pub placement: BTreeMap<CityId, u32>,
+    /// Punti per colore: `[maggioranza, secondo posto]`.
+    #[serde(rename = "majorityPoints")]
+    pub majority_points: Vec<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayersConfig {
     pub min: u32,
@@ -141,7 +180,16 @@ pub struct DeckConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitialTickets {
+    /// Biglietti distribuiti per mazzo (forma classica); vuoto con `chooseFrom`.
+    #[serde(default)]
     pub dealt: Vec<TicketDealtEntry>,
+    /// Draft con scelta del mazzo: ogni giocatore pesca `count` biglietti in totale dai
+    /// mazzi indicati, con le quote che sceglie.
+    #[serde(rename = "chooseFrom", default)]
+    pub choose_from: Option<Vec<String>>,
+    /// Biglietti pescati nel draft con `chooseFrom`; 0 senza.
+    #[serde(default)]
+    pub count: u32,
     #[serde(rename = "keepMin")]
     pub keep_min: u32,
 }
@@ -157,7 +205,13 @@ pub struct TicketDealtEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TicketDraw {
+    /// Mazzo di pesca (forma classica); vuoto con `chooseFrom`.
+    #[serde(default)]
     pub deck: String,
+    /// Pesca con scelta del mazzo: il giocatore annuncia quanti biglietti pescare da
+    /// ciascuno di questi mazzi (somma = `count`, o i rimasti se meno).
+    #[serde(rename = "chooseFrom", default)]
+    pub choose_from: Option<Vec<String>>,
     pub count: u32,
     #[serde(rename = "keepMin")]
     pub keep_min: u32,
@@ -215,6 +269,16 @@ impl Ruleset {
             .find(|b| b.bonus_type == bonus_type)
             .map(|b| b.points)
     }
+
+    /// Spareggi in ordine di importanza: quelli del ruleset (le chiavi sconosciute, che la
+    /// validazione rifiuta, sono ignorate) oppure `DEFAULT_TIE_BREAKERS`.
+    #[must_use]
+    pub fn tie_breaker_keys(&self) -> Vec<TieBreaker> {
+        match &self.tie_breakers {
+            Some(keys) => keys.iter().filter_map(|k| TieBreaker::parse(k)).collect(),
+            None => DEFAULT_TIE_BREAKERS.to_vec(),
+        }
+    }
 }
 
 /// Cosa fare degli scarti di setup (piano §4.1).
@@ -225,6 +289,10 @@ pub enum SetupDiscards {
     ReshuffleBottom,
     /// Rimossi dalla partita (Europe).
     Removed,
+    /// Come `ReshuffleBottom`, ma per ogni mazzo di `ticketDecks`: gli scarti di un mazzo
+    /// sono rimescolati (RNG del motore, mazzi nell'ordine di `ticketDecks`) e messi in
+    /// fondo al mazzo stesso (Germany).
+    ReshuffleBottomOwnDeck,
 }
 
 // ── Stato giocatore ──────────────────────────────────────────────────
@@ -244,6 +312,12 @@ pub struct PlayerState {
     pub initial_draft_done: bool,
     /// Città con una stazione del giocatore, in ordine di costruzione.
     pub stations: Vec<CityId>,
+    /// Carte Paese prese (Poland): per Paese, i valori nell'ordine in cui sono state prese.
+    #[serde(default)]
+    pub country_cards: BTreeMap<CityId, Vec<u32>>,
+    /// Passeggeri presi (Germany 2017): per colore, quanti.
+    #[serde(default)]
+    pub passengers: BTreeMap<String, u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -281,6 +355,9 @@ pub struct PendingTunnel {
     pub color: CardColor,
     /// Rivelate del colore del tunnel o locomotive.
     pub extra: u32,
+    /// Passeggeri scelti con il `ClaimRoute` (città → colore), presi a claim completato.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub passengers: BTreeMap<CityId, String>,
 }
 
 // ── Identificatori ───────────────────────────────────────────────────
@@ -327,9 +404,39 @@ pub const GLOBETROTTER_BONUS_TYPE: &str = "globetrotter";
 /// Valore canonico di `Route::color` per le rotte grigie.
 pub const GRAY_ROUTE_COLOR: &str = "Gray";
 
-/// Suffissi degli id delle due rotte di una coppia doppia.
-const DOUBLE_ROUTE_FIRST_SUFFIX: &str = "_1";
-const DOUBLE_ROUTE_SECOND_SUFFIX: &str = "_2";
+/// Massimo di binari di un gruppo parallelo.
+pub const MAX_PARALLEL_LANES: usize = 4;
+
+/// Chiave di spareggio del ruleset (`tieBreakers`), in ordine di importanza.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TieBreaker {
+    /// Numero di biglietti completati.
+    CompletedTickets,
+    /// Punti dei biglietti completati.
+    CompletedTicketPoints,
+    /// Bonus del percorso più lungo ricevuto.
+    LongestPathBonus,
+    /// Numero totale di passeggeri raccolti.
+    Passengers,
+}
+
+impl TieBreaker {
+    /// Interpreta il nome nel ruleset; `None` se sconosciuto.
+    #[must_use]
+    pub fn parse(key: &str) -> Option<Self> {
+        match key {
+            "completedTickets" => Some(Self::CompletedTickets),
+            "completedTicketPoints" => Some(Self::CompletedTicketPoints),
+            "longestPathBonus" => Some(Self::LongestPathBonus),
+            "passengers" => Some(Self::Passengers),
+            _ => None,
+        }
+    }
+}
+
+/// Spareggi di default: biglietti completati, poi bonus del percorso più lungo.
+pub const DEFAULT_TIE_BREAKERS: [TieBreaker; 2] =
+    [TieBreaker::CompletedTickets, TieBreaker::LongestPathBonus];
 
 /// Colore di una rotta.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -361,14 +468,17 @@ impl RouteColor {
     }
 }
 
-/// Id of the other route of a double pair (`_1` ↔ `_2`), from the id suffix alone.
-pub(crate) fn sister_route_id(route_id: &str) -> Option<RouteId> {
-    if let Some(base) = route_id.strip_suffix(DOUBLE_ROUTE_FIRST_SUFFIX) {
-        Some(format!("{base}{DOUBLE_ROUTE_SECOND_SUFFIX}"))
-    } else {
-        let base = route_id.strip_suffix(DOUBLE_ROUTE_SECOND_SUFFIX)?;
-        Some(format!("{base}{DOUBLE_ROUTE_FIRST_SUFFIX}"))
+/// Base e numero del binario (`{base}_{n}`, n in 1..=`MAX_PARALLEL_LANES`) di una rotta
+/// di un gruppo parallelo, dal solo suffisso dell'id.
+pub(crate) fn route_lane(route_id: &str) -> Option<(&str, usize)> {
+    let (base, suffix) = route_id.rsplit_once('_')?;
+    if suffix.len() != 1 {
+        return None;
     }
+    let lane = usize::from(suffix.as_bytes()[0].checked_sub(b'0')?);
+    (1..=MAX_PARALLEL_LANES)
+        .contains(&lane)
+        .then_some((base, lane))
 }
 
 /// Converte punti (`u32`) nel tipo con segno dei punteggi, saturando.
@@ -393,9 +503,25 @@ mod tests {
     }
 
     #[test]
-    fn sister_route_id_swaps_the_suffix() {
-        assert_eq!(sister_route_id("x_y_1").as_deref(), Some("x_y_2"));
-        assert_eq!(sister_route_id("x_y_2").as_deref(), Some("x_y_1"));
-        assert_eq!(sister_route_id("other"), None);
+    fn route_lane_parses_base_and_lane_number() {
+        assert_eq!(route_lane("x_y_1"), Some(("x_y", 1)));
+        assert_eq!(route_lane("x_y_4"), Some(("x_y", 4)));
+        for id in ["other", "x_y_0", "x_y_5", "x_y_a", "x_y_", "_1x", "x_y_01"] {
+            assert_eq!(route_lane(id), None, "{id:?}");
+        }
+        assert_eq!(route_lane("_1"), Some(("", 1)));
+    }
+
+    #[test]
+    fn tie_breaker_parses_known_keys_only() {
+        assert_eq!(
+            TieBreaker::parse("completedTicketPoints"),
+            Some(TieBreaker::CompletedTicketPoints)
+        );
+        assert_eq!(
+            TieBreaker::parse("passengers"),
+            Some(TieBreaker::Passengers)
+        );
+        assert_eq!(TieBreaker::parse("longestPath"), None);
     }
 }

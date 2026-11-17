@@ -22,4 +22,12 @@ winner: boolean,
  * Europe: rotte avversarie prese in prestito dalle stazioni nell'assegnazione
  * che massimizza i biglietti (una per stazione al massimo).
  */
-borrowedRoutes: Array<BorrowedRoute>, };
+borrowedRoutes: Array<BorrowedRoute>, 
+/**
+ * Poland: punti delle carte Paese prese (0 senza carte Paese).
+ */
+countryPoints: number, 
+/**
+ * Germany 2017: punti delle maggioranze di passeggeri (0 senza passeggeri).
+ */
+passengerPoints: number, };

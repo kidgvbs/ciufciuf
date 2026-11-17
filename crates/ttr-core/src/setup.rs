@@ -10,33 +10,108 @@ use crate::error::EngineInitError;
 use crate::scoring::MAX_CYCLOMATIC_NUMBER;
 use crate::types::{
     COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE, LOCO_RESET_THRESHOLD,
-    LONGEST_PATH_BONUS_TYPE, MapData, Route, RouteColor, Ruleset, sister_route_id,
+    LONGEST_PATH_BONUS_TYPE, MAX_PARALLEL_LANES, MapData, Route, RouteColor, Ruleset,
+    SetupDiscards, TieBreaker, route_lane,
 };
 
-/// A double route needs a `_1`/`_2` id and a sister route that is also double, with the
-/// same endpoints and length.
+/// Binari dichiarati come gruppo parallelo, per coppia non ordinata di città.
+pub(crate) fn parallel_groups(routes: &[Route]) -> BTreeMap<(&str, &str), Vec<&Route>> {
+    let mut groups: BTreeMap<(&str, &str), Vec<&Route>> = BTreeMap::new();
+    for route in routes.iter().filter(|r| r.double) {
+        groups.entry(pair_key(route)).or_default().push(route);
+    }
+    groups
+}
+
+/// Chiave della coppia non ordinata di città di una rotta, come in `parallel_groups`.
+pub(crate) fn pair_key(route: &Route) -> (&str, &str) {
+    if route.from <= route.to {
+        (route.from.as_str(), route.to.as_str())
+    } else {
+        (route.to.as_str(), route.from.as_str())
+    }
+}
+
+/// Un binario `double` ha un id `{base}_{n}` e appartiene a un gruppo di 2–4 binari con
+/// gli stessi estremi, la stessa lunghezza e lo stesso `alwaysOpen`, ids `{base}_1..{base}_k`.
 fn check_double_route(
     route: &Route,
-    routes: &BTreeMap<&str, &Route>,
+    groups: &BTreeMap<(&str, &str), Vec<&Route>>,
 ) -> Result<(), EngineInitError> {
-    let Some(sister_id) = sister_route_id(&route.id) else {
+    let Some((base, lane)) = route_lane(&route.id) else {
         return Err(EngineInitError::DoubleRouteBadId {
             route_id: route.id.clone(),
         });
     };
-    let paired = routes.get(sister_id.as_str()).is_some_and(|sister| {
-        let same_ends = (sister.from == route.from && sister.to == route.to)
-            || (sister.from == route.to && sister.to == route.from);
-        sister.double && same_ends && sister.len == route.len
-    });
-    if paired {
-        Ok(())
-    } else {
-        Err(EngineInitError::DoubleRouteUnpaired {
-            route_id: route.id.clone(),
-            sister_id,
-        })
+    let group = groups.get(&pair_key(route)).map_or(&[][..], Vec::as_slice);
+    let unpaired = |sister_id: String| EngineInitError::DoubleRouteUnpaired {
+        route_id: route.id.clone(),
+        sister_id,
+    };
+    if group.len() < 2 {
+        let other = if lane == 1 { 2 } else { 1 };
+        return Err(unpaired(format!("{base}_{other}")));
     }
+    if group.len() > MAX_PARALLEL_LANES {
+        return Err(EngineInitError::DoubleGroupTooLarge {
+            route_id: route.id.clone(),
+            lanes: group.len(),
+        });
+    }
+    for n in 1..=group.len() {
+        let id = format!("{base}_{n}");
+        if !group.iter().any(|r| r.id == id) {
+            return Err(unpaired(id));
+        }
+    }
+    for other in group {
+        if other.len != route.len {
+            return Err(unpaired(other.id.clone()));
+        }
+        if other.always_open != route.always_open {
+            return Err(EngineInitError::DoubleGroupAlwaysOpenMismatch {
+                route_id: route.id.clone(),
+                other_id: other.id.clone(),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// `chooseFrom` di `initialTickets` / `ticketDraw`: mazzi non vuoti, senza ripetizioni,
+/// presenti in `ticketDecks`, con `count` ≥ 1.
+fn check_choose_from(
+    field: &str,
+    decks: &[String],
+    count: u32,
+    listed: &BTreeSet<&str>,
+) -> Result<(), EngineInitError> {
+    if decks.is_empty() {
+        return Err(EngineInitError::ChooseFromEmpty {
+            field: field.into(),
+        });
+    }
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for deck in decks {
+        if !seen.insert(deck.as_str()) {
+            return Err(EngineInitError::ChooseFromDuplicate {
+                field: field.into(),
+                deck: deck.clone(),
+            });
+        }
+        if !listed.contains(deck.as_str()) {
+            return Err(EngineInitError::ChooseFromDeckUnknown {
+                field: field.into(),
+                deck: deck.clone(),
+            });
+        }
+    }
+    if count == 0 {
+        return Err(EngineInitError::ChooseFromCountZero {
+            field: field.into(),
+        });
+    }
+    Ok(())
 }
 
 impl Ruleset {
@@ -77,6 +152,9 @@ impl Ruleset {
         self.check_big_cities(map)?;
         self.check_train_deck(num_players)?;
         self.check_ticket_decks(map, num_players)?;
+        self.check_tie_breakers()?;
+        self.check_country_cards(map)?;
+        self.check_passengers(map)?;
         // Senza il bonus il percorso più lungo non viene mai calcolato.
         if self.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some() {
             self.check_longest_path_budget(map)?;
@@ -126,6 +204,11 @@ impl Ruleset {
     fn check_map(&self, map: &MapData) -> Result<(), EngineInitError> {
         let mut cities: BTreeSet<&str> = BTreeSet::new();
         for city in &map.cities {
+            if city.id.contains('#') {
+                return Err(EngineInitError::CityIdInvalid {
+                    city_id: city.id.clone(),
+                });
+            }
             if !cities.insert(city.id.as_str()) {
                 return Err(EngineInitError::DuplicateCityId {
                     city_id: city.id.clone(),
@@ -133,6 +216,7 @@ impl Ruleset {
             }
         }
         let mut routes: BTreeMap<&str, &Route> = BTreeMap::new();
+        let groups = parallel_groups(&map.routes);
         for route in &map.routes {
             if routes.insert(route.id.as_str(), route).is_some() {
                 return Err(EngineInitError::DuplicateRouteId {
@@ -182,7 +266,7 @@ impl Ruleset {
                 });
             }
             if route.double {
-                check_double_route(route, &routes)?;
+                check_double_route(route, &groups)?;
             }
             if route.ferries > route.len {
                 return Err(EngineInitError::RouteFerriesExceedLength {
@@ -335,6 +419,24 @@ impl Ruleset {
             }
         }
 
+        let initial_choose = self.initial_tickets.choose_from.as_deref();
+        let draw_choose = self.ticket_draw.choose_from.as_deref();
+        if initial_choose.is_some() && !self.initial_tickets.dealt.is_empty() {
+            return Err(EngineInitError::InitialTicketsBothForms);
+        }
+        if draw_choose.is_some() && !self.ticket_draw.deck.is_empty() {
+            return Err(EngineInitError::TicketDrawBothForms);
+        }
+        if let Some(decks) = initial_choose {
+            check_choose_from("initialTickets", decks, self.initial_tickets.count, &listed)?;
+        }
+        if let Some(decks) = draw_choose {
+            check_choose_from("ticketDraw", decks, self.ticket_draw.count, &listed)?;
+            if self.setup_discards == SetupDiscards::ReshuffleBottom {
+                return Err(EngineInitError::SetupDiscardsNeedOwnDeck);
+            }
+        }
+
         let mut dealt_per_player: BTreeMap<&str, usize> = BTreeMap::new();
         let mut dealt_total: u32 = 0;
         for entry in &self.initial_tickets.dealt {
@@ -347,7 +449,7 @@ impl Ruleset {
             *slot = slot.saturating_add(entry.count as usize);
             dealt_total = dealt_total.saturating_add(entry.count);
         }
-        if !listed.contains(self.ticket_draw.deck.as_str()) {
+        if draw_choose.is_none() && !listed.contains(self.ticket_draw.deck.as_str()) {
             return Err(EngineInitError::DrawTicketDeckUnknown {
                 deck: self.ticket_draw.deck.clone(),
             });
@@ -374,11 +476,30 @@ impl Ruleset {
                 });
             }
         }
+        if let Some(decks) = initial_choose {
+            let have = decks
+                .iter()
+                .map(|d| deck_sizes.get(d.as_str()).copied().unwrap_or(0))
+                .sum();
+            let needed = (self.initial_tickets.count as usize).saturating_mul(num_players);
+            if have < needed {
+                return Err(EngineInitError::ChooseFromDecksTooSmall {
+                    decks: decks.join(", "),
+                    have,
+                    needed,
+                });
+            }
+        }
 
-        if self.initial_tickets.keep_min > dealt_total {
+        let initial_total = if initial_choose.is_some() {
+            self.initial_tickets.count
+        } else {
+            dealt_total
+        };
+        if self.initial_tickets.keep_min > initial_total {
             return Err(EngineInitError::InitialKeepMinExceedsDealt {
                 keep_min: self.initial_tickets.keep_min,
-                dealt: dealt_total,
+                dealt: initial_total,
             });
         }
         for entry in &self.initial_tickets.dealt {
@@ -395,6 +516,11 @@ impl Ruleset {
         let max_keep = self.initial_deck_rules().iter().fold(0u32, |acc, rule| {
             acc.saturating_add(rule.max.map_or(rule.count, |max| max.min(rule.count)))
         });
+        let max_keep = if initial_choose.is_some() {
+            self.initial_tickets.count
+        } else {
+            max_keep
+        };
         if self.initial_tickets.keep_min > max_keep {
             return Err(EngineInitError::InitialKeepMinUnreachable {
                 keep_min: self.initial_tickets.keep_min,
@@ -408,6 +534,80 @@ impl Ruleset {
             return Err(EngineInitError::DrawKeepMinExceedsCount {
                 keep_min: self.ticket_draw.keep_min,
                 count: self.ticket_draw.count,
+            });
+        }
+        Ok(())
+    }
+
+    /// `tieBreakers`: solo chiavi note, senza ripetizioni.
+    fn check_tie_breakers(&self) -> Result<(), EngineInitError> {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for key in self.tie_breakers.iter().flatten() {
+            if TieBreaker::parse(key).is_none() {
+                return Err(EngineInitError::UnknownTieBreaker { key: key.clone() });
+            }
+            if !seen.insert(key.as_str()) {
+                return Err(EngineInitError::DuplicateTieBreaker { key: key.clone() });
+            }
+        }
+        Ok(())
+    }
+
+    /// `countryCards`: le chiavi sono città `country` della mappa.
+    fn check_country_cards(&self, map: &MapData) -> Result<(), EngineInitError> {
+        for city_id in self.country_cards.keys() {
+            if !map.cities.iter().any(|c| c.country && &c.id == city_id) {
+                return Err(EngineInitError::CountryCardsUnknownCountry {
+                    city_id: city_id.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// `passengers`: colori non vuoti e unici, `perColor` ≥ 1, `placement` su città esistenti
+    /// con conteggi ≥ 1 e somma pari al sacchetto, due `majorityPoints`.
+    fn check_passengers(&self, map: &MapData) -> Result<(), EngineInitError> {
+        let Some(config) = &self.passengers else {
+            return Ok(());
+        };
+        if config.colors.is_empty() {
+            return Err(EngineInitError::PassengersColorsEmpty);
+        }
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for color in &config.colors {
+            if !seen.insert(color.as_str()) {
+                return Err(EngineInitError::PassengersDuplicateColor {
+                    color: color.clone(),
+                });
+            }
+        }
+        if config.per_color == 0 {
+            return Err(EngineInitError::PassengersPerColorZero);
+        }
+        let mut placed: u32 = 0;
+        for (city_id, &count) in &config.placement {
+            if !map.cities.iter().any(|c| &c.id == city_id) {
+                return Err(EngineInitError::PassengersUnknownCity {
+                    city_id: city_id.clone(),
+                });
+            }
+            if count == 0 {
+                return Err(EngineInitError::PassengersPlacementZero {
+                    city_id: city_id.clone(),
+                });
+            }
+            placed = placed.saturating_add(count);
+        }
+        let bag = u32::try_from(config.colors.len())
+            .unwrap_or(u32::MAX)
+            .saturating_mul(config.per_color);
+        if placed != bag {
+            return Err(EngineInitError::PassengersPlacementMismatch { placed, bag });
+        }
+        if config.majority_points.len() != 2 {
+            return Err(EngineInitError::PassengersMajorityPoints {
+                len: config.majority_points.len(),
             });
         }
         Ok(())

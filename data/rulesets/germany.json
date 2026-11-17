@@ -1,0 +1,58 @@
+{
+  "name": "Germany",
+  "mode": "Deutschland",
+  "modeOrder": 0,
+  "ticketSet": "deutschland",
+  "map": "germany",
+  "players": {
+    "min": 2,
+    "max": 5
+  },
+  "trainsPerPlayer": 45,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular",
+    "long"
+  ],
+  "initialTickets": {
+    "chooseFrom": [
+      "regular",
+      "long"
+    ],
+    "count": 4,
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "chooseFrom": [
+      "regular",
+      "long"
+    ],
+    "count": 4,
+    "keepMin": 1
+  },
+  "setupDiscards": "reshuffleBottomOwnDeck",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10,
+    "6": 15,
+    "7": 18
+  },
+  "bonuses": [
+    {
+      "type": "globetrotter",
+      "label": "Globetrotter",
+      "points": 15
+    }
+  ],
+  "tieBreakers": [
+    "completedTickets"
+  ],
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

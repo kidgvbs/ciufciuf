@@ -21,5 +21,12 @@ export function normalizePublicState(ps: PublicState): NormalizedPublicState {
     recent_moves: ps.recent_moves ?? [],
     longest_path_route_ids: ps.longest_path_route_ids ?? [],
     tunnel_reveal: ps.tunnel_reveal ?? null,
+    country_stacks: ps.country_stacks ?? [],
+    passengers: ps.passengers ?? [],
+    players_summary: ps.players_summary.map((p) => ({
+      ...p,
+      country_cards: p.country_cards ?? [],
+      passengers: p.passengers ?? [],
+    })),
   };
 }

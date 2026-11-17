@@ -1,0 +1,116 @@
+{
+  "name": "Germany",
+  "mode": "Passeggeri",
+  "modeOrder": 1,
+  "ticketSet": "germany",
+  "map": "germany",
+  "players": {
+    "min": 2,
+    "max": 5
+  },
+  "trainsPerPlayer": 45,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular",
+    "long"
+  ],
+  "initialTickets": {
+    "chooseFrom": [
+      "regular",
+      "long"
+    ],
+    "count": 4,
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "chooseFrom": [
+      "regular",
+      "long"
+    ],
+    "count": 4,
+    "keepMin": 1
+  },
+  "setupDiscards": "reshuffleBottomOwnDeck",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10,
+    "6": 15,
+    "7": 18
+  },
+  "bonuses": [
+    {
+      "type": "globetrotter",
+      "label": "Globetrotter",
+      "points": 15
+    }
+  ],
+  "passengers": {
+    "colors": [
+      "Red",
+      "Black",
+      "Green",
+      "Yellow",
+      "Blue",
+      "White"
+    ],
+    "perColor": 10,
+    "placement": {
+      "augsburg": 1,
+      "berlin": 5,
+      "bremen": 1,
+      "bremerhaven": 1,
+      "chemnitz": 1,
+      "danemark": 1,
+      "dortmund": 1,
+      "dresden": 1,
+      "dusseldorf": 1,
+      "emden": 1,
+      "erfurt": 1,
+      "frankfurt": 1,
+      "frankreich": 1,
+      "freiburg": 1,
+      "hamburg": 4,
+      "hannover": 1,
+      "karlsruhe": 1,
+      "kassel": 1,
+      "kiel": 1,
+      "koblenz": 1,
+      "koln": 4,
+      "konstanz": 1,
+      "leipzig": 3,
+      "lindau": 1,
+      "magdeburg": 1,
+      "mainz": 4,
+      "mannheim": 1,
+      "munchen": 4,
+      "munster": 1,
+      "niederlande": 1,
+      "nurnberg": 1,
+      "osterreich": 1,
+      "regensburg": 1,
+      "rostock": 1,
+      "saarbrucken": 1,
+      "schweiz": 1,
+      "schwerin": 1,
+      "stuttgart": 3,
+      "ulm": 1,
+      "wurzburg": 1
+    },
+    "majorityPoints": [
+      20,
+      10
+    ]
+  },
+  "tieBreakers": [
+    "completedTickets",
+    "passengers"
+  ],
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

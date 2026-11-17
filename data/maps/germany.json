@@ -1,0 +1,2323 @@
+{
+  "cities": [
+    {
+      "id": "augsburg",
+      "name": "Augsburg",
+      "lat": 48.37,
+      "lon": 10.9
+    },
+    {
+      "id": "berlin",
+      "name": "Berlin",
+      "lat": 52.52,
+      "lon": 13.4
+    },
+    {
+      "id": "bremen",
+      "name": "Bremen",
+      "lat": 53.08,
+      "lon": 8.8
+    },
+    {
+      "id": "bremerhaven",
+      "name": "Bremerhaven",
+      "lat": 53.54,
+      "lon": 8.58
+    },
+    {
+      "id": "chemnitz",
+      "name": "Chemnitz",
+      "lat": 50.83,
+      "lon": 12.92
+    },
+    {
+      "id": "danemark",
+      "name": "Dänemark",
+      "lat": 55.0,
+      "lon": 9.0,
+      "country": true
+    },
+    {
+      "id": "dortmund",
+      "name": "Dortmund",
+      "lat": 51.51,
+      "lon": 7.47
+    },
+    {
+      "id": "dresden",
+      "name": "Dresden",
+      "lat": 51.05,
+      "lon": 13.74
+    },
+    {
+      "id": "dusseldorf",
+      "name": "Düsseldorf",
+      "lat": 51.23,
+      "lon": 6.78
+    },
+    {
+      "id": "emden",
+      "name": "Emden",
+      "lat": 53.37,
+      "lon": 7.21
+    },
+    {
+      "id": "erfurt",
+      "name": "Erfurt",
+      "lat": 50.98,
+      "lon": 11.03
+    },
+    {
+      "id": "frankfurt",
+      "name": "Frankfurt",
+      "lat": 50.11,
+      "lon": 8.68
+    },
+    {
+      "id": "frankreich",
+      "name": "Frankreich",
+      "lat": 48.7,
+      "lon": 7.4,
+      "country": true
+    },
+    {
+      "id": "freiburg",
+      "name": "Freiburg",
+      "lat": 47.99,
+      "lon": 7.85
+    },
+    {
+      "id": "hamburg",
+      "name": "Hamburg",
+      "lat": 53.55,
+      "lon": 9.99
+    },
+    {
+      "id": "hannover",
+      "name": "Hannover",
+      "lat": 52.37,
+      "lon": 9.73
+    },
+    {
+      "id": "karlsruhe",
+      "name": "Karlsruhe",
+      "lat": 49.01,
+      "lon": 8.4
+    },
+    {
+      "id": "kassel",
+      "name": "Kassel",
+      "lat": 51.31,
+      "lon": 9.48
+    },
+    {
+      "id": "kiel",
+      "name": "Kiel",
+      "lat": 54.32,
+      "lon": 10.14
+    },
+    {
+      "id": "koblenz",
+      "name": "Koblenz",
+      "lat": 50.36,
+      "lon": 7.59
+    },
+    {
+      "id": "koln",
+      "name": "Köln",
+      "lat": 50.94,
+      "lon": 6.96
+    },
+    {
+      "id": "konstanz",
+      "name": "Konstanz",
+      "lat": 47.66,
+      "lon": 9.18
+    },
+    {
+      "id": "leipzig",
+      "name": "Leipzig",
+      "lat": 51.34,
+      "lon": 12.37
+    },
+    {
+      "id": "lindau",
+      "name": "Lindau",
+      "lat": 47.55,
+      "lon": 9.68
+    },
+    {
+      "id": "magdeburg",
+      "name": "Magdeburg",
+      "lat": 52.13,
+      "lon": 11.63
+    },
+    {
+      "id": "mainz",
+      "name": "Mainz",
+      "lat": 49.99,
+      "lon": 8.27
+    },
+    {
+      "id": "mannheim",
+      "name": "Mannheim",
+      "lat": 49.49,
+      "lon": 8.47
+    },
+    {
+      "id": "munchen",
+      "name": "München",
+      "lat": 48.14,
+      "lon": 11.58
+    },
+    {
+      "id": "munster",
+      "name": "Münster",
+      "lat": 51.96,
+      "lon": 7.63
+    },
+    {
+      "id": "niederlande",
+      "name": "Niederlande",
+      "lat": 52.3,
+      "lon": 6.4,
+      "country": true
+    },
+    {
+      "id": "nurnberg",
+      "name": "Nürnberg",
+      "lat": 49.45,
+      "lon": 11.08
+    },
+    {
+      "id": "osterreich",
+      "name": "Österreich",
+      "lat": 47.9,
+      "lon": 13.1,
+      "country": true
+    },
+    {
+      "id": "regensburg",
+      "name": "Regensburg",
+      "lat": 49.01,
+      "lon": 12.1
+    },
+    {
+      "id": "rostock",
+      "name": "Rostock",
+      "lat": 54.09,
+      "lon": 12.1
+    },
+    {
+      "id": "saarbrucken",
+      "name": "Saarbrücken",
+      "lat": 49.24,
+      "lon": 6.99
+    },
+    {
+      "id": "schweiz",
+      "name": "Schweiz",
+      "lat": 47.45,
+      "lon": 8.6,
+      "country": true
+    },
+    {
+      "id": "schwerin",
+      "name": "Schwerin",
+      "lat": 53.63,
+      "lon": 11.41
+    },
+    {
+      "id": "stuttgart",
+      "name": "Stuttgart",
+      "lat": 48.78,
+      "lon": 9.18
+    },
+    {
+      "id": "ulm",
+      "name": "Ulm",
+      "lat": 48.4,
+      "lon": 9.99
+    },
+    {
+      "id": "wurzburg",
+      "name": "Würzburg",
+      "lat": 49.79,
+      "lon": 9.95
+    }
+  ],
+  "routes": [
+    {
+      "id": "augsburg_munchen_1",
+      "from": "augsburg",
+      "to": "munchen",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "augsburg_munchen_2",
+      "from": "augsburg",
+      "to": "munchen",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "augsburg_nurnberg_1",
+      "from": "augsburg",
+      "to": "nurnberg",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "augsburg_ulm_1",
+      "from": "augsburg",
+      "to": "ulm",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "augsburg_ulm_2",
+      "from": "augsburg",
+      "to": "ulm",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_dresden_1",
+      "from": "berlin",
+      "to": "dresden",
+      "len": 5,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_hamburg_1",
+      "from": "berlin",
+      "to": "hamburg",
+      "len": 7,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_hamburg_2",
+      "from": "berlin",
+      "to": "hamburg",
+      "len": 7,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_hannover_1",
+      "from": "berlin",
+      "to": "hannover",
+      "len": 7,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_leipzig_1",
+      "from": "berlin",
+      "to": "leipzig",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_magdeburg_1",
+      "from": "berlin",
+      "to": "magdeburg",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_rostock_1",
+      "from": "berlin",
+      "to": "rostock",
+      "len": 6,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "berlin_schwerin_1",
+      "from": "berlin",
+      "to": "schwerin",
+      "len": 5,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremen_bremerhaven_1",
+      "from": "bremen",
+      "to": "bremerhaven",
+      "len": 1,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremen_emden_1",
+      "from": "bremen",
+      "to": "emden",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremen_hamburg_1",
+      "from": "bremen",
+      "to": "hamburg",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremen_hannover_1",
+      "from": "bremen",
+      "to": "hannover",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremen_munster_1",
+      "from": "bremen",
+      "to": "munster",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremerhaven_danemark_1",
+      "from": "bremerhaven",
+      "to": "danemark",
+      "len": 5,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremerhaven_emden_1",
+      "from": "bremerhaven",
+      "to": "emden",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremerhaven_hamburg_1",
+      "from": "bremerhaven",
+      "to": "hamburg",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bremerhaven_kiel_1",
+      "from": "bremerhaven",
+      "to": "kiel",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chemnitz_dresden_1",
+      "from": "chemnitz",
+      "to": "dresden",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chemnitz_erfurt_1",
+      "from": "chemnitz",
+      "to": "erfurt",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chemnitz_leipzig_1",
+      "from": "chemnitz",
+      "to": "leipzig",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chemnitz_regensburg_1",
+      "from": "chemnitz",
+      "to": "regensburg",
+      "len": 6,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "danemark_kiel_1",
+      "from": "danemark",
+      "to": "kiel",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dortmund_dusseldorf_1",
+      "from": "dortmund",
+      "to": "dusseldorf",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dortmund_dusseldorf_2",
+      "from": "dortmund",
+      "to": "dusseldorf",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dortmund_dusseldorf_3",
+      "from": "dortmund",
+      "to": "dusseldorf",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dortmund_kassel_1",
+      "from": "dortmund",
+      "to": "kassel",
+      "len": 4,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dortmund_munster_1",
+      "from": "dortmund",
+      "to": "munster",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dortmund_munster_2",
+      "from": "dortmund",
+      "to": "munster",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dresden_leipzig_1",
+      "from": "dresden",
+      "to": "leipzig",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dresden_regensburg_1",
+      "from": "dresden",
+      "to": "regensburg",
+      "len": 7,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dusseldorf_koln_1",
+      "from": "dusseldorf",
+      "to": "koln",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dusseldorf_koln_2",
+      "from": "dusseldorf",
+      "to": "koln",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dusseldorf_koln_3",
+      "from": "dusseldorf",
+      "to": "koln",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dusseldorf_niederlande_1",
+      "from": "dusseldorf",
+      "to": "niederlande",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "emden_munster_1",
+      "from": "emden",
+      "to": "munster",
+      "len": 4,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "emden_niederlande_1",
+      "from": "emden",
+      "to": "niederlande",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_hannover_1",
+      "from": "erfurt",
+      "to": "hannover",
+      "len": 5,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_hannover_2",
+      "from": "erfurt",
+      "to": "hannover",
+      "len": 5,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_kassel_1",
+      "from": "erfurt",
+      "to": "kassel",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_leipzig_1",
+      "from": "erfurt",
+      "to": "leipzig",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_nurnberg_1",
+      "from": "erfurt",
+      "to": "nurnberg",
+      "len": 4,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_nurnberg_2",
+      "from": "erfurt",
+      "to": "nurnberg",
+      "len": 4,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erfurt_regensburg_1",
+      "from": "erfurt",
+      "to": "regensburg",
+      "len": 7,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_kassel_1",
+      "from": "frankfurt",
+      "to": "kassel",
+      "len": 4,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_kassel_2",
+      "from": "frankfurt",
+      "to": "kassel",
+      "len": 4,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_koln_1",
+      "from": "frankfurt",
+      "to": "koln",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_koln_2",
+      "from": "frankfurt",
+      "to": "koln",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_mainz_1",
+      "from": "frankfurt",
+      "to": "mainz",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_mainz_2",
+      "from": "frankfurt",
+      "to": "mainz",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_mannheim_1",
+      "from": "frankfurt",
+      "to": "mannheim",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_mannheim_2",
+      "from": "frankfurt",
+      "to": "mannheim",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_wurzburg_1",
+      "from": "frankfurt",
+      "to": "wurzburg",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankfurt_wurzburg_2",
+      "from": "frankfurt",
+      "to": "wurzburg",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankreich_freiburg_1",
+      "from": "frankreich",
+      "to": "freiburg",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankreich_karlsruhe_1",
+      "from": "frankreich",
+      "to": "karlsruhe",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "frankreich_saarbrucken_1",
+      "from": "frankreich",
+      "to": "saarbrucken",
+      "len": 1,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "freiburg_karlsruhe_1",
+      "from": "freiburg",
+      "to": "karlsruhe",
+      "len": 3,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "freiburg_konstanz_1",
+      "from": "freiburg",
+      "to": "konstanz",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "freiburg_schweiz_1",
+      "from": "freiburg",
+      "to": "schweiz",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "freiburg_stuttgart_1",
+      "from": "freiburg",
+      "to": "stuttgart",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hamburg_hannover_1",
+      "from": "hamburg",
+      "to": "hannover",
+      "len": 4,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hamburg_hannover_2",
+      "from": "hamburg",
+      "to": "hannover",
+      "len": 4,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hamburg_kiel_1",
+      "from": "hamburg",
+      "to": "kiel",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hamburg_kiel_2",
+      "from": "hamburg",
+      "to": "kiel",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hamburg_schwerin_1",
+      "from": "hamburg",
+      "to": "schwerin",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hannover_kassel_1",
+      "from": "hannover",
+      "to": "kassel",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hannover_kassel_2",
+      "from": "hannover",
+      "to": "kassel",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hannover_magdeburg_1",
+      "from": "hannover",
+      "to": "magdeburg",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hannover_munster_1",
+      "from": "hannover",
+      "to": "munster",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "karlsruhe_mannheim_1",
+      "from": "karlsruhe",
+      "to": "mannheim",
+      "len": 1,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "karlsruhe_saarbrucken_1",
+      "from": "karlsruhe",
+      "to": "saarbrucken",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "karlsruhe_stuttgart_1",
+      "from": "karlsruhe",
+      "to": "stuttgart",
+      "len": 1,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kiel_rostock_1",
+      "from": "kiel",
+      "to": "rostock",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kiel_schwerin_1",
+      "from": "kiel",
+      "to": "schwerin",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koblenz_koln_1",
+      "from": "koblenz",
+      "to": "koln",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koblenz_koln_2",
+      "from": "koblenz",
+      "to": "koln",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koblenz_mainz_1",
+      "from": "koblenz",
+      "to": "mainz",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koblenz_mainz_2",
+      "from": "koblenz",
+      "to": "mainz",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "koblenz_saarbrucken_1",
+      "from": "koblenz",
+      "to": "saarbrucken",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "konstanz_lindau_1",
+      "from": "konstanz",
+      "to": "lindau",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "konstanz_schweiz_1",
+      "from": "konstanz",
+      "to": "schweiz",
+      "len": 1,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "konstanz_stuttgart_1",
+      "from": "konstanz",
+      "to": "stuttgart",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "leipzig_magdeburg_1",
+      "from": "leipzig",
+      "to": "magdeburg",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lindau_munchen_1",
+      "from": "lindau",
+      "to": "munchen",
+      "len": 5,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lindau_osterreich_1",
+      "from": "lindau",
+      "to": "osterreich",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lindau_schweiz_1",
+      "from": "lindau",
+      "to": "schweiz",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lindau_ulm_1",
+      "from": "lindau",
+      "to": "ulm",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mainz_mannheim_1",
+      "from": "mainz",
+      "to": "mannheim",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mainz_mannheim_2",
+      "from": "mainz",
+      "to": "mannheim",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mainz_saarbrucken_1",
+      "from": "mainz",
+      "to": "saarbrucken",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mannheim_saarbrucken_1",
+      "from": "mannheim",
+      "to": "saarbrucken",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mannheim_stuttgart_1",
+      "from": "mannheim",
+      "to": "stuttgart",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mannheim_stuttgart_2",
+      "from": "mannheim",
+      "to": "stuttgart",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_nurnberg_1",
+      "from": "munchen",
+      "to": "nurnberg",
+      "len": 5,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_nurnberg_2",
+      "from": "munchen",
+      "to": "nurnberg",
+      "len": 5,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_osterreich_1",
+      "from": "munchen",
+      "to": "osterreich",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munchen_regensburg_1",
+      "from": "munchen",
+      "to": "regensburg",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "munster_niederlande_1",
+      "from": "munster",
+      "to": "niederlande",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "nurnberg_regensburg_1",
+      "from": "nurnberg",
+      "to": "regensburg",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "nurnberg_wurzburg_1",
+      "from": "nurnberg",
+      "to": "wurzburg",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "nurnberg_wurzburg_2",
+      "from": "nurnberg",
+      "to": "wurzburg",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "osterreich_regensburg_1",
+      "from": "osterreich",
+      "to": "regensburg",
+      "len": 4,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "rostock_schwerin_1",
+      "from": "rostock",
+      "to": "schwerin",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "stuttgart_ulm_1",
+      "from": "stuttgart",
+      "to": "ulm",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "stuttgart_ulm_2",
+      "from": "stuttgart",
+      "to": "ulm",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "berlin_bremen",
+      "from": "berlin",
+      "to": "bremen",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "danemark_niederlande",
+      "from": "danemark",
+      "to": "niederlande",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_chemnitz",
+      "from": "berlin",
+      "to": "chemnitz",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "bremen_dusseldorf",
+      "from": "bremen",
+      "to": "dusseldorf",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "bremen_kassel",
+      "from": "bremen",
+      "to": "kassel",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "dortmund_erfurt",
+      "from": "dortmund",
+      "to": "erfurt",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "dortmund_mannheim",
+      "from": "dortmund",
+      "to": "mannheim",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "erfurt_wurzburg",
+      "from": "erfurt",
+      "to": "wurzburg",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_rostock",
+      "from": "hamburg",
+      "to": "rostock",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "hannover_leipzig",
+      "from": "hannover",
+      "to": "leipzig",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "augsburg_karlsruhe",
+      "from": "augsburg",
+      "to": "karlsruhe",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_stuttgart",
+      "from": "koln",
+      "to": "stuttgart",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "deutschland"
+      ]
+    },
+    {
+      "id": "mainz_stuttgart",
+      "from": "mainz",
+      "to": "stuttgart",
+      "points": 3,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "mannheim_wurzburg",
+      "from": "mannheim",
+      "to": "wurzburg",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "dortmund_magdeburg",
+      "from": "dortmund",
+      "to": "magdeburg",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "dusseldorf_konstanz",
+      "from": "dusseldorf",
+      "to": "konstanz",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_lindau",
+      "from": "frankfurt",
+      "to": "lindau",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_munchen",
+      "from": "frankfurt",
+      "to": "munchen",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_osterreich",
+      "from": "frankfurt",
+      "to": "osterreich",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankreich_munchen",
+      "from": "frankreich",
+      "to": "munchen",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_hamburg",
+      "from": "frankfurt",
+      "to": "hamburg",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_koln",
+      "from": "hamburg",
+      "to": "koln",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "hannover_saarbrucken",
+      "from": "hannover",
+      "to": "saarbrucken",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "karlsruhe_regensburg",
+      "from": "karlsruhe",
+      "to": "regensburg",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "freiburg_kassel",
+      "from": "freiburg",
+      "to": "kassel",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "koblenz_ulm",
+      "from": "koblenz",
+      "to": "ulm",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_nurnberg",
+      "from": "koln",
+      "to": "nurnberg",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_schweiz",
+      "from": "koln",
+      "to": "schweiz",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_dusseldorf",
+      "from": "berlin",
+      "to": "dusseldorf",
+      "points": 13,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_frankfurt",
+      "from": "berlin",
+      "to": "frankfurt",
+      "points": 14,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_mainz",
+      "from": "berlin",
+      "to": "mainz",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_munchen",
+      "from": "berlin",
+      "to": "munchen",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_schweiz",
+      "from": "berlin",
+      "to": "schweiz",
+      "points": 20,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "bremerhaven_frankreich",
+      "from": "bremerhaven",
+      "to": "frankreich",
+      "points": 12,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "bremerhaven_regensburg",
+      "from": "bremerhaven",
+      "to": "regensburg",
+      "points": 16,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "danemark_lindau",
+      "from": "danemark",
+      "to": "lindau",
+      "points": 22,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "danemark_regensburg",
+      "from": "danemark",
+      "to": "regensburg",
+      "points": 20,
+      "deck": "long",
+      "sets": [
+        "deutschland"
+      ]
+    },
+    {
+      "id": "dortmund_munchen",
+      "from": "dortmund",
+      "to": "munchen",
+      "points": 13,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "augsburg_dresden",
+      "from": "augsburg",
+      "to": "dresden",
+      "points": 12,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "dresden_saarbrucken",
+      "from": "dresden",
+      "to": "saarbrucken",
+      "points": 16,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "emden_freiburg",
+      "from": "emden",
+      "to": "freiburg",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "emden_osterreich",
+      "from": "emden",
+      "to": "osterreich",
+      "points": 19,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "danemark_frankreich",
+      "from": "danemark",
+      "to": "frankreich",
+      "points": 17,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankreich_leipzig",
+      "from": "frankreich",
+      "to": "leipzig",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "dresden_hamburg",
+      "from": "dresden",
+      "to": "hamburg",
+      "points": 12,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_munchen",
+      "from": "hamburg",
+      "to": "munchen",
+      "points": 18,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_stuttgart",
+      "from": "hamburg",
+      "to": "stuttgart",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "kiel_nurnberg",
+      "from": "kiel",
+      "to": "nurnberg",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "kiel_schweiz",
+      "from": "kiel",
+      "to": "schweiz",
+      "points": 20,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_leipzig",
+      "from": "koln",
+      "to": "leipzig",
+      "points": 12,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "leipzig_ulm",
+      "from": "leipzig",
+      "to": "ulm",
+      "points": 12,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "munchen_munster",
+      "from": "munchen",
+      "to": "munster",
+      "points": 14,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "munster_osterreich",
+      "from": "munster",
+      "to": "osterreich",
+      "points": 15,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_niederlande",
+      "from": "berlin",
+      "to": "niederlande",
+      "points": 13,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "konstanz_rostock",
+      "from": "konstanz",
+      "to": "rostock",
+      "points": 22,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "osterreich_rostock",
+      "from": "osterreich",
+      "to": "rostock",
+      "points": 22,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "koblenz_schwerin",
+      "from": "koblenz",
+      "to": "schwerin",
+      "points": 12,
+      "deck": "long",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "leipzig_nurnberg",
+      "from": "leipzig",
+      "to": "nurnberg",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "munster_stuttgart",
+      "from": "munster",
+      "to": "stuttgart",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_niederlande",
+      "from": "frankfurt",
+      "to": "niederlande",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "karlsruhe_niederlande",
+      "from": "karlsruhe",
+      "to": "niederlande",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "nurnberg_stuttgart",
+      "from": "nurnberg",
+      "to": "stuttgart",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "deutschland",
+        "germany"
+      ]
+    },
+    {
+      "id": "mannheim_stuttgart",
+      "from": "mannheim",
+      "to": "stuttgart",
+      "points": 2,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_leipzig",
+      "from": "berlin",
+      "to": "leipzig",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_koln",
+      "from": "frankfurt",
+      "to": "koln",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_saarbrucken",
+      "from": "koln",
+      "to": "saarbrucken",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_stuttgart",
+      "from": "frankfurt",
+      "to": "stuttgart",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "munchen_stuttgart",
+      "from": "munchen",
+      "to": "stuttgart",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "emden_hamburg",
+      "from": "emden",
+      "to": "hamburg",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "konstanz_munchen",
+      "from": "konstanz",
+      "to": "munchen",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_hamburg",
+      "from": "berlin",
+      "to": "hamburg",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_erfurt",
+      "from": "berlin",
+      "to": "erfurt",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_kassel",
+      "from": "hamburg",
+      "to": "kassel",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "bremerhaven_koln",
+      "from": "bremerhaven",
+      "to": "koln",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_hannover",
+      "from": "frankfurt",
+      "to": "hannover",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "munchen_wurzburg",
+      "from": "munchen",
+      "to": "wurzburg",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "freiburg_munchen",
+      "from": "freiburg",
+      "to": "munchen",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_danemark",
+      "from": "berlin",
+      "to": "danemark",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_leipzig",
+      "from": "hamburg",
+      "to": "leipzig",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_koblenz",
+      "from": "hamburg",
+      "to": "koblenz",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_leipzig",
+      "from": "frankfurt",
+      "to": "leipzig",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_munchen",
+      "from": "koln",
+      "to": "munchen",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_regensburg",
+      "from": "koln",
+      "to": "regensburg",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "koln_magdeburg",
+      "from": "koln",
+      "to": "magdeburg",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "leipzig_munchen",
+      "from": "leipzig",
+      "to": "munchen",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "frankfurt_schwerin",
+      "from": "frankfurt",
+      "to": "schwerin",
+      "points": 13,
+      "deck": "long",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_koln",
+      "from": "berlin",
+      "to": "koln",
+      "points": 14,
+      "deck": "long",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "hamburg_karlsruhe",
+      "from": "hamburg",
+      "to": "karlsruhe",
+      "points": 14,
+      "deck": "long",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "leipzig_stuttgart",
+      "from": "leipzig",
+      "to": "stuttgart",
+      "points": 14,
+      "deck": "long",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "kiel_stuttgart",
+      "from": "kiel",
+      "to": "stuttgart",
+      "points": 17,
+      "deck": "long",
+      "sets": [
+        "germany"
+      ]
+    },
+    {
+      "id": "berlin_stuttgart",
+      "from": "berlin",
+      "to": "stuttgart",
+      "points": 18,
+      "deck": "long",
+      "sets": [
+        "germany"
+      ]
+    }
+  ]
+}

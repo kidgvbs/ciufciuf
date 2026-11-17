@@ -51,6 +51,8 @@
         {#if longestPathName !== null && fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
         {#if fs.globetrotterBonus > 0} · 🌍 +{fs.globetrotterBonus}{/if}
         {#if (fs.stationPoints ?? 0) > 0} · 🏠 +{fs.stationPoints}{/if}
+        {#if (fs.countryPoints ?? 0) > 0} · Carte Paese +{fs.countryPoints}{/if}
+        {#if (fs.passengerPoints ?? 0) > 0} · Passeggeri +{fs.passengerPoints}{/if}
       </div>
       {#if borrowed.length > 0}
         <div class="score-detail">

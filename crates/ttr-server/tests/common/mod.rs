@@ -40,6 +40,26 @@ pub fn europe_map() -> MapData {
     serde_json::from_str(&json).expect("parsing europe.json")
 }
 
+/// Carica la mappa Germany da `data/maps/germany.json`.
+#[allow(dead_code)]
+pub fn germany_map() -> MapData {
+    let path = data_dir().join("maps/germany.json");
+    let json = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!("impossibile leggere {:?}: {}", path, e);
+    });
+    serde_json::from_str(&json).expect("parsing germany.json")
+}
+
+/// Carica la mappa Poland da `data/maps/poland.json`.
+#[allow(dead_code)]
+pub fn poland_map() -> MapData {
+    let path = data_dir().join("maps/poland.json");
+    let json = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+        panic!("impossibile leggere {:?}: {}", path, e);
+    });
+    serde_json::from_str(&json).expect("parsing poland.json")
+}
+
 /// Directory temporanea unica per i save (evita collisioni tra test).
 pub fn temp_saves_dir() -> PathBuf {
     let mut p = std::env::temp_dir();
@@ -420,6 +440,7 @@ impl Default for PlayerView {
                 station_cost: 0,
                 tunnel: None,
                 ticket_choice: None,
+                ticket_draw: None,
             },
             public: None,
             last_error: None,

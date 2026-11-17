@@ -24,6 +24,7 @@ fn route(id: &str, from: &str, to: &str, len: u32, color: &str, double: bool) ->
         len,
         color: color.into(),
         double,
+        always_open: false,
         tunnel: false,
         ferries: 0,
     }
@@ -44,6 +45,14 @@ fn city(id: &str) -> City {
     City {
         id: id.into(),
         name: id.into(),
+        country: false,
+    }
+}
+
+fn draw_tickets(player_index: usize) -> Action {
+    Action::DrawTickets {
+        player_index,
+        counts: BTreeMap::new(),
     }
 }
 
@@ -103,6 +112,9 @@ fn mini_ruleset() -> Ruleset {
     rp.insert("5".into(), 10);
     rp.insert("6".into(), 15);
     Ruleset {
+        tie_breakers: None,
+        passengers: None,
+        country_cards: BTreeMap::new(),
         name: "Mini".into(),
         mode: "Standard".into(),
         mode_order: 0,
@@ -116,6 +128,8 @@ fn mini_ruleset() -> Ruleset {
         },
         ticket_decks: vec!["regular".into()],
         initial_tickets: InitialTickets {
+            choose_from: None,
+            count: 0,
             dealt: vec![TicketDealtEntry {
                 deck: "regular".into(),
                 count: 4,
@@ -124,6 +138,7 @@ fn mini_ruleset() -> Ruleset {
             keep_min: 2,
         },
         ticket_draw: TicketDraw {
+            choose_from: None,
             deck: "regular".into(),
             count: 3,
             keep_min: 1,
@@ -303,7 +318,7 @@ fn golden_ticket_discards_bottom_in_order() {
     let mut eng = Engine::new(47, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(draw_tickets(0)).unwrap();
 
     let offered = eng.pending_tickets().to_vec();
     assert!(
@@ -347,6 +362,7 @@ fn golden_double_route_blocked_2p() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -355,6 +371,7 @@ fn golden_double_route_blocked_2p() {
         player_index: 1,
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+        passengers: Default::default(),
     });
     assert!(matches!(r, Err(EngineError::RouteBlockedDouble { .. })));
 }
@@ -379,6 +396,7 @@ fn golden_double_route_free_4p() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -387,6 +405,7 @@ fn golden_double_route_free_4p() {
         player_index: 1,
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+        passengers: Default::default(),
     });
     assert!(r.is_ok(), "doppia rotta libera a 4p: {:?}", r.err());
 }
@@ -411,6 +430,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -419,6 +439,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
         player_index: 1,
         route_id: "B_C_1".into(),
         cards_discarded: vec![CardColor::Blue],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -427,6 +448,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
         player_index: 0,
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Green, CardColor::Green],
+        passengers: Default::default(),
     });
     assert!(matches!(r, Err(EngineError::SamePlayerDouble { .. })));
 }
@@ -444,6 +466,7 @@ fn golden_last_round_includes_trigger() {
             player_index: 0,
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
+            passengers: Default::default(),
         })
         .unwrap();
 
@@ -515,6 +538,7 @@ fn golden_last_round_trigger_is_last_player() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
     assert_eq!(eng.current_player(), 1, "dopo P0 tocca a P1");
@@ -527,6 +551,7 @@ fn golden_last_round_trigger_is_last_player() {
             player_index: 1,
             route_id: "B_C_1".into(),
             cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+            passengers: Default::default(),
         })
         .unwrap();
 
@@ -619,6 +644,7 @@ fn golden_route_point_table() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
     assert_eq!(eng.player(0).unwrap().score, 1);
@@ -628,6 +654,7 @@ fn golden_route_point_table() {
         player_index: 1,
         route_id: "B_C_1".into(),
         cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+        passengers: Default::default(),
     })
     .unwrap();
     assert_eq!(eng.player(1).unwrap().score, 2);
@@ -637,6 +664,7 @@ fn golden_route_point_table() {
         player_index: 0,
         route_id: "A_E_1".into(),
         cards_discarded: vec![CardColor::Green, CardColor::Green],
+        passengers: Default::default(),
     })
     .unwrap();
     assert_eq!(eng.player(0).unwrap().score, 3);
@@ -649,6 +677,7 @@ fn golden_route_point_table() {
         player_index: 1,
         route_id: "C_D_1".into(),
         cards_discarded: vec![CardColor::Yellow, CardColor::Yellow, CardColor::Yellow],
+        passengers: Default::default(),
     })
     .unwrap();
     assert_eq!(eng.player(1).unwrap().score, 6);
@@ -658,6 +687,7 @@ fn golden_route_point_table() {
         player_index: 0,
         route_id: "A_F_1".into(),
         cards_discarded: vec![CardColor::Red; 6],
+        passengers: Default::default(),
     })
     .unwrap();
     assert_eq!(eng.player(0).unwrap().score, 18);
@@ -680,7 +710,7 @@ fn golden_cannot_draw_tickets_in_second_card_draw() {
     .unwrap();
     assert_eq!(eng.phase(), GamePhase::SecondCardDraw);
 
-    let r = eng.apply(Action::DrawTickets { player_index: 0 });
+    let r = eng.apply(draw_tickets(0));
     assert!(r.is_err());
 }
 
@@ -707,6 +737,7 @@ fn golden_route_not_found_error() {
         player_index: 0,
         route_id: "nonexistent".into(),
         cards_discarded: vec![CardColor::Red],
+        passengers: Default::default(),
     });
     assert!(matches!(r, Err(EngineError::RouteNotFound { .. })));
 }
@@ -721,6 +752,7 @@ fn golden_insufficient_cards_for_route() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![],
+        passengers: Default::default(),
     });
     assert!(matches!(r, Err(EngineError::InsufficientCards { .. })));
 }
@@ -737,6 +769,7 @@ fn golden_wrong_color_for_route() {
         player_index: 0,
         route_id: "D_E_1".into(),
         cards_discarded: vec![CardColor::Green],
+        passengers: Default::default(),
     });
     assert!(r.is_err());
 }
@@ -756,6 +789,7 @@ fn golden_game_over_marks_winner_by_total() {
             player_index: 0,
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
+            passengers: Default::default(),
         })
         .unwrap();
     while eng.phase() != GamePhase::GameOver {
@@ -839,6 +873,7 @@ fn golden_mid_game_ticket_completed_not_none() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -847,7 +882,7 @@ fn golden_mid_game_ticket_completed_not_none() {
 
     // Dopo il claim di P0 il turno passa a P1.
     // Fai pescare biglietti a P1 per avanzare il turno e tornare a P0.
-    eng.apply(Action::DrawTickets { player_index: 1 }).unwrap();
+    eng.apply(draw_tickets(1)).unwrap();
     let p1_offered = eng.pending_tickets().to_vec();
     let p1_keep = vec![p1_offered[0].clone()];
     eng.apply(Action::ChooseTickets {
@@ -857,7 +892,7 @@ fn golden_mid_game_ticket_completed_not_none() {
     .unwrap();
 
     // DrawTickets mid-game (turno di P0).
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(draw_tickets(0)).unwrap();
     assert_eq!(eng.phase(), GamePhase::TicketChoice);
 
     let pending = eng.pending_tickets().to_vec();
@@ -936,7 +971,7 @@ fn golden_legal_moves_ticket_choice_empty() {
     let mut eng = Engine::new(62, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
 
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(draw_tickets(0)).unwrap();
     assert_eq!(eng.phase(), GamePhase::TicketChoice);
 
     let lm = eng.legal_moves(0);
@@ -971,6 +1006,7 @@ fn golden_legal_moves_only_for_current_player() {
         player_index: 1,
         route_id: "A_B_1".into(),
         cards_discarded: eng.player(1).unwrap().hand[..1].to_vec(),
+        passengers: Default::default(),
     });
     assert!(matches!(claim, Err(EngineError::NotYourTurn { .. })));
     let draw = eng.apply(Action::DrawTrainCard {
@@ -1034,6 +1070,7 @@ fn golden_total_deck_exhaustion_no_turn_loss() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
+        passengers: Default::default(),
     });
     assert!(
         ev.is_ok(),
@@ -1043,7 +1080,7 @@ fn golden_total_deck_exhaustion_no_turn_loss() {
 
     // Può anche pescare biglietti
     eng.set_player_trains(1, 45); // reset trains so no last round
-    let ev2 = eng.apply(Action::DrawTickets { player_index: 1 });
+    let ev2 = eng.apply(draw_tickets(1));
     assert!(
         ev2.is_ok(),
         "può pescare biglietti dopo esaurimento deck: {:?}",
@@ -1090,6 +1127,7 @@ fn golden_double_route_blocked_3p() {
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -1099,6 +1137,7 @@ fn golden_double_route_blocked_3p() {
         player_index: 1,
         route_id: "B_C_1".into(),
         cards_discarded: vec![CardColor::Blue],
+        passengers: Default::default(),
     })
     .unwrap();
 
@@ -1108,6 +1147,7 @@ fn golden_double_route_blocked_3p() {
         player_index: 2,
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Green, CardColor::Green],
+        passengers: Default::default(),
     });
     assert!(
         matches!(r, Err(EngineError::RouteBlockedDouble { .. })),
@@ -1563,7 +1603,7 @@ fn play_fuzz_game(
                         player_index: pi,
                         source: DrawSource::FaceUp { index },
                     },
-                    FuzzMove::Tickets => Action::DrawTickets { player_index: pi },
+                    FuzzMove::Tickets => draw_tickets(pi),
                     FuzzMove::Route(route_id) => {
                         let route = eng.get_route(&route_id).unwrap();
                         let hand = &eng.player(pi).unwrap().hand;
@@ -1576,6 +1616,7 @@ fn play_fuzz_game(
                             player_index: pi,
                             route_id,
                             cards_discarded,
+                            passengers: Default::default(),
                         }
                     }
                 }
@@ -2103,6 +2144,7 @@ fn no_routes_left_fixture(extra_train_player: Option<usize>) -> (Engine, Vec<Gam
         player_index: 0,
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red; 2],
+        passengers: Default::default(),
     })
     .unwrap();
     eng.set_player_hand(1, vec![CardColor::Blue]);
@@ -2111,6 +2153,7 @@ fn no_routes_left_fixture(extra_train_player: Option<usize>) -> (Engine, Vec<Gam
             player_index: 1,
             route_id: "B_C_1".into(),
             cards_discarded: vec![CardColor::Blue],
+            passengers: Default::default(),
         })
         .unwrap();
     (eng, events)
@@ -2213,7 +2256,7 @@ fn choose_tickets_rejects_duplicates_mid_game() {
     let (ids, names, colors) = two_players();
     let mut eng = Engine::new(42, mini_ruleset(), mini_map(), ids, names, colors, 0).unwrap();
     complete_initial_draft(&mut eng);
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(draw_tickets(0)).unwrap();
     let offered = eng.pending_tickets().to_vec();
 
     let res = eng.apply(Action::ChooseTickets {
@@ -2236,6 +2279,7 @@ fn claim_c_d(eng: &mut Engine, hand: Vec<CardColor>, declared: Vec<CardColor>) -
             player_index: 0,
             route_id: "C_D_1".into(),
             cards_discarded: declared,
+            passengers: Default::default(),
         })
         .unwrap();
     events
@@ -2701,7 +2745,7 @@ fn pending_tickets_empty_after_choice() {
         assert!(eng.initial_tickets_for(pi).unwrap().is_empty());
     }
 
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(draw_tickets(0)).unwrap();
     let keep = vec![eng.pending_tickets()[0].clone()];
     assert!(!eng.pending_tickets().is_empty());
     eng.apply(Action::ChooseTickets {
@@ -2719,6 +2763,7 @@ fn legal_and_apply_agree_on_gray() {
             player_index: 0,
             route_id: "C_D_1".into(),
             cards_discarded: cards,
+            passengers: Default::default(),
         })
     };
     let route_is_legal = |eng: &Engine| eng.legal_moves(0).routes.iter().any(|r| r == "C_D_1");
@@ -2773,6 +2818,7 @@ fn longest_path_bonus_is_found_by_type() {
             player_index: 0,
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
+            passengers: Default::default(),
         })
         .unwrap();
     while eng.phase() != GamePhase::GameOver {
@@ -3302,6 +3348,8 @@ fn mega_like() -> (Ruleset, MapData) {
     rs.players.max = 2;
     rs.ticket_decks = vec!["long".into(), "regular".into()];
     rs.initial_tickets = InitialTickets {
+        choose_from: None,
+        count: 0,
         dealt: vec![
             TicketDealtEntry {
                 deck: "long".into(),
@@ -3463,7 +3511,7 @@ fn legal_moves_ticket_choice_without_limits_and_mid_game() {
     complete_initial_draft(&mut eng);
     assert!(eng.legal_moves(0).ticket_choice.is_none());
 
-    eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+    eng.apply(draw_tickets(0)).unwrap();
     assert_eq!(eng.phase(), GamePhase::TicketChoice);
     let lm = eng.legal_moves(0);
     let choice = lm.ticket_choice.expect("ticket_choice in TicketChoice");
@@ -3506,7 +3554,7 @@ fn ticket_set_filter_never_deals_an_out_of_set_ticket() {
         assert!(seen.iter().all(|t| !t.starts_with("off_")), "seed {seed}");
 
         complete_initial_draft(&mut eng);
-        eng.apply(Action::DrawTickets { player_index: 0 }).unwrap();
+        eng.apply(draw_tickets(0)).unwrap();
         assert!(
             eng.pending_tickets().iter().all(|t| !t.starts_with("off_")),
             "seed {seed}"
@@ -3640,6 +3688,7 @@ fn finish_game(rs: Ruleset, tickets: [&[&str]; 2]) -> GameEvent {
             player_index: 0,
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
+            passengers: Default::default(),
         })
         .unwrap();
     events.extend(
@@ -3647,6 +3696,7 @@ fn finish_game(rs: Ruleset, tickets: [&[&str]; 2]) -> GameEvent {
             player_index: 1,
             route_id: "B_C_1".into(),
             cards_discarded: vec![CardColor::Blue, CardColor::Blue],
+            passengers: Default::default(),
         })
         .unwrap(),
     );

@@ -27,6 +27,7 @@
   import { qrDataUrl } from '../lib/qr';
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
+  import { passengerColorCss } from '../lib/passengers';
   import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations } from '../lib/scores';
   import { formatSavedAt } from '../lib/saves';
   import { rulesetCatalog } from '../lib/rulesets.svelte.ts';
@@ -99,6 +100,15 @@
   const isDisconnected = $derived(connection !== null && !connectionStore.connected);
   // Europe: stazioni residue nel segnapunti solo se la partita le prevede.
   const hasStations = $derived(rulesetHasStations(publicStore.playersSummary, publicStore.stations));
+  // Poland: pile delle carte Paese (anche vuote fino a fine partita); Germany 2017: passeggeri.
+  const hasCountryCards = $derived(publicStore.countryStacks.length > 0);
+  const hasPassengers = $derived(
+    publicStore.passengers.length > 0 || publicStore.playersSummary.some((p) => p.passengers.length > 0),
+  );
+  const cityNames = $derived(new Map((gameMap.state.data?.cities ?? []).map((c) => [c.id, c.name])));
+  function cityName(id: string): string {
+    return cityNames.get(id) ?? id;
+  }
   // Europe: in TUNNEL_RESOLUTION le carte rivelate sono pubbliche; la TV le mostra a tutti.
   const tunnelReveal = $derived(gameState === 'TUNNEL_RESOLUTION' ? publicStore.tunnelReveal : null);
   const tunnelRoute = $derived(
@@ -714,7 +724,7 @@
         {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
         {#if winners}<div class="winner-line">🥇 Vince {winners}!</div>{/if}
         <table>
-          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}<th>Totale</th></tr></thead>
+          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}{#if hasCountryCards}<th>Carte Paese</th>{/if}{#if hasPassengers}<th>Passeggeri</th>{/if}<th>Totale</th></tr></thead>
           <tbody>
             {#each rankedScores(publicStore.finalScores) as fs}
               {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
@@ -725,6 +735,8 @@
                 {#if showLongestPath}<td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>{/if}
                 {#if showGlobetrotter}<td>{fs.globetrotterBonus > 0 ? `🌍 +${fs.globetrotterBonus}` : '0'}</td>{/if}
                 {#if hasStations}<td>{fs.stationPoints > 0 ? `+${fs.stationPoints}` : '0'}</td>{/if}
+                {#if hasCountryCards}<td>{fs.countryPoints > 0 ? `+${fs.countryPoints}` : '0'}</td>{/if}
+                {#if hasPassengers}<td>{fs.passengerPoints > 0 ? `+${fs.passengerPoints}` : '0'}</td>{/if}
                 <td class="total">{fs.total}</td>
               </tr>
             {/each}
@@ -777,6 +789,20 @@
             </div>
             <div class="score-line"><span class="score-num">{p.score}</span><span class="score-label">punti</span></div>
             <div class="player-stats"><span>🚂 {p.trains_remaining}</span>{#if hasStations}<span title="Stazioni rimaste">🏠 {p.stations_remaining}</span>{/if}<span>🃏 {p.cards_hand_count}</span><span>🎫 {p.tickets_count}</span></div>
+            {#if hasPassengers && p.passengers.length > 0}
+              <div class="player-extras" title="Passeggeri raccolti">
+                {#each p.passengers as pc (pc.color)}
+                  <span class="passenger-chip"><span class="passenger-dot" style="background:{passengerColorCss(pc.color)}"></span>{pc.count}</span>
+                {/each}
+              </div>
+            {/if}
+            {#if hasCountryCards && p.country_cards.length > 0}
+              <div class="player-extras" title="Carte Paese prese">
+                {#each p.country_cards as cc (cc.country_id)}
+                  <span>{cityName(cc.country_id)} {cc.values.join('+')}</span>
+                {/each}
+              </div>
+            {/if}
             {#if hostToken && !p.connected}
               <div class="rejoin-action">{@render rejoinAction(p.name, true)}</div>
             {/if}
@@ -820,6 +846,17 @@
             </div>
           </div>
         </div>
+        {#if hasCountryCards}
+          <div class="country-stacks">
+            <h3>Carte Paese</h3>
+            {#each publicStore.countryStacks as stack (stack.country_id)}
+              <div class="country-stack">
+                <span>{cityName(stack.country_id)}</span>
+                <span>{stack.values.length > 0 ? `in cima ${stack.values[0]} · ${stack.values.length} rimaste` : 'esaurite'}</span>
+              </div>
+            {/each}
+          </div>
+        {/if}
         {#if publicStore.lastRound}
           <div class="last-round-banner">⚠️ ULTIMO GIRO</div>
         {/if}
@@ -1011,6 +1048,11 @@
   .score-num { font-size:1.5rem; font-weight:800; color:var(--gold); line-height:1; }
   .score-label { font-size:0.65rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--chrome-muted); }
   .player-stats { display:flex; justify-content:space-between; font-size:0.85rem; margin-top:0.3rem; color:var(--chrome-muted); }
+  .player-extras { display:flex; flex-wrap:wrap; gap:0.4rem; font-size:0.8rem; margin-top:0.25rem; color:var(--chrome-muted); }
+  .passenger-chip { display:inline-flex; align-items:center; gap:0.2rem; }
+  .passenger-dot { display:inline-block; width:0.8rem; height:0.8rem; border-radius:50%; border:1px solid rgba(0,0,0,0.5); }
+  .country-stacks { margin-top:0.5rem; font-size:0.85rem; }
+  .country-stack { display:flex; justify-content:space-between; gap:0.5rem; color:var(--chrome-muted); }
   .visible-deck { margin-top:1rem; }
   .cards-row { display:flex; gap:6px; flex-wrap:wrap; }
   .face-up-cell { flex:0 0 auto; }

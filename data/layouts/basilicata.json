@@ -1,0 +1,654 @@
+{
+  "unit": 34,
+  "width": 798,
+  "height": 596,
+  "cities": {
+    "acerenza": {
+      "x": 465.45,
+      "y": 262.7
+    },
+    "altamura": {
+      "x": 616.27,
+      "y": 145.39
+    },
+    "avigliano": {
+      "x": 261.11,
+      "y": 264.93
+    },
+    "bari": {
+      "x": 570.31,
+      "y": 55.45
+    },
+    "battipaglia": {
+      "x": 161.83,
+      "y": 330.1
+    },
+    "corleto_perticara": {
+      "x": 374.63,
+      "y": 368.97
+    },
+    "ferrandina": {
+      "x": 561.79,
+      "y": 304.41
+    },
+    "irsina": {
+      "x": 451,
+      "y": 193.99
+    },
+    "lagonegro": {
+      "x": 297.93,
+      "y": 471.59
+    },
+    "lauria": {
+      "x": 339.26,
+      "y": 496.72
+    },
+    "lecce": {
+      "x": 715.33,
+      "y": 246.2
+    },
+    "maratea": {
+      "x": 295.64,
+      "y": 524.22
+    },
+    "matera": {
+      "x": 558.83,
+      "y": 246.37
+    },
+    "melfi": {
+      "x": 240.18,
+      "y": 145.09
+    },
+    "metaponto": {
+      "x": 628.17,
+      "y": 358.56
+    },
+    "monte_pollino": {
+      "x": 459.51,
+      "y": 556.68
+    },
+    "monte_sirino": {
+      "x": 346.49,
+      "y": 428.68
+    },
+    "monte_vulture": {
+      "x": 207.42,
+      "y": 184.66
+    },
+    "pisticci": {
+      "x": 475.99,
+      "y": 389.69
+    },
+    "policoro": {
+      "x": 578.76,
+      "y": 414.92
+    },
+    "potenza": {
+      "x": 298.27,
+      "y": 294.69
+    },
+    "salerno": {
+      "x": 54.85,
+      "y": 291.19
+    },
+    "senise": {
+      "x": 478.9,
+      "y": 459.41
+    },
+    "tricarico": {
+      "x": 395.71,
+      "y": 262.43
+    },
+    "venosa": {
+      "x": 291.76,
+      "y": 128.36
+    }
+  },
+  "labels": {
+    "potenza": {
+      "dx": 15.2,
+      "dy": -11.8,
+      "anchor": "start"
+    },
+    "metaponto": {
+      "dx": 10,
+      "dy": 20.8,
+      "anchor": "start"
+    },
+    "irsina": {
+      "dx": -5.5,
+      "dy": -36.6,
+      "anchor": "middle"
+    },
+    "lauria": {
+      "dx": 15.6,
+      "dy": 40.4,
+      "anchor": "middle"
+    },
+    "lagonegro": {
+      "dx": -10,
+      "dy": 20.8,
+      "anchor": "end"
+    },
+    "altamura": {
+      "dx": 10,
+      "dy": -13.1,
+      "anchor": "start"
+    },
+    "matera": {
+      "dx": 13.5,
+      "dy": 3.9,
+      "anchor": "start"
+    },
+    "battipaglia": {
+      "dx": -10,
+      "dy": 20.8,
+      "anchor": "end"
+    },
+    "ferrandina": {
+      "dx": -10,
+      "dy": -13.1,
+      "anchor": "end"
+    },
+    "pisticci": {
+      "dx": -10,
+      "dy": 20.8,
+      "anchor": "end"
+    },
+    "policoro": {
+      "dx": 10,
+      "dy": 20.8,
+      "anchor": "start"
+    },
+    "senise": {
+      "dx": 10,
+      "dy": 20.8,
+      "anchor": "start"
+    },
+    "melfi": {
+      "dx": -13.5,
+      "dy": 3.9,
+      "anchor": "end"
+    },
+    "corleto_perticara": {
+      "dx": 0,
+      "dy": 24.4,
+      "anchor": "middle"
+    },
+    "monte_vulture": {
+      "dx": -10,
+      "dy": 20.8,
+      "anchor": "end"
+    },
+    "avigliano": {
+      "dx": -10,
+      "dy": 20.8,
+      "anchor": "end"
+    },
+    "tricarico": {
+      "dx": 0,
+      "dy": 24.4,
+      "anchor": "middle"
+    },
+    "maratea": {
+      "dx": 0,
+      "dy": 24.4,
+      "anchor": "middle"
+    },
+    "venosa": {
+      "dx": -10,
+      "dy": -13.1,
+      "anchor": "end"
+    },
+    "lecce": {
+      "dx": 13.5,
+      "dy": 3.9,
+      "anchor": "start"
+    },
+    "bari": {
+      "dx": -10,
+      "dy": -13.1,
+      "anchor": "end"
+    },
+    "monte_pollino": {
+      "dx": 13.5,
+      "dy": 3.9,
+      "anchor": "start"
+    },
+    "monte_sirino": {
+      "dx": 13.5,
+      "dy": 3.9,
+      "anchor": "start"
+    },
+    "acerenza": {
+      "dx": 13.5,
+      "dy": 3.9,
+      "anchor": "start"
+    },
+    "salerno": {
+      "dx": 0,
+      "dy": -16.6,
+      "anchor": "middle"
+    }
+  },
+  "routes": {
+    "acerenza_tricarico_1": [
+      [
+        465.4,
+        262.7
+      ],
+      [
+        395.7,
+        262.4
+      ]
+    ],
+    "altamura_bari_1": [
+      [
+        616.3,
+        145.4
+      ],
+      [
+        570.3,
+        55.4
+      ]
+    ],
+    "altamura_bari_2": [
+      [
+        616.3,
+        145.4
+      ],
+      [
+        570.3,
+        55.4
+      ]
+    ],
+    "altamura_lecce_1": [
+      [
+        616.3,
+        145.4
+      ],
+      [
+        715.3,
+        246.2
+      ]
+    ],
+    "altamura_matera_1": [
+      [
+        616.3,
+        145.4
+      ],
+      [
+        558.8,
+        246.4
+      ]
+    ],
+    "altamura_metaponto_1": [
+      [
+        616.3,
+        145.4
+      ],
+      [
+        628.2,
+        251.6
+      ],
+      [
+        628.2,
+        358.6
+      ]
+    ],
+    "avigliano_monte_vulture_1": [
+      [
+        261.1,
+        264.9
+      ],
+      [
+        207.4,
+        184.7
+      ]
+    ],
+    "avigliano_potenza_1": [
+      [
+        261.1,
+        264.9
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "bari_irsina_1": [
+      [
+        570.3,
+        55.4
+      ],
+      [
+        451,
+        194
+      ]
+    ],
+    "battipaglia_lagonegro_1": [
+      [
+        161.8,
+        330.1
+      ],
+      [
+        297.9,
+        471.6
+      ]
+    ],
+    "battipaglia_potenza_1": [
+      [
+        161.8,
+        330.1
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "battipaglia_potenza_2": [
+      [
+        161.8,
+        330.1
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "battipaglia_salerno_1": [
+      [
+        161.8,
+        330.1
+      ],
+      [
+        54.9,
+        291.2
+      ]
+    ],
+    "corleto_perticara_pisticci_1": [
+      [
+        374.6,
+        369
+      ],
+      [
+        419.5,
+        359.7
+      ],
+      [
+        476,
+        389.7
+      ]
+    ],
+    "corleto_perticara_potenza_1": [
+      [
+        374.6,
+        369
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "ferrandina_matera_1": [
+      [
+        561.8,
+        304.4
+      ],
+      [
+        558.8,
+        246.4
+      ]
+    ],
+    "ferrandina_metaponto_1": [
+      [
+        561.8,
+        304.4
+      ],
+      [
+        589.7,
+        337.5
+      ],
+      [
+        628.2,
+        358.6
+      ]
+    ],
+    "ferrandina_potenza_1": [
+      [
+        561.8,
+        304.4
+      ],
+      [
+        433.4,
+        308.8
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "irsina_matera_1": [
+      [
+        451,
+        194
+      ],
+      [
+        557.7,
+        169.7
+      ],
+      [
+        558.8,
+        246.4
+      ]
+    ],
+    "irsina_potenza_1": [
+      [
+        451,
+        194
+      ],
+      [
+        321.7,
+        210.8
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "irsina_tricarico_1": [
+      [
+        451,
+        194
+      ],
+      [
+        428.1,
+        231.5
+      ],
+      [
+        395.7,
+        262.4
+      ]
+    ],
+    "irsina_venosa_1": [
+      [
+        451,
+        194
+      ],
+      [
+        291.8,
+        128.4
+      ]
+    ],
+    "lagonegro_lauria_1": [
+      [
+        297.9,
+        471.6
+      ],
+      [
+        339.3,
+        496.7
+      ]
+    ],
+    "lagonegro_maratea_1": [
+      [
+        297.9,
+        471.6
+      ],
+      [
+        295.6,
+        524.2
+      ]
+    ],
+    "lagonegro_potenza_1": [
+      [
+        297.9,
+        471.6
+      ],
+      [
+        322.5,
+        377.9
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "lauria_maratea_1": [
+      [
+        339.3,
+        496.7
+      ],
+      [
+        295.6,
+        524.2
+      ]
+    ],
+    "lauria_monte_pollino_1": [
+      [
+        339.3,
+        496.7
+      ],
+      [
+        459.5,
+        556.7
+      ]
+    ],
+    "lauria_monte_sirino_1": [
+      [
+        339.3,
+        496.7
+      ],
+      [
+        346.5,
+        428.7
+      ]
+    ],
+    "lauria_senise_1": [
+      [
+        339.3,
+        496.7
+      ],
+      [
+        478.9,
+        459.4
+      ]
+    ],
+    "lecce_metaponto_1": [
+      [
+        715.3,
+        246.2
+      ],
+      [
+        628.2,
+        358.6
+      ]
+    ],
+    "matera_metaponto_1": [
+      [
+        558.8,
+        246.4
+      ],
+      [
+        628.2,
+        358.6
+      ]
+    ],
+    "melfi_monte_vulture_1": [
+      [
+        240.2,
+        145.1
+      ],
+      [
+        207.4,
+        184.7
+      ]
+    ],
+    "melfi_potenza_1": [
+      [
+        240.2,
+        145.1
+      ],
+      [
+        298.3,
+        294.7
+      ]
+    ],
+    "melfi_venosa_1": [
+      [
+        240.2,
+        145.1
+      ],
+      [
+        291.8,
+        128.4
+      ]
+    ],
+    "metaponto_policoro_1": [
+      [
+        628.2,
+        358.6
+      ],
+      [
+        578.8,
+        414.9
+      ]
+    ],
+    "pisticci_policoro_1": [
+      [
+        476,
+        389.7
+      ],
+      [
+        578.8,
+        414.9
+      ]
+    ],
+    "pisticci_senise_1": [
+      [
+        476,
+        389.7
+      ],
+      [
+        478.9,
+        459.4
+      ]
+    ],
+    "policoro_senise_1": [
+      [
+        578.8,
+        414.9
+      ],
+      [
+        478.9,
+        459.4
+      ]
+    ]
+  },
+  "font": {
+    "family": "Barlow Semi Condensed",
+    "weight": 600,
+    "size": 15.5
+  },
+  "doubleGap": 5
+}

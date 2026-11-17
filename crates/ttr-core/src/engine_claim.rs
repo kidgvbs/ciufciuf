@@ -4,14 +4,17 @@ use std::collections::BTreeMap;
 
 use ttr_proto::CardColor;
 
-use crate::engine::Engine;
+use crate::engine::{Engine, LaneBlock};
 use crate::engine_deck::reveal_from_deck;
 use crate::error::{EngineError, GamePhase};
 use crate::event::{FinalScore, GameEvent};
-use crate::scoring::{UnionFind, compute_final_scores, evaluate_tickets, globetrotter_winners};
+use crate::scoring::{
+    UnionFind, compute_final_scores, evaluate_tickets, globetrotter_winners,
+    passenger_majority_points,
+};
 use crate::types::{
-    ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
-    RouteColor, points_to_score,
+    CityId, ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
+    RouteColor, TieBreaker, points_to_score,
 };
 
 impl Engine {
@@ -20,6 +23,7 @@ impl Engine {
         player_index: usize,
         route_id: &str,
         cards_discarded: &[CardColor],
+        passengers: &BTreeMap<CityId, String>,
     ) -> Result<Vec<GameEvent>, EngineError> {
         match self.phase {
             GamePhase::PlayerTurn | GamePhase::LastRound => {}
@@ -47,22 +51,18 @@ impl Engine {
             });
         }
 
-        // Rotte doppie: la gemella già reclamata dallo stesso giocatore, o da
-        // chiunque con pochi giocatori, blocca la rotta.
-        if let Some(sister_id) = &info.sister
-            && let Some(sister_claim) = self.claimed_routes.get(sister_id)
-        {
-            if sister_claim.claimed_by == player_index {
-                return Err(EngineError::SamePlayerDouble {
+        // Binari paralleli: un solo binario per giocatore e, con pochi giocatori, un
+        // binario preso blocca gli altri del gruppo (salvo `alwaysOpen`).
+        if let Some(block) = self.lane_block(player_index, info) {
+            return Err(match block {
+                LaneBlock::SamePlayer => EngineError::SamePlayerDouble {
                     route_id: route_id.to_string(),
                     player: player_index,
-                });
-            }
-            if self.players.len() < self.ruleset.double_route_min_players as usize {
-                return Err(EngineError::RouteBlockedDouble {
+                },
+                LaneBlock::Blocked => EngineError::RouteBlockedDouble {
                     route_id: route_id.to_string(),
-                });
-            }
+                },
+            });
         }
         let route_color = info.color;
         let route = route.clone();
@@ -133,18 +133,19 @@ impl Engine {
         if self.players[player_index].trains_remaining < len {
             return Err(insufficient_cards());
         }
+        let taken = self.resolve_passengers(&route, passengers)?;
 
         // --- Tutto valido: esegui il claim ---
 
         if route.tunnel {
-            return Ok(self.start_tunnel(player_index, &route, hand, removed));
+            return Ok(self.start_tunnel(player_index, &route, hand, removed, taken));
         }
 
         self.players[player_index].hand = hand;
         self.train_discards.extend_from_slice(&removed);
 
         let mut events = Vec::new();
-        self.complete_claim(player_index, &route, removed, &mut events);
+        self.complete_claim(player_index, &route, removed, &taken, &mut events);
         Ok(events)
     }
 
@@ -155,6 +156,7 @@ impl Engine {
         player_index: usize,
         route: &Route,
         cards_used: Vec<CardColor>,
+        taken: &BTreeMap<CityId, String>,
         events: &mut Vec<GameEvent>,
     ) {
         let len = route.len;
@@ -185,7 +187,7 @@ impl Engine {
         );
 
         self.connectivity
-            .add_route(player_index, &route.from, &route.to);
+            .add_route(player_index, &route.id, &route.from, &route.to);
         self.update_ticket_completion(player_index);
         // Una rotta avversaria nuova può completare i biglietti di chi ha stazioni.
         for other in 0..self.players.len() {
@@ -202,7 +204,140 @@ impl Engine {
             trains_placed: len,
         });
 
+        self.take_passengers(player_index, route, taken, events);
+        self.take_country_cards(player_index, route, events);
         self.advance_turn(events);
+    }
+
+    /// Passeggeri da prendere con la rotta: da ogni estremo con passeggeri uno solo (il
+    /// colore è scelto con `picks` quando ce n'è più di uno). Non modifica lo stato.
+    fn resolve_passengers(
+        &self,
+        route: &Route,
+        picks: &BTreeMap<CityId, String>,
+    ) -> Result<BTreeMap<CityId, String>, EngineError> {
+        let mut taken = BTreeMap::new();
+        if self.ruleset.passengers.is_none() {
+            return Ok(taken);
+        }
+        if let Some(city) = picks.keys().find(|c| **c != route.from && **c != route.to) {
+            return Err(EngineError::InvalidPayload {
+                reason: format!("passeggero scelto in '{city}', che non è un estremo della rotta"),
+            });
+        }
+        for city in [&route.from, &route.to] {
+            let present = self.passengers_on_city.get(city);
+            let color = match (present, picks.get(city)) {
+                (Some(colors), Some(color)) if colors.contains_key(color) => color.clone(),
+                (_, Some(color)) => {
+                    return Err(EngineError::PassengerNotAvailable {
+                        route_id: route.id.clone(),
+                        city_id: city.clone(),
+                        color: color.clone(),
+                    });
+                }
+                (Some(colors), None) if colors.len() == 1 => {
+                    colors.keys().next().cloned().unwrap_or_default()
+                }
+                (Some(colors), None) if colors.len() > 1 => {
+                    return Err(EngineError::PassengerChoiceRequired {
+                        route_id: route.id.clone(),
+                        city_id: city.clone(),
+                    });
+                }
+                _ => continue,
+            };
+            taken.insert(city.clone(), color);
+        }
+        Ok(taken)
+    }
+
+    /// Il giocatore prende i passeggeri già risolti con `resolve_passengers`.
+    fn take_passengers(
+        &mut self,
+        player_index: usize,
+        route: &Route,
+        taken: &BTreeMap<CityId, String>,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let mut moved: Vec<(CityId, String)> = Vec::new();
+        for (city, color) in taken {
+            let Some(colors) = self.passengers_on_city.get_mut(city) else {
+                continue;
+            };
+            let Some(count) = colors.get_mut(color) else {
+                continue;
+            };
+            *count -= 1;
+            if *count == 0 {
+                colors.remove(color);
+            }
+            if colors.is_empty() {
+                self.passengers_on_city.remove(city);
+            }
+            *self.players[player_index]
+                .passengers
+                .entry(color.clone())
+                .or_default() += 1;
+            moved.push((city.clone(), color.clone()));
+        }
+        if !moved.is_empty() {
+            events.push(GameEvent::PassengersTaken {
+                player_index,
+                route_id: route.id.clone(),
+                taken: moved,
+            });
+        }
+    }
+
+    /// Carte Paese (Poland): una rotta che entra in un Paese dà la carta in cima alla pila
+    /// di ogni Paese della rete del giocatore che la contiene, se la rete ne raggiunge
+    /// almeno due; le pile vuote non danno nulla.
+    fn take_country_cards(
+        &mut self,
+        player_index: usize,
+        route: &Route,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let enters_country = [&route.from, &route.to]
+            .into_iter()
+            .any(|city| self.country_ids.contains(city));
+        if self.country_stacks.is_empty() || !enters_country {
+            return;
+        }
+        // Contano solo i Paesi con una pila (`countryCards`): un Paese senza carte non
+        // completa la coppia richiesta dal regolamento.
+        let network: Vec<CityId> = self
+            .connectivity
+            .countries_in_network(player_index, &route.id, &route.from)
+            .into_iter()
+            .filter(|country| self.country_stacks.contains_key(country))
+            .collect();
+        if network.len() < 2 {
+            return;
+        }
+        let mut taken: Vec<(CityId, u32)> = Vec::new();
+        for country in network {
+            let Some(stack) = self.country_stacks.get_mut(&country) else {
+                continue;
+            };
+            if stack.is_empty() {
+                continue;
+            }
+            let value = stack.remove(0);
+            self.players[player_index]
+                .country_cards
+                .entry(country.clone())
+                .or_default()
+                .push(value);
+            taken.push((country, value));
+        }
+        if !taken.is_empty() {
+            events.push(GameEvent::CountryCardsTaken {
+                player_index,
+                cards: taken,
+            });
+        }
     }
 
     /// Rivela le carte di un tunnel (D30) dopo che il pagamento base è stato validato.
@@ -214,6 +349,7 @@ impl Engine {
         route: &Route,
         hand: Vec<CardColor>,
         played: Vec<CardColor>,
+        taken: BTreeMap<CityId, String>,
     ) -> Vec<GameEvent> {
         self.players[player_index].hand = hand;
         let color = played
@@ -249,7 +385,7 @@ impl Engine {
         if extra == 0 {
             self.train_discards.extend_from_slice(&played);
             self.train_discards.extend(revealed);
-            self.complete_claim(player_index, route, played, &mut events);
+            self.complete_claim(player_index, route, played, &taken, &mut events);
         } else {
             self.pending_tunnel = Some(PendingTunnel {
                 route_id: route.id.clone(),
@@ -257,6 +393,7 @@ impl Engine {
                 revealed,
                 color,
                 extra,
+                passengers: taken,
             });
             self.phase = GamePhase::TunnelResolution;
         }
@@ -341,6 +478,7 @@ impl Engine {
             return Err(EngineError::WrongState { state: self.phase });
         };
         self.players[player_index].hand = hand;
+        let taken = pending.passengers;
         // Ordine di scarto deterministico: giocate, extra, rivelate.
         self.train_discards.extend_from_slice(&pending.played);
         self.train_discards.extend_from_slice(&extra_cards);
@@ -349,7 +487,7 @@ impl Engine {
         cards_used.extend(extra_cards);
 
         let mut events = Vec::new();
-        self.complete_claim(player_index, &route, cards_used, &mut events);
+        self.complete_claim(player_index, &route, cards_used, &taken, &mut events);
         Ok(events)
     }
 
@@ -454,6 +592,20 @@ impl Engine {
             .map(|s| std::mem::take(&mut s.longest_path_routes))
             .collect();
 
+        let passenger_points: Vec<i32> = match &self.ruleset.passengers {
+            Some(config) => {
+                let held: Vec<&BTreeMap<String, u32>> =
+                    self.players.iter().map(|p| &p.passengers).collect();
+                let first = config.majority_points.first().copied().unwrap_or(0);
+                let second = config.majority_points.get(1).copied().unwrap_or(0);
+                passenger_majority_points(&held, &config.colors, first, second)
+                    .into_iter()
+                    .map(points_to_score)
+                    .collect()
+            }
+            None => vec![0; self.players.len()],
+        };
+
         let mut final_scores: Vec<FinalScore> = self
             .players
             .iter()
@@ -471,13 +623,22 @@ impl Engine {
                     0
                 };
                 let station_points = self.unbuilt_station_points(i);
+                let country_points = points_to_score(
+                    p.country_cards
+                        .values()
+                        .flatten()
+                        .fold(0u32, |acc, &value| acc.saturating_add(value)),
+                );
+                let passenger_points = passenger_points[i];
                 let total = p
                     .score
                     .saturating_add(s.completed_tickets)
                     .saturating_add(s.failed_tickets)
                     .saturating_add(bonus_val)
                     .saturating_add(globetrotter_bonus)
-                    .saturating_add(station_points);
+                    .saturating_add(station_points)
+                    .saturating_add(country_points)
+                    .saturating_add(passenger_points);
                 FinalScore {
                     player_index: i,
                     route_points: p.score,
@@ -488,20 +649,33 @@ impl Engine {
                     total,
                     station_points,
                     borrowed_routes: s.borrowed_routes.clone(),
+                    country_points,
+                    passenger_points,
                     winner: false,
                 }
             })
             .collect();
 
-        // Vincitore: totale più alto; spareggio sul numero di biglietti
-        // completati, poi sul bonus del percorso più lungo. Pari merito
+        // Vincitore: massimo lessicografico di (totale, spareggi del ruleset in ordine);
+        // di default biglietti completati, poi bonus del percorso più lungo. Pari merito
         // residui restano tutti vincitori.
-        let rank_key = |fs: &FinalScore| {
-            (
-                fs.total,
-                scores[fs.player_index].completed_count,
-                fs.longest_path_bonus,
-            )
+        let tie_breakers = self.ruleset.tie_breaker_keys();
+        let rank_key = |fs: &FinalScore| -> Vec<i64> {
+            let score = &scores[fs.player_index];
+            let mut key = vec![i64::from(fs.total)];
+            key.extend(tie_breakers.iter().map(|tie| {
+                match tie {
+                    TieBreaker::CompletedTickets => i64::from(score.completed_count),
+                    TieBreaker::CompletedTicketPoints => i64::from(score.completed_tickets),
+                    TieBreaker::LongestPathBonus => i64::from(fs.longest_path_bonus),
+                    TieBreaker::Passengers => self.players[fs.player_index]
+                        .passengers
+                        .values()
+                        .map(|&n| i64::from(n))
+                        .sum(),
+                }
+            }));
+            key
         };
         if let Some(best) = final_scores.iter().map(rank_key).max() {
             for fs in &mut final_scores {

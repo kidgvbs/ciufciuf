@@ -80,11 +80,15 @@ fn next_action(eng: &Engine, step: usize, keep_initial: usize, keep_draw: usize)
                         player_index: pi,
                         route_id: route.id.clone(),
                         cards_discarded: cards,
+                        passengers: Default::default(),
                     };
                 }
             }
             if step.is_multiple_of(11) && legal.can_draw_tickets {
-                Action::DrawTickets { player_index: pi }
+                Action::DrawTickets {
+                    player_index: pi,
+                    counts: Default::default(),
+                }
             } else if legal.can_draw_deck {
                 Action::DrawTrainCard {
                     player_index: pi,
@@ -96,7 +100,10 @@ fn next_action(eng: &Engine, step: usize, keep_initial: usize, keep_draw: usize)
                     source: DrawSource::FaceUp { index },
                 }
             } else {
-                Action::DrawTickets { player_index: pi }
+                Action::DrawTickets {
+                    player_index: pi,
+                    counts: Default::default(),
+                }
             }
         }
     }
@@ -137,7 +144,8 @@ fn golden_hash(seed: u64, players: usize) -> u64 {
         feed(
             &format!("{events:?}")
                 .replace(", globetrotter_bonus: 0", "")
-                .replace(", station_points: 0, borrowed_routes: []", ""),
+                .replace(", station_points: 0, borrowed_routes: []", "")
+                .replace(", country_points: 0, passenger_points: 0", ""),
         );
     }
     feed(&eng.action_log().len().to_string());

@@ -8,7 +8,7 @@
 //!
 //! - **CityId**: lowercase snake case, es. `"new_york"`, `"salt_lake_city"`.
 //! - **RouteId**: `{cityA}_{cityB}_{n}` con città in ordine lessicografico,
-//!   suffisso `_1` / `_2` per le doppie, es. `"denver_phoenix_1"`.
+//!   suffisso `_1`..`_4` per i binari di un gruppo parallelo (2–4), es. `"denver_phoenix_1"`.
 //!   (Nuovo: `_1` anche per le rotte singole, così il formato è uniforme.)
 //! - **TicketId**: `{cityA}_{cityB}` con città in ordine lessicografico,
 //!   es. `"los_angeles_new_york"`.
@@ -133,6 +133,11 @@ pub enum DrawSource {
 #[ts(export)]
 pub struct DrawTicketsPayload {
     pub player_id: String,
+    /// Ruleset con `ticketDrawChoice`: biglietti da pescare per mazzo. Assente per i ruleset
+    /// classici (un solo mazzo di pesca).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub counts: Option<Vec<TicketDeckCount>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
@@ -156,6 +161,11 @@ pub struct ClaimRoutePayload {
     pub route_id: RouteId,
     /// Suggerimento: il server valida e risolve il pagamento (locomotive automatiche).
     pub cards_discarded: Vec<CardColor>,
+    /// Germany 2017: colore del passeggero scelto negli estremi con passeggeri di più colori
+    /// (negli altri è automatico). Assente senza passeggeri.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub passengers: Option<Vec<PassengerPick>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
@@ -259,6 +269,14 @@ pub struct PublicState {
     /// dal mazzo né biglietti. Il draft iniziale non compare.
     #[serde(default)]
     pub recent_moves: Vec<RecentMove>,
+    /// Poland: carte Paese rimaste in ogni pila, dall'alto in basso (pubbliche); vuoto
+    /// senza carte Paese.
+    #[serde(default)]
+    pub country_stacks: Vec<CountryCards>,
+    /// Germany 2017: passeggeri ancora sulle città, in ordine di id città; vuoto senza
+    /// passeggeri.
+    #[serde(default)]
+    pub passengers: Vec<CityPassengers>,
 }
 
 /// Numero massimo di voci in `PublicState.recent_moves`.
@@ -334,6 +352,12 @@ pub struct PlayerSummary {
     pub tickets_count: u32,
     /// `true` se il giocatore ha ≥1 connessione WS attiva (presence runtime).
     pub connected: bool,
+    /// Poland: carte Paese prese dal giocatore, per Paese, in ordine di presa (pubbliche).
+    #[serde(default)]
+    pub country_cards: Vec<CountryCards>,
+    /// Germany 2017: passeggeri raccolti per colore (pubblici); vuoto senza passeggeri.
+    #[serde(default)]
+    pub passengers: Vec<PassengerCount>,
 }
 
 /// Europe: carte rivelate da un tentativo di tunnel in attesa della decisione
@@ -383,6 +407,12 @@ pub struct FinalScoreInfo {
     /// che massimizza i biglietti (una per stazione al massimo).
     #[serde(default)]
     pub borrowed_routes: Vec<BorrowedRoute>,
+    /// Poland: punti delle carte Paese prese (0 senza carte Paese).
+    #[serde(default)]
+    pub country_points: i32,
+    /// Germany 2017: punti delle maggioranze di passeggeri (0 senza passeggeri).
+    #[serde(default)]
+    pub passenger_points: i32,
 }
 
 /// Rotta avversaria usata da una stazione nel punteggio finale.
@@ -433,6 +463,65 @@ pub struct LegalMoves {
     /// ancora scelto) e in `TICKET_CHOICE` per il giocatore di turno.
     #[serde(default)]
     pub ticket_choice: Option<TicketChoiceMoves>,
+    /// Ruleset con `ticketDrawChoice`: la pesca di biglietti va fatta con le quote per mazzo
+    /// (`DRAW_TICKETS.counts`), nel draft iniziale (a chi non ha ancora biglietti offerti) e
+    /// a inizio turno; `None` altrove. Con `Some` anche `can_draw_tickets` è `true`.
+    #[serde(default)]
+    pub ticket_draw: Option<TicketDrawMoves>,
+}
+
+/// Quanti biglietti pescare da un mazzo (`deck` = nome in `ticketDecks`, es. `"regular"`,
+/// `"long"`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TicketDeckCount {
+    pub deck: String,
+    pub count: u32,
+}
+
+/// Pesca di biglietti con le quote per mazzo (ruleset con `ticketDrawChoice`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TicketDrawMoves {
+    /// Biglietti da pescare in tutto: la somma delle quote di `DRAW_TICKETS.counts` deve
+    /// essere esattamente questa (meno di `count` del ruleset se i mazzi ne hanno meno).
+    pub total: u32,
+    /// Biglietti rimasti in ogni mazzo ammesso, nell'ordine del ruleset: la quota di un
+    /// mazzo non può superarli.
+    pub available: Vec<TicketDeckCount>,
+}
+
+/// Valori delle carte Paese di un Paese (Poland), ordine dall'alto in basso per le pile,
+/// ordine di presa per le carte dei giocatori.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CountryCards {
+    pub country_id: CityId,
+    pub values: Vec<u32>,
+}
+
+/// Passeggeri di un colore (Germany 2017): `color` è il nome del ruleset (es. `"Red"`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PassengerCount {
+    pub color: String,
+    pub count: u32,
+}
+
+/// Passeggeri ancora su una città (Germany 2017), per colore in ordine alfabetico.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct CityPassengers {
+    pub city_id: CityId,
+    pub passengers: Vec<PassengerCount>,
+}
+
+/// Colore del passeggero scelto in un estremo della rotta (Germany 2017).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PassengerPick {
+    pub city_id: CityId,
+    pub color: String,
 }
 
 /// Vincoli della scelta dei biglietti offerti.
@@ -620,6 +709,7 @@ mod tests {
             }),
             InboundAction::DrawTickets(DrawTicketsPayload {
                 player_id: player_id.clone(),
+                counts: None,
                 client_seq: None,
             }),
             InboundAction::ChooseTickets(ChooseTicketsPayload {
@@ -631,6 +721,7 @@ mod tests {
                 player_id: player_id.clone(),
                 route_id: "r".into(),
                 cards_discarded: vec![],
+                passengers: None,
                 client_seq: None,
             }),
             InboundAction::BuildStation(BuildStationPayload {
@@ -676,6 +767,7 @@ mod tests {
     fn roundtrip_inbound_draw_tickets() {
         let msg = InboundAction::DrawTickets(DrawTicketsPayload {
             player_id: "p2".into(),
+            counts: None,
             client_seq: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
@@ -684,6 +776,42 @@ mod tests {
         match back {
             InboundAction::DrawTickets(p) => assert_eq!(p.player_id, "p2"),
             _ => panic!("wrong variant"),
+        }
+    }
+
+    /// `DRAW_TICKETS` con le quote per mazzo; senza `counts` (client classici) resta vuoto.
+    #[test]
+    fn inbound_draw_tickets_counts_wire_shape() {
+        let with: InboundAction = serde_json::from_str(
+            r#"{"actionType":"DRAW_TICKETS","player_id":"p1","counts":[{"deck":"regular","count":3},{"deck":"long","count":1}],"client_seq":4}"#,
+        )
+        .unwrap();
+        match &with {
+            InboundAction::DrawTickets(p) => {
+                assert_eq!(
+                    p.counts.as_deref(),
+                    Some(
+                        &[
+                            TicketDeckCount {
+                                deck: "regular".into(),
+                                count: 3
+                            },
+                            TicketDeckCount {
+                                deck: "long".into(),
+                                count: 1
+                            },
+                        ][..]
+                    )
+                );
+                assert_eq!(p.client_seq, Some(4));
+            }
+            other => panic!("wrong variant {other:?}"),
+        }
+        let legacy: InboundAction =
+            serde_json::from_str(r#"{"actionType":"DRAW_TICKETS","player_id":"p1"}"#).unwrap();
+        match legacy {
+            InboundAction::DrawTickets(p) => assert_eq!(p.counts, None),
+            other => panic!("wrong variant {other:?}"),
         }
     }
 
@@ -763,6 +891,8 @@ mod tests {
                     outcome: TunnelOutcome::Pending,
                 },
             ],
+            country_stacks: vec![],
+            passengers: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -800,6 +930,8 @@ mod tests {
                 longest_path_bonus: 10,
                 globetrotter_bonus: 15,
                 station_points: 4,
+                country_points: 7,
+                passenger_points: 0,
                 total: 91,
                 winner: true,
                 borrowed_routes: vec![BorrowedRoute {
@@ -810,6 +942,8 @@ mod tests {
             longest_path_player_ids: Some(vec!["p1".into()]),
             longest_path_route_ids: Some(vec!["a_b_1".into(), "b_c_1".into()]),
             recent_moves: vec![],
+            country_stacks: vec![],
+            passengers: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -841,6 +975,8 @@ mod tests {
             longest_path_player_ids: None,
             longest_path_route_ids: None,
             recent_moves: vec![],
+            country_stacks: vec![],
+            passengers: vec![],
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -879,6 +1015,7 @@ mod tests {
                         max: 1,
                     }],
                 }),
+                ticket_draw: None,
             },
         };
         let json = serde_json::to_string(&state).unwrap();
@@ -936,6 +1073,8 @@ mod tests {
             longest_path_player_ids: None,
             longest_path_route_ids: None,
             recent_moves: vec![],
+            country_stacks: vec![],
+            passengers: vec![],
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"PUBLIC_STATE\""));
@@ -991,6 +1130,8 @@ mod tests {
                 longest_path_player_ids: None,
                 longest_path_route_ids: None,
                 recent_moves: vec![],
+                country_stacks: vec![],
+                passengers: vec![],
             },
             private: Some(PrivateState {
                 seq: 5,
@@ -1006,6 +1147,7 @@ mod tests {
                     station_cost: 0,
                     tunnel: None,
                     ticket_choice: None,
+                    ticket_draw: None,
                 },
             }),
         });
@@ -1041,6 +1183,8 @@ mod tests {
                 longest_path_player_ids: None,
                 longest_path_route_ids: None,
                 recent_moves: vec![],
+                country_stacks: vec![],
+                passengers: vec![],
             },
             private: None,
         });

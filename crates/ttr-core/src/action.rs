@@ -4,6 +4,7 @@
 //! Il `player_index` è l'indice interno (0..num_players).
 
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use ttr_proto::CardColor;
 
 use crate::types::{CityId, RouteId, TicketId};
@@ -24,8 +25,14 @@ pub enum Action {
         player_index: usize,
         source: DrawSource,
     },
-    /// Pescare nuovi biglietti (mid-game).
-    DrawTickets { player_index: usize },
+    /// Pescare nuovi biglietti: a metà partita, o nel draft iniziale con `chooseFrom`.
+    DrawTickets {
+        player_index: usize,
+        /// Con `chooseFrom`: biglietti da pescare per mazzo (somma = totale di pesca).
+        /// Vuoto per i ruleset classici e nei save precedenti.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        counts: BTreeMap<String, u32>,
+    },
     /// Scegliere quali biglietti tenere (draft iniziale o mid-game).
     ChooseTickets {
         player_index: usize,
@@ -37,6 +44,10 @@ pub enum Action {
         route_id: RouteId,
         /// Suggerimento del client; il motore valida e risolve.
         cards_discarded: Vec<CardColor>,
+        /// Passeggeri (Germany 2017): colore scelto per estremo, obbligatorio solo dove
+        /// la città ha passeggeri di più colori. Vuoto nei save precedenti.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        passengers: BTreeMap<CityId, String>,
     },
     /// Costruire una stazione in una città (Europe).
     BuildStation {
@@ -59,7 +70,7 @@ impl Action {
     pub fn player_index(&self) -> usize {
         match self {
             Action::DrawTrainCard { player_index, .. }
-            | Action::DrawTickets { player_index }
+            | Action::DrawTickets { player_index, .. }
             | Action::ChooseTickets { player_index, .. }
             | Action::ClaimRoute { player_index, .. }
             | Action::BuildStation { player_index, .. }

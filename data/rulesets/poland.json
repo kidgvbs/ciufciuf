@@ -1,0 +1,84 @@
+{
+  "name": "Poland",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "standard",
+  "map": "poland",
+  "players": {
+    "min": 2,
+    "max": 4
+  },
+  "trainsPerPlayer": 35,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "regular",
+        "count": 4
+      }
+    ],
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 3,
+    "keepMin": 1
+  },
+  "setupDiscards": "reshuffleBottom",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10
+  },
+  "bonuses": [],
+  "tieBreakers": [
+    "completedTickets",
+    "completedTicketPoints"
+  ],
+  "countryCards": {
+    "niemcy": [
+      7,
+      4,
+      3
+    ],
+    "rosja": [
+      7,
+      4,
+      3
+    ],
+    "czechy": [
+      10,
+      7,
+      4,
+      2
+    ],
+    "bialorus": [
+      6,
+      4,
+      2
+    ],
+    "ukraina": [
+      6,
+      4,
+      2
+    ],
+    "slowacja": [
+      6,
+      4,
+      2
+    ],
+    "litwa": [
+      3
+    ]
+  },
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

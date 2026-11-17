@@ -5,8 +5,9 @@ use std::collections::{BTreeMap, HashSet};
 use ttr_core::error::{EngineError, GamePhase};
 use ttr_core::{Action, ActionRecord, GameEvent};
 use ttr_proto::{
-    BorrowedRoute, CardColor, ClaimedRoute, ErrorReason, FinalScoreInfo, GameState, LegalMoves,
-    PlayerSummary, RECENT_MOVES_MAX, RecentMove, StationPlacement, TicketChoiceMoves, TicketInfo,
+    BorrowedRoute, CardColor, CityPassengers, ClaimedRoute, CountryCards, ErrorReason,
+    FinalScoreInfo, GameState, LegalMoves, PassengerCount, PlayerSummary, RECENT_MOVES_MAX,
+    RecentMove, StationPlacement, TicketChoiceMoves, TicketDeckCount, TicketDrawMoves, TicketInfo,
     TicketKeepLimit, TunnelDecisionMoves, TunnelOutcome, TunnelReveal,
 };
 
@@ -141,6 +142,25 @@ pub(crate) fn build_public_state(
         longest_path_player_ids: session.longest_path_player_ids.clone(),
         longest_path_route_ids: session.longest_path_route_ids.clone(),
         recent_moves,
+        country_stacks: session
+            .engine
+            .as_ref()
+            .map(|e| country_cards_list(e.country_stacks().iter()))
+            .unwrap_or_default(),
+        passengers: session
+            .engine
+            .as_ref()
+            .map(|e| {
+                e.passengers_on_cities()
+                    .iter()
+                    .map(|(city_id, colors)| CityPassengers {
+                        city_id: city_id.clone(),
+                        passengers: passenger_counts(colors),
+                    })
+                    .filter(|city| !city.passengers.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
     }
 }
 
@@ -179,6 +199,28 @@ fn recent_moves_from_log<'a>(
     {
         start -= 1;
     }
+
+    // Il draft iniziale non compare: con `chooseFrom` comprende anche le pescate con le quote.
+    // Finisce col record di `InitialDraftComplete`; senza quel record il log è ancora tutto
+    // draft se contiene solo azioni sui biglietti.
+    let draft_end = log
+        .iter()
+        .position(|r| {
+            r.events
+                .iter()
+                .any(|e| matches!(e, GameEvent::InitialDraftComplete))
+        })
+        .map(|i| i + 1)
+        .unwrap_or_else(|| {
+            let only_tickets = log.iter().all(|r| {
+                matches!(
+                    r.action,
+                    Action::DrawTickets { .. } | Action::ChooseTickets { .. }
+                )
+            });
+            if only_tickets { log.len() } else { 0 }
+        });
+    let start = start.max(draft_end);
 
     let mut moves: Vec<RecentMove> = Vec::new();
     // Indice del giocatore se l'ultima voce è una pescata di carte ancora aperta.
@@ -378,9 +420,55 @@ fn build_players_summary(
                 cards_hand_count: hand_count,
                 tickets_count,
                 connected: connected_player_ids.contains(pid),
+                country_cards: engine_player_country_cards(session, engine_idx),
+                passengers: engine_player_passengers(session, engine_idx),
             }
         })
         .collect()
+}
+
+/// Pile o carte Paese per Paese, in ordine di id Paese.
+fn country_cards_list<'a>(
+    items: impl Iterator<Item = (&'a String, &'a Vec<u32>)>,
+) -> Vec<CountryCards> {
+    items
+        .map(|(country, values)| CountryCards {
+            country_id: country.clone(),
+            values: values.clone(),
+        })
+        .collect()
+}
+
+/// Carte Paese prese da un giocatore (indice del motore); vuoto senza motore.
+fn engine_player_country_cards(session: &GameSession, engine_idx: usize) -> Vec<CountryCards> {
+    session
+        .engine
+        .as_ref()
+        .and_then(|e| e.player(engine_idx))
+        .map(|p| country_cards_list(p.country_cards.iter()))
+        .unwrap_or_default()
+}
+
+/// Passeggeri per colore (ordine alfabetico del colore), saltando i colori a zero.
+fn passenger_counts(colors: &BTreeMap<String, u32>) -> Vec<PassengerCount> {
+    colors
+        .iter()
+        .filter(|(_, count)| **count > 0)
+        .map(|(color, count)| PassengerCount {
+            color: color.clone(),
+            count: *count,
+        })
+        .collect()
+}
+
+/// Passeggeri raccolti da un giocatore (indice del motore); vuoto senza motore.
+fn engine_player_passengers(session: &GameSession, engine_idx: usize) -> Vec<PassengerCount> {
+    session
+        .engine
+        .as_ref()
+        .and_then(|e| e.player(engine_idx))
+        .map(|p| passenger_counts(&p.passengers))
+        .unwrap_or_default()
 }
 
 // ── PrivateState ─────────────────────────────────────────────────────
@@ -442,6 +530,17 @@ pub(crate) fn build_private_state(
                     .map(|l| TicketKeepLimit {
                         ticket_ids: l.ticket_ids,
                         max: l.max,
+                    })
+                    .collect(),
+            }),
+            ticket_draw: lm.ticket_draw.map(|d| TicketDrawMoves {
+                total: d.total,
+                available: d
+                    .available
+                    .into_iter()
+                    .map(|a| TicketDeckCount {
+                        deck: a.deck,
+                        count: a.count,
                     })
                     .collect(),
             }),
@@ -547,6 +646,8 @@ pub(crate) fn build_final_scores(
                 station_points: fs.station_points,
                 total: fs.total,
                 winner: fs.winner,
+                country_points: fs.country_points,
+                passenger_points: fs.passenger_points,
                 borrowed_routes: fs
                     .borrowed_routes
                     .iter()
@@ -602,6 +703,10 @@ pub(crate) fn error_action_ref(err: &EngineError) -> Option<String> {
             Some(format!("CLAIM_ROUTE {}", route_id))
         }
         EngineError::InsufficientCards { route_id, .. } => {
+            Some(format!("CLAIM_ROUTE {}", route_id))
+        }
+        EngineError::PassengerChoiceRequired { route_id, .. }
+        | EngineError::PassengerNotAvailable { route_id, .. } => {
             Some(format!("CLAIM_ROUTE {}", route_id))
         }
         EngineError::InsufficientStationCards { .. } => Some("BUILD_STATION".into()),
@@ -836,6 +941,7 @@ mod tests {
                 player_index: p,
                 route_id: route.into(),
                 cards_discarded: vec![],
+                passengers: Default::default(),
             },
             events,
         )
@@ -932,7 +1038,10 @@ mod tests {
             )
         };
         let draw_tickets = rec(
-            Action::DrawTickets { player_index: 1 },
+            Action::DrawTickets {
+                player_index: 1,
+                counts: Default::default(),
+            },
             vec![GameEvent::TicketsOffered {
                 player_index: 1,
                 ticket_ids: vec!["a".into(), "b".into(), "c".into()],
@@ -942,8 +1051,10 @@ mod tests {
         // Solo draft: nessuna voce.
         assert!(recent(&[choose(0, 3), choose(1, 2)]).is_empty());
 
-        // Pendente.
-        let mut log = vec![choose(0, 3), choose(1, 2), draw_tickets];
+        // Pendente. L'ultima scelta del draft chiude il draft (`InitialDraftComplete`).
+        let mut draft_last = choose(1, 2);
+        draft_last.events.push(GameEvent::InitialDraftComplete);
+        let mut log = vec![choose(0, 3), draft_last, draw_tickets];
         assert_eq!(
             recent(&log),
             vec![RecentMove::DrawTickets {

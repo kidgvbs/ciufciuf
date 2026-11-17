@@ -101,10 +101,28 @@ async function rest(method, path, body) {
 
 // ── Mappa rotte ─────────────────────────────────────────────────────────
 const routes = new Map();
-const mapId = JSON.parse(readFileSync(join(ROOT, 'data', 'rulesets', `${RULESET}.json`), 'utf8')).map;
+const rulesetJson = JSON.parse(readFileSync(join(ROOT, 'data', 'rulesets', `${RULESET}.json`), 'utf8'));
+const mapId = rulesetJson.map;
+const hasLongestPath = rulesetJson.bonuses.some((b) => b.type === 'longest_path');
 const mapPath = join(ROOT, 'data', 'maps', `${mapId}.json`);
 for (const r of JSON.parse(readFileSync(mapPath, 'utf8')).routes) routes.set(r.id, r);
 const toCardColor = (c) => (c === 'Gray' ? null : c.toUpperCase());
+// Germany: quote della pesca (un mazzo dopo l'altro, nell'ordine del server); undefined senza.
+const ticketQuotas = (lm) => {
+  const draw = lm?.ticket_draw;
+  if (!draw) return undefined;
+  let left = draw.total;
+  return draw.available
+    .map((a) => { const count = Math.min(left, a.count); left -= count; return { deck: a.deck, count }; })
+    .filter((q) => q.count > 0);
+};
+// Germany 2017: primo colore dei passeggeri negli estremi che ne hanno di più colori.
+const passengerPicks = (pub, route) => {
+  const picks = (pub?.passengers ?? [])
+    .filter((c) => (c.city_id === route.from || c.city_id === route.to) && c.passengers.length > 1)
+    .map((c) => ({ city_id: c.city_id, color: c.passengers[0].color }));
+  return picks.length > 0 ? picks : undefined;
+};
 
 // ── Player handle ───────────────────────────────────────────────────────
 function makePlayer(name, playerId, token, gameId) {
@@ -233,6 +251,11 @@ async function main() {
   // 5. Draft iniziale (accetta tutto)
   console.log('5. Draft iniziale...');
   for (const p of [p1, p2]) {
+    // Con `chooseFrom` (Germany) il draft parte da una pesca con le quote per mazzo.
+    await p.wait((x) => x.private?.legal_moves, 20000);
+    if (p.private.legal_moves.ticket_draw && !(p.offered?.length)) {
+      p.send({ actionType: 'DRAW_TICKETS', counts: ticketQuotas(p.private.legal_moves) });
+    }
     await p.wait((x) => x.offered && x.offered.length >= 3, 20000);
     console.log(`   ${p.name}: ${p.offered.length} biglietti → tiene tutti`);
     p.send({ actionType: 'CHOOSE_TICKETS', keep: p.offered.map((t) => t.id) });
@@ -431,7 +454,10 @@ async function main() {
         }
 
         console.log(`   [T${turns}] ${cur.name} CLAIM ${route.id} (len=${route.len}) [${payment.join(',')}]`);
-        cur.send({ actionType: 'CLAIM_ROUTE', route_id: route.id, cards_discarded: payment });
+        cur.send({
+          actionType: 'CLAIM_ROUTE', route_id: route.id, cards_discarded: payment,
+          passengers: passengerPicks(latestPublic(cur, p1, p2), route),
+        });
 
         // Wait for explicit confirmation via cur.wait() — 8s timeout.
         // cur.wait() already polls every 100ms via setInterval + triggers on WS messages.
@@ -594,7 +620,7 @@ async function main() {
 
         const errBefore = cur.errors.length;
         console.log(`   [T${turns}] ${cur.name} DRAW_TICKETS`);
-        cur.send({ actionType: 'DRAW_TICKETS' });
+        cur.send({ actionType: 'DRAW_TICKETS', counts: ticketQuotas(lm) });
         try {
           await cur.wait((x) => {
             const cp = latestPublic(cur, p1, p2);
@@ -736,7 +762,11 @@ async function main() {
 
   assert(finalPub.final_scores?.length > 0, 'final_scores missing');
   assert(finalPub.players_summary?.length === 2, `players_summary: ${finalPub.players_summary?.length}`);
-  assert(finalPub.longest_path_player_ids?.length > 0, 'longest_path missing');
+  if (hasLongestPath) {
+    assert(finalPub.longest_path_player_ids?.length > 0, 'longest_path missing');
+  } else {
+    assert(!finalPub.longest_path_player_ids?.length, 'longest_path su un ruleset senza il bonus');
+  }
 
   // ── Report ─────────────────────────────────────────────────────────
   console.log('\n── Report partita ──');
@@ -762,11 +792,12 @@ async function main() {
     for (const fs of finalPub.final_scores) {
       const nm = byId[fs.playerId]?.name || fs.playerId || '?';
       const borrowed = (fs.borrowedRoutes || []).map((b) => `${b.cityId}:${b.routeId}`).join(',') || '-';
-      console.log(`     ${nm}: routes=${fs.routePoints} tickets=${fs.ticketCompleted}/${fs.ticketFailed} longest=${fs.longestPathBonus} stations=${fs.stationPoints} borrowed=${borrowed} → ${fs.total}`);
+      console.log(`     ${nm}: routes=${fs.routePoints} tickets=${fs.ticketCompleted}/${fs.ticketFailed} longest=${fs.longestPathBonus} globetrotter=${fs.globetrotterBonus} stations=${fs.stationPoints} country=${fs.countryPoints} passengers=${fs.passengerPoints} borrowed=${borrowed} → ${fs.total}`);
       assert(Number.isInteger(fs.stationPoints), `${nm}: stationPoints mancante nei punteggi finali`);
       assert(Array.isArray(fs.borrowedRoutes), `${nm}: borrowedRoutes mancante nei punteggi finali`);
       assert(
-        fs.total === fs.routePoints + fs.ticketCompleted + fs.ticketFailed + fs.longestPathBonus + fs.stationPoints,
+        fs.total === fs.routePoints + fs.ticketCompleted + fs.ticketFailed + fs.longestPathBonus
+          + fs.globetrotterBonus + fs.stationPoints + (fs.countryPoints ?? 0) + (fs.passengerPoints ?? 0),
         `${nm}: totale incoerente`,
       );
       if (!EUROPE) assert(fs.stationPoints === 0 && fs.borrowedRoutes.length === 0, `${nm}: stazioni su una mappa senza stazioni`);

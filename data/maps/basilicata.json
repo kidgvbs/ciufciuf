@@ -1,0 +1,788 @@
+{
+  "cities": [
+    {
+      "id": "acerenza",
+      "name": "Acerenza",
+      "lat": 40.8,
+      "lon": 15.95
+    },
+    {
+      "id": "altamura",
+      "name": "Altamura",
+      "lat": 40.817,
+      "lon": 16.55
+    },
+    {
+      "id": "avigliano",
+      "name": "Avigliano",
+      "lat": 40.731,
+      "lon": 15.717
+    },
+    {
+      "id": "bari",
+      "name": "Bari",
+      "lat": 41.125,
+      "lon": 16.867
+    },
+    {
+      "id": "battipaglia",
+      "name": "Battipaglia",
+      "lat": 40.617,
+      "lon": 14.983
+    },
+    {
+      "id": "corleto_perticara",
+      "name": "Corleto Perticara",
+      "lat": 40.383,
+      "lon": 16.05
+    },
+    {
+      "id": "ferrandina",
+      "name": "Ferrandina",
+      "lat": 40.5,
+      "lon": 16.45
+    },
+    {
+      "id": "irsina",
+      "name": "Irsina",
+      "lat": 40.75,
+      "lon": 16.233
+    },
+    {
+      "id": "lagonegro",
+      "name": "Lagonegro",
+      "lat": 40.133,
+      "lon": 15.767
+    },
+    {
+      "id": "lauria",
+      "name": "Lauria",
+      "lat": 40.047,
+      "lon": 15.836
+    },
+    {
+      "id": "lecce",
+      "name": "Lecce",
+      "lat": 40.35,
+      "lon": 18.167
+    },
+    {
+      "id": "maratea",
+      "name": "Maratea",
+      "lat": 39.993,
+      "lon": 15.717
+    },
+    {
+      "id": "matera",
+      "name": "Matera",
+      "lat": 40.667,
+      "lon": 16.6
+    },
+    {
+      "id": "melfi",
+      "name": "Melfi",
+      "lat": 40.996,
+      "lon": 15.656
+    },
+    {
+      "id": "metaponto",
+      "name": "Metaponto",
+      "lat": 40.374,
+      "lon": 16.81
+    },
+    {
+      "id": "monte_pollino",
+      "name": "Monte Pollino",
+      "lat": 39.908,
+      "lon": 16.188
+    },
+    {
+      "id": "monte_sirino",
+      "name": "Monte Sirino",
+      "lat": 40.133,
+      "lon": 15.836
+    },
+    {
+      "id": "monte_vulture",
+      "name": "Monte Vulture",
+      "lat": 40.948,
+      "lon": 15.636
+    },
+    {
+      "id": "pisticci",
+      "name": "Pisticci",
+      "lat": 40.383,
+      "lon": 16.55
+    },
+    {
+      "id": "policoro",
+      "name": "Policoro",
+      "lat": 40.2,
+      "lon": 16.667
+    },
+    {
+      "id": "potenza",
+      "name": "Potenza",
+      "lat": 40.633,
+      "lon": 15.8
+    },
+    {
+      "id": "salerno",
+      "name": "Salerno",
+      "lat": 40.681,
+      "lon": 14.759
+    },
+    {
+      "id": "senise",
+      "name": "Senise",
+      "lat": 40.133,
+      "lon": 16.283
+    },
+    {
+      "id": "tricarico",
+      "name": "Tricarico",
+      "lat": 40.617,
+      "lon": 16.15
+    },
+    {
+      "id": "venosa",
+      "name": "Venosa",
+      "lat": 40.962,
+      "lon": 15.815
+    }
+  ],
+  "routes": [
+    {
+      "id": "acerenza_tricarico_1",
+      "from": "acerenza",
+      "to": "tricarico",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "altamura_bari_1",
+      "from": "altamura",
+      "to": "bari",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "altamura_bari_2",
+      "from": "altamura",
+      "to": "bari",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "altamura_lecce_1",
+      "from": "altamura",
+      "to": "lecce",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "altamura_matera_1",
+      "from": "altamura",
+      "to": "matera",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "altamura_metaponto_1",
+      "from": "altamura",
+      "to": "metaponto",
+      "len": 7,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "avigliano_monte_vulture_1",
+      "from": "avigliano",
+      "to": "monte_vulture",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "avigliano_potenza_1",
+      "from": "avigliano",
+      "to": "potenza",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_irsina_1",
+      "from": "bari",
+      "to": "irsina",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "battipaglia_lagonegro_1",
+      "from": "battipaglia",
+      "to": "lagonegro",
+      "len": 6,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "battipaglia_potenza_1",
+      "from": "battipaglia",
+      "to": "potenza",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "battipaglia_potenza_2",
+      "from": "battipaglia",
+      "to": "potenza",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "battipaglia_salerno_1",
+      "from": "battipaglia",
+      "to": "salerno",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "corleto_perticara_pisticci_1",
+      "from": "corleto_perticara",
+      "to": "pisticci",
+      "len": 3,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "corleto_perticara_potenza_1",
+      "from": "corleto_perticara",
+      "to": "potenza",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ferrandina_matera_1",
+      "from": "ferrandina",
+      "to": "matera",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ferrandina_metaponto_1",
+      "from": "ferrandina",
+      "to": "metaponto",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ferrandina_potenza_1",
+      "from": "ferrandina",
+      "to": "potenza",
+      "len": 8,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "irsina_matera_1",
+      "from": "irsina",
+      "to": "matera",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "irsina_potenza_1",
+      "from": "irsina",
+      "to": "potenza",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "irsina_tricarico_1",
+      "from": "irsina",
+      "to": "tricarico",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "irsina_venosa_1",
+      "from": "irsina",
+      "to": "venosa",
+      "len": 5,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lagonegro_lauria_1",
+      "from": "lagonegro",
+      "to": "lauria",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lagonegro_maratea_1",
+      "from": "lagonegro",
+      "to": "maratea",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lagonegro_potenza_1",
+      "from": "lagonegro",
+      "to": "potenza",
+      "len": 6,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lauria_maratea_1",
+      "from": "lauria",
+      "to": "maratea",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lauria_monte_pollino_1",
+      "from": "lauria",
+      "to": "monte_pollino",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lauria_monte_sirino_1",
+      "from": "lauria",
+      "to": "monte_sirino",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lauria_senise_1",
+      "from": "lauria",
+      "to": "senise",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lecce_metaponto_1",
+      "from": "lecce",
+      "to": "metaponto",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "matera_metaponto_1",
+      "from": "matera",
+      "to": "metaponto",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "melfi_monte_vulture_1",
+      "from": "melfi",
+      "to": "monte_vulture",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "melfi_potenza_1",
+      "from": "melfi",
+      "to": "potenza",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "melfi_venosa_1",
+      "from": "melfi",
+      "to": "venosa",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "metaponto_policoro_1",
+      "from": "metaponto",
+      "to": "policoro",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pisticci_policoro_1",
+      "from": "pisticci",
+      "to": "policoro",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pisticci_senise_1",
+      "from": "pisticci",
+      "to": "senise",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "policoro_senise_1",
+      "from": "policoro",
+      "to": "senise",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "acerenza_altamura",
+      "from": "acerenza",
+      "to": "altamura",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "acerenza_potenza",
+      "from": "acerenza",
+      "to": "potenza",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "altamura_irsina",
+      "from": "altamura",
+      "to": "irsina",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "avigliano_maratea",
+      "from": "avigliano",
+      "to": "maratea",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "avigliano_salerno",
+      "from": "avigliano",
+      "to": "salerno",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bari_matera",
+      "from": "bari",
+      "to": "matera",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bari_potenza",
+      "from": "bari",
+      "to": "potenza",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "battipaglia_melfi",
+      "from": "battipaglia",
+      "to": "melfi",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "battipaglia_metaponto",
+      "from": "battipaglia",
+      "to": "metaponto",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "battipaglia_pisticci",
+      "from": "battipaglia",
+      "to": "pisticci",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "corleto_perticara_monte_vulture",
+      "from": "corleto_perticara",
+      "to": "monte_vulture",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "corleto_perticara_venosa",
+      "from": "corleto_perticara",
+      "to": "venosa",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ferrandina_senise",
+      "from": "ferrandina",
+      "to": "senise",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ferrandina_venosa",
+      "from": "ferrandina",
+      "to": "venosa",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "irsina_lagonegro",
+      "from": "irsina",
+      "to": "lagonegro",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lagonegro_melfi",
+      "from": "lagonegro",
+      "to": "melfi",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lauria_matera",
+      "from": "lauria",
+      "to": "matera",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lauria_pisticci",
+      "from": "lauria",
+      "to": "pisticci",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lecce_policoro",
+      "from": "lecce",
+      "to": "policoro",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lecce_tricarico",
+      "from": "lecce",
+      "to": "tricarico",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "metaponto_tricarico",
+      "from": "metaponto",
+      "to": "tricarico",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "monte_pollino_monte_sirino",
+      "from": "monte_pollino",
+      "to": "monte_sirino",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "monte_pollino_policoro",
+      "from": "monte_pollino",
+      "to": "policoro",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "monte_sirino_monte_vulture",
+      "from": "monte_sirino",
+      "to": "monte_vulture",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "salerno_senise",
+      "from": "salerno",
+      "to": "senise",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    }
+  ]
+}

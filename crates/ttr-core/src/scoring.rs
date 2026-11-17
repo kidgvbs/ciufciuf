@@ -3,8 +3,20 @@
 //! Piano §9.1 (Union-Find), §9.3 (Longest path DFS con backtracking).
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::Bound;
 
 use crate::types::{CityId, ClaimedRouteInfo, Route, RouteId, TicketDef, points_to_score};
+
+/// Nome del nodo di un estremo di rotta: la città stessa, oppure per un Paese il nodo
+/// privato `paese#rotta` (i Paesi sono vicoli ciechi: due rotte che vi entrano non sono
+/// collegate tra loro).
+pub(crate) fn route_node(countries: &BTreeSet<CityId>, route_id: &str, city: &str) -> String {
+    if countries.contains(city) {
+        format!("{city}#{route_id}")
+    } else {
+        city.to_string()
+    }
+}
 
 // ── Union-Find per giocatore ─────────────────────────────────────────
 
@@ -74,7 +86,54 @@ impl UnionFind {
     pub fn connected(&mut self, a: &str, b: &str) -> bool {
         self.ensure(a);
         self.ensure(b);
-        self.find(a) == self.find(b)
+        let (ra, rb) = (self.find(a), self.find(b));
+        if ra == rb {
+            return true;
+        }
+        // Un Paese è raggiunto da qualunque rotta che vi entra: i suoi nodi privati.
+        let (a_nodes, b_nodes) = (self.country_nodes(a), self.country_nodes(b));
+        if a_nodes.is_empty() && b_nodes.is_empty() {
+            return false;
+        }
+        let a_roots = self.roots_of_nodes(a_nodes, ra);
+        let b_roots = self.roots_of_nodes(b_nodes, rb);
+        a_roots.iter().any(|root| b_roots.contains(root))
+    }
+
+    /// Nodi privati `{country}#{route}` presenti nell'insieme.
+    fn country_nodes(&self, country: &str) -> Vec<String> {
+        let prefix = format!("{country}#");
+        self.parent
+            .range::<str, _>((Bound::Included(prefix.as_str()), Bound::Unbounded))
+            .map(|(node, _)| node)
+            .take_while(|node| node.starts_with(&prefix))
+            .cloned()
+            .collect()
+    }
+
+    /// Radici dei nodi dati; `fallback` (la radice del nome stesso) se non ce ne sono.
+    fn roots_of_nodes(&mut self, nodes: Vec<String>, fallback: String) -> Vec<String> {
+        if nodes.is_empty() {
+            return vec![fallback];
+        }
+        nodes.iter().map(|node| self.find(node)).collect()
+    }
+
+    /// Paesi di `countries` con almeno una rotta nella componente di `anchor`.
+    fn countries_connected_to(
+        &mut self,
+        anchor: &str,
+        countries: &BTreeSet<CityId>,
+    ) -> Vec<CityId> {
+        let root = self.find(anchor);
+        let mut reached = Vec::new();
+        for country in countries {
+            let nodes = self.country_nodes(country);
+            if nodes.iter().any(|node| self.find(node) == root) {
+                reached.push(country.clone());
+            }
+        }
+        reached
     }
 
     /// Crea un clone profondo.
@@ -99,19 +158,31 @@ impl Default for UnionFind {
 pub struct PlayerConnectivity {
     /// Un Union-Find per giocatore.
     ufs: Vec<UnionFind>,
+    /// Paesi della mappa: vicoli ciechi, ogni rotta vi entra con un nodo privato.
+    countries: BTreeSet<CityId>,
 }
 
 impl PlayerConnectivity {
     pub fn new(num_players: usize) -> Self {
+        Self::with_countries(num_players, BTreeSet::new())
+    }
+
+    /// Connettività su una mappa con Paesi (`City::country`).
+    pub fn with_countries(num_players: usize, countries: BTreeSet<CityId>) -> Self {
         Self {
             ufs: vec![UnionFind::new(); num_players],
+            countries,
         }
     }
 
-    /// Aggiunge una rotta reclamata alla connettività del giocatore.
-    pub fn add_route(&mut self, player_index: usize, from: &str, to: &str) {
+    /// Aggiunge una rotta reclamata alla connettività del giocatore. Un estremo Paese
+    /// diventa il nodo privato `paese#rotta`: due rotte verso lo stesso Paese non sono
+    /// collegate tra loro.
+    pub fn add_route(&mut self, player_index: usize, route_id: &str, from: &str, to: &str) {
+        let a = route_node(&self.countries, route_id, from);
+        let b = route_node(&self.countries, route_id, to);
         if player_index < self.ufs.len() {
-            self.ufs[player_index].union(from, to);
+            self.ufs[player_index].union(&a, &b);
         }
     }
 
@@ -126,6 +197,26 @@ impl PlayerConnectivity {
     /// Clona una copia (per calcoli offline).
     pub fn clone_uf(&self, player_index: usize) -> Option<UnionFind> {
         self.ufs.get(player_index).map(|uf| uf.deep_clone())
+    }
+
+    /// Paesi della mappa.
+    pub(crate) fn countries(&self) -> &BTreeSet<CityId> {
+        &self.countries
+    }
+
+    /// Paesi (in ordine di id) raggiunti dalla rete del giocatore che contiene la rotta
+    /// `route_id` appena aggiunta.
+    pub(crate) fn countries_in_network(
+        &mut self,
+        player_index: usize,
+        route_id: &str,
+        from: &str,
+    ) -> Vec<CityId> {
+        let anchor = route_node(&self.countries, route_id, from);
+        let Some(uf) = self.ufs.get_mut(player_index) else {
+            return Vec::new();
+        };
+        uf.countries_connected_to(&anchor, &self.countries)
     }
 }
 
@@ -618,12 +709,32 @@ pub fn longest_path_trail(
     claimed_routes: &[&ClaimedRouteInfo],
     routes: &BTreeMap<RouteId, Route>,
 ) -> LongestTrail {
-    longest_path_with_budget(claimed_routes, routes, MAX_SEARCH_NODES)
+    longest_path_trail_with_countries(claimed_routes, routes, &BTreeSet::new())
 }
 
+/// Like `longest_path_trail` on a map with `countries`: dead-end nodes, so two routes that
+/// enter the same country are not connected through it and the trail cannot cross it.
+pub fn longest_path_trail_with_countries(
+    claimed_routes: &[&ClaimedRouteInfo],
+    routes: &BTreeMap<RouteId, Route>,
+    countries: &BTreeSet<CityId>,
+) -> LongestTrail {
+    longest_path_search(claimed_routes, routes, countries, MAX_SEARCH_NODES)
+}
+
+#[cfg(test)]
 fn longest_path_with_budget(
     claimed_routes: &[&ClaimedRouteInfo],
     routes: &BTreeMap<RouteId, Route>,
+    node_budget: u64,
+) -> LongestTrail {
+    longest_path_search(claimed_routes, routes, &BTreeSet::new(), node_budget)
+}
+
+fn longest_path_search(
+    claimed_routes: &[&ClaimedRouteInfo],
+    routes: &BTreeMap<RouteId, Route>,
+    countries: &BTreeSet<CityId>,
     node_budget: u64,
 ) -> LongestTrail {
     let mut by_id: BTreeMap<&str, &Route> = BTreeMap::new();
@@ -634,17 +745,27 @@ fn longest_path_with_budget(
     }
     let graph_routes: Vec<&Route> = by_id.into_values().collect();
 
-    let cities: BTreeSet<&str> = graph_routes
+    // Ogni rotta che entra in un Paese vi arriva con un nodo privato.
+    let nodes: Vec<(String, String)> = graph_routes
         .iter()
-        .flat_map(|r| [r.from.as_str(), r.to.as_str()])
+        .map(|r| {
+            (
+                route_node(countries, &r.id, &r.from),
+                route_node(countries, &r.id, &r.to),
+            )
+        })
+        .collect();
+    let cities: BTreeSet<&str> = nodes
+        .iter()
+        .flat_map(|(a, b)| [a.as_str(), b.as_str()])
         .collect();
     let city_index: BTreeMap<&str, usize> =
         cities.iter().enumerate().map(|(i, c)| (*c, i)).collect();
     let city_count = city_index.len();
 
-    let endpoints: Vec<(usize, usize)> = graph_routes
+    let endpoints: Vec<(usize, usize)> = nodes
         .iter()
-        .map(|r| (city_index[r.from.as_str()], city_index[r.to.as_str()]))
+        .map(|(a, b)| (city_index[a.as_str()], city_index[b.as_str()]))
         .collect();
     let lens: Vec<u32> = graph_routes.iter().map(|r| r.len).collect();
 
@@ -802,9 +923,10 @@ pub fn compute_final_scores(
     } else {
         &[]
     };
+    let countries = connectivity.countries().clone();
     for (pi, routes) in path_routes.iter().enumerate() {
         let cri_refs: Vec<&ClaimedRouteInfo> = routes.iter().collect();
-        let trail = longest_path_trail(&cri_refs, routes_map);
+        let trail = longest_path_trail_with_countries(&cri_refs, routes_map, &countries);
         longest_paths[pi] = trail.path.length;
         scores[pi].longest_path = trail.path.length;
         scores[pi].longest_path_exact = trail.path.exact;
@@ -866,6 +988,50 @@ pub fn globetrotter_winners(scores: &[PlayerScore]) -> Vec<usize> {
         .collect()
 }
 
+/// Punti delle maggioranze di passeggeri (Germany 2017), per giocatore. Per ogni colore
+/// contano solo i giocatori con almeno un passeggero di quel colore: il massimo prende
+/// `first`; con il massimo condiviso tutti i pari prendono `first` e nessuno `second`;
+/// altrimenti chi ha il secondo valore più alto prende `second` (anche a pari merito).
+#[must_use]
+pub fn passenger_majority_points(
+    held: &[&BTreeMap<String, u32>],
+    colors: &[String],
+    first: u32,
+    second: u32,
+) -> Vec<u32> {
+    let mut points = vec![0u32; held.len()];
+    for color in colors {
+        let counts: Vec<u32> = held
+            .iter()
+            .map(|p| p.get(color).copied().unwrap_or(0))
+            .collect();
+        let Some(&max) = counts.iter().max() else {
+            continue;
+        };
+        if max == 0 {
+            continue;
+        }
+        let leaders = counts.iter().filter(|&&c| c == max).count();
+        let runner_up = counts
+            .iter()
+            .copied()
+            .filter(|&c| c < max)
+            .max()
+            .unwrap_or(0);
+        for (pi, &count) in counts.iter().enumerate() {
+            let award = if count == max {
+                first
+            } else if leaders == 1 && runner_up > 0 && count == runner_up {
+                second
+            } else {
+                0
+            };
+            points[pi] = points[pi].saturating_add(award);
+        }
+    }
+    points
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -880,9 +1046,37 @@ mod tests {
             len,
             color: "Gray".to_string(),
             double: false,
+            always_open: false,
             tunnel: false,
             ferries: 0,
         }
+    }
+
+    /// Maggioranze dei passeggeri: leader unico e secondi a pari merito, leader a pari
+    /// merito (nessun secondo), zero passeggeri non danno punti nemmeno come secondi.
+    #[test]
+    fn passenger_majorities_follow_the_rulebook() {
+        let held = |counts: &[u32]| -> Vec<BTreeMap<String, u32>> {
+            counts
+                .iter()
+                .map(|&n| {
+                    let mut m = BTreeMap::new();
+                    if n > 0 {
+                        m.insert("Red".to_string(), n);
+                    }
+                    m
+                })
+                .collect()
+        };
+        let score = |counts: &[u32]| {
+            let players = held(counts);
+            let refs: Vec<&BTreeMap<String, u32>> = players.iter().collect();
+            passenger_majority_points(&refs, &["Red".to_string(), "Blue".to_string()], 20, 10)
+        };
+        assert_eq!(score(&[3, 1, 1, 0]), [20, 10, 10, 0]);
+        assert_eq!(score(&[2, 2, 1]), [20, 20, 0]);
+        assert_eq!(score(&[1, 0]), [20, 0]);
+        assert_eq!(score(&[0, 0]), [0, 0]);
     }
 
     fn make_cri(id: &str) -> ClaimedRouteInfo {

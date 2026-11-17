@@ -50,6 +50,56 @@ impl Player {
     }
 }
 
+/// Quote per una pesca con scelta del mazzo (un biglietto alla volta, un mazzo dopo
+/// l'altro); `None` se la pesca non è con le quote.
+pub fn ticket_quotas(view: &PlayerView) -> Option<Vec<ttr_proto::TicketDeckCount>> {
+    let draw = view.legal_moves.ticket_draw.as_ref()?;
+    let mut quotas: Vec<ttr_proto::TicketDeckCount> = draw
+        .available
+        .iter()
+        .map(|a| ttr_proto::TicketDeckCount {
+            deck: a.deck.clone(),
+            count: 0,
+        })
+        .collect();
+    let mut left = draw.total;
+    while left > 0 {
+        let mut progressed = false;
+        for (quota, available) in quotas.iter_mut().zip(&draw.available) {
+            if left > 0 && quota.count < available.count {
+                quota.count += 1;
+                left -= 1;
+                progressed = true;
+            }
+        }
+        assert!(progressed, "quote impossibili da distribuire");
+    }
+    quotas.retain(|q| q.count > 0);
+    Some(quotas)
+}
+
+/// Primo colore (alfabetico) dei passeggeri su ciascun estremo della rotta; `None` senza
+/// passeggeri sulla mappa.
+pub fn passenger_picks(
+    public: &ttr_proto::PublicState,
+    map: &MapData,
+    route_id: &str,
+) -> Option<Vec<ttr_proto::PassengerPick>> {
+    let route = map.routes.iter().find(|r| r.id == route_id)?;
+    let picks: Vec<ttr_proto::PassengerPick> = public
+        .passengers
+        .iter()
+        .filter(|city| city.city_id == route.from || city.city_id == route.to)
+        .filter_map(|city| {
+            city.passengers.first().map(|p| ttr_proto::PassengerPick {
+                city_id: city.city_id.clone(),
+                color: p.color.clone(),
+            })
+        })
+        .collect();
+    (!picks.is_empty()).then_some(picks)
+}
+
 /// Decide la prossima mossa per `me` dato lo stato pubblico e la vista privata.
 /// Ritorna `Some` quando c'è un'azione da inviare, `None` altrimenti.
 pub fn decide(
@@ -66,6 +116,16 @@ pub fn decide(
         GameState::InitialDraft => {
             if *drafted {
                 return Ok(None);
+            }
+            // Con `chooseFrom` si pesca prima con le quote, poi si sceglie.
+            if view.offered_tickets.is_empty() && view.legal_moves.ticket_draw.is_some() {
+                return Ok(Some(InboundAction::DrawTickets(
+                    ttr_proto::DrawTicketsPayload {
+                        player_id,
+                        counts: ticket_quotas(view),
+                        client_seq: None,
+                    },
+                )));
             }
             // keep = primi 2 biglietti offerti (l'ordine è deterministico).
             let keep: Vec<String> = view
@@ -104,6 +164,7 @@ pub fn decide(
                         player_id,
                         route_id: rid.clone(),
                         cards_discarded: payment,
+                        passengers: passenger_picks(public, map, rid),
                         client_seq: None,
                     },
                 )));
@@ -123,6 +184,7 @@ pub fn decide(
                 return Ok(Some(InboundAction::DrawTickets(
                     ttr_proto::DrawTicketsPayload {
                         player_id,
+                        counts: ticket_quotas(view),
                         client_seq: None,
                     },
                 )));

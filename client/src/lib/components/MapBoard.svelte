@@ -27,6 +27,7 @@
   import '@fontsource/barlow-semi-condensed/latin-600.css';
   import { publicStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS } from '../colors';
+  import { passengerColorCss } from '../passengers';
   import * as MapUtils from '../map-utils';
   import type { MapData as MapDataType, MapLayout, Point, RouteData } from '../map-utils';
   import * as PZ from '../pan-zoom.ts';
@@ -69,7 +70,7 @@
   // può essere `display:none`, e i gradienti lì dentro non vengono risolti).
   const uid = $props.id();
 
-  const routeIndex = $derived(MapUtils.groupDoubleRoutes(mapData.routes).routeIndex);
+  const routeGroups = $derived(MapUtils.groupDoubleRoutes(mapData.routes));
 
   const FONT_FAMILY = $derived(
     `'${layout.font?.family ?? 'Barlow Semi Condensed'}', system-ui, sans-serif`,
@@ -286,10 +287,12 @@
     for (const route of mapData.routes) {
       const pts = routePoints(route.id);
       if (!pts) continue;
-      // Offset doppie: metà spessore PIENO + metà gap (stessa formula del
-      // generatore) — sul telefono lo stroke scala 0.7, il gap cresce.
-      const off = route.double
-        ? MapUtils.doubleRouteOffset(route.len, routeIndex.get(route.id) ?? 0, DOUBLE_GAP)
+      // Offset dei gruppi paralleli (2–4 binari, simmetrici attorno alla linea): passo =
+      // spessore PIENO + gap (stessa formula del generatore) — sul telefono lo stroke
+      // scala 0.7, il gap cresce.
+      const lanes = routeGroups.routeGroupSize.get(route.id) ?? 1;
+      const off = route.double && lanes > 1
+        ? MapUtils.doubleRouteOffset(route.len, routeGroups.routeIndex.get(route.id) ?? 0, DOUBLE_GAP, lanes)
         : 0;
       const offPts = off === 0 ? pts : offsetPoints(pts, off);
       const sw = MapUtils.routeStrokeWidth(route.len) * swFactor;
@@ -503,6 +506,26 @@
       return pos ? [{ cityId: s.city_id, x: pos.x, y: pos.y, color: playerColor(s.player_id) }] : [];
     }),
   );
+
+  // Passeggeri (Germany 2017): pallini colorati attorno alla città, dal basso in senso orario.
+  const PASSENGER_R = $derived(compact ? 3 : 3.6);
+  const passengerMarks = $derived(
+    publicStore.passengers.flatMap((cp) => {
+      const pos = cityPositions.get(cp.city_id);
+      if (!pos) return [];
+      const colors = cp.passengers.flatMap((p) => Array<string>(p.count).fill(p.color));
+      const ring = cityDotR + PASSENGER_R + 2;
+      return colors.map((color, i) => {
+        const angle = Math.PI / 2 + (i * Math.PI) / 4;
+        return {
+          key: `${cp.city_id}-${i}`,
+          x: pos.x + ring * Math.cos(angle),
+          y: pos.y + ring * Math.sin(angle),
+          color: passengerColorCss(color),
+        };
+      });
+    }),
+  );
 </script>
 
 <div
@@ -713,15 +736,27 @@
         {#each mapData.cities as city (city.id)}
           {@const pos = cityPositions.get(city.id)}
           {#if pos}
-            {@const hub = (cityDegree.get(city.id) ?? 0) >= 6}
+            {@const hub = !city.country && (cityDegree.get(city.id) ?? 0) >= 6}
             {@const exposedAsButton = cityInteractive && selectableCitySet.has(city.id)}
             <g role={exposedAsButton ? undefined : 'img'}
               aria-label={exposedAsButton ? undefined : cityLabel(city)}
               aria-hidden={exposedAsButton ? 'true' : undefined}>
-              <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
-                fill="#2a1d0c" opacity="0.25" />
-              <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
-                stroke="#453416" stroke-width="2" />
+              {#if city.country}
+                <!-- Paese confinante (vicolo cieco): targhetta quadrata con bandierina, non un pallino -->
+                {@const h = cityDotR}
+                <rect x={pos.x - h + SHADOW_DX} y={pos.y - h + SHADOW_DY} width={2 * h} height={2 * h}
+                  rx="3" fill="#2a1d0c" opacity="0.25" />
+                <rect x={pos.x - h} y={pos.y - h} width={2 * h} height={2 * h} rx="3"
+                  fill="#e3cf9c" stroke="#453416" stroke-width="2" class="country-badge" />
+                <path d="M {pos.x - h * 0.35} {pos.y + h * 0.62} V {pos.y - h * 0.62} L {pos.x + h * 0.55} {pos.y - h * 0.22} L {pos.x - h * 0.35} {pos.y + h * 0.18}"
+                  fill="#453416" fill-opacity="0.75" stroke="#453416" stroke-width="1.4"
+                  stroke-linejoin="round" stroke-linecap="round" />
+              {:else}
+                <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
+                  fill="#2a1d0c" opacity="0.25" />
+                <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
+                  stroke="#453416" stroke-width="2" />
+              {/if}
               {#if hub}
                 <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
               {/if}
@@ -761,6 +796,10 @@
             <rect x={-STATION_R * 0.22} y={STATION_R * 0.1} width={STATION_R * 0.44} height={STATION_R * 0.9}
               fill="#fdf7e6" opacity="0.85" />
           </g>
+        {/each}
+        {#each passengerMarks as pm (pm.key)}
+          <circle cx={pm.x} cy={pm.y} r={PASSENGER_R} fill={pm.color}
+            stroke="#2a1d0c" stroke-width={1.2 * swFactor} />
         {/each}
       </g>
 

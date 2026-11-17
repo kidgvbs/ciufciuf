@@ -93,6 +93,15 @@ struct RulesetListItem {
     ferries: bool,
     /// Il ruleset prevede le stazioni.
     stations: bool,
+    /// Il ruleset fa pescare i biglietti con le quote per mazzo (`chooseFrom`): nel draft
+    /// iniziale e/o a metà partita; `initialDealt`/`drawCount` sono allora il totale pescato.
+    #[serde(rename = "ticketDrawChoice")]
+    ticket_draw_choice: bool,
+    /// Il ruleset ha le carte Paese.
+    #[serde(rename = "countryCards")]
+    country_cards: bool,
+    /// Il ruleset ha i passeggeri (Germany 2017).
+    passengers: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -121,13 +130,21 @@ pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
                 max_players: ruleset.players.max,
                 bonuses: ruleset.bonuses.clone(),
                 big_cities: ruleset.big_cities.clone(),
-                initial_dealt: ruleset.initial_tickets.dealt.iter().map(|d| d.count).sum(),
+                initial_dealt: if ruleset.initial_tickets.choose_from.is_some() {
+                    ruleset.initial_tickets.count
+                } else {
+                    ruleset.initial_tickets.dealt.iter().map(|d| d.count).sum()
+                },
                 initial_keep_min: ruleset.initial_tickets.keep_min,
                 draw_count: ruleset.ticket_draw.count,
                 draw_keep_min: ruleset.ticket_draw.keep_min,
                 tunnels: map.routes.iter().any(|r| r.tunnel),
                 ferries: map.routes.iter().any(|r| r.ferries > 0),
                 stations: ruleset.stations.is_some(),
+                ticket_draw_choice: ruleset.ticket_draw.choose_from.is_some()
+                    || ruleset.initial_tickets.choose_from.is_some(),
+                country_cards: !ruleset.country_cards.is_empty(),
+                passengers: ruleset.passengers.is_some(),
             })
         })
         .collect();
@@ -905,7 +922,17 @@ pub(crate) fn inbound_to_core_action(
                 source,
             }
         }
-        ttr_proto::InboundAction::DrawTickets(_) => ttr_core::Action::DrawTickets { player_index },
+        ttr_proto::InboundAction::DrawTickets(p) => {
+            let mut counts = std::collections::BTreeMap::new();
+            for quota in p.counts.iter().flatten() {
+                let slot: &mut u32 = counts.entry(quota.deck.clone()).or_default();
+                *slot = slot.saturating_add(quota.count);
+            }
+            ttr_core::Action::DrawTickets {
+                player_index,
+                counts,
+            }
+        }
         ttr_proto::InboundAction::ChooseTickets(p) => ttr_core::Action::ChooseTickets {
             player_index,
             keep: p.keep.clone(),
@@ -914,6 +941,13 @@ pub(crate) fn inbound_to_core_action(
             player_index,
             route_id: p.route_id.clone(),
             cards_discarded: p.cards_discarded.clone(),
+            // A parità di città vale l'ultima scelta; il motore rifiuta colori assenti.
+            passengers: p
+                .passengers
+                .iter()
+                .flatten()
+                .map(|pick| (pick.city_id.clone(), pick.color.clone()))
+                .collect(),
         },
         ttr_proto::InboundAction::BuildStation(p) => ttr_core::Action::BuildStation {
             player_index,
