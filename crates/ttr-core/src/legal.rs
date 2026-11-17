@@ -34,7 +34,7 @@ pub struct TicketDrawMoves {
     /// Biglietti da pescare in tutto: la somma delle quote deve essere questa.
     pub total: u32,
     /// Biglietti rimasti in ogni mazzo di `chooseFrom`, nell'ordine del ruleset: la quota
-    /// di un mazzo non può superarli.
+    /// di un mazzo non può superarli. Nel draft iniziale sono limitati a `total` (D39).
     pub available: Vec<TicketDeckAvailability>,
 }
 

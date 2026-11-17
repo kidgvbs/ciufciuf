@@ -9,7 +9,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use ttr_core::scoring::{MAX_CYCLOMATIC_NUMBER, UnionFind};
-use ttr_core::types::{MAX_PARALLEL_LANES, MapData, Route, Ruleset};
+use ttr_core::types::{LONGEST_PATH_BONUS_TYPE, MAX_PARALLEL_LANES, MapData, Route, Ruleset};
 
 // ── Validazione ─────────────────────────────────────────────────────
 
@@ -52,11 +52,18 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
         "Ruleset/mappa: id, città, rotte, biglietti, mazzi, giocatori",
         |r| {
             match ruleset.validate(map) {
-                Ok(()) => println!(
-                    "  Percorso più lungo: numero ciclomatico stimato {} (massimo {})",
-                    ruleset.max_cyclomatic_estimate(map),
-                    MAX_CYCLOMATIC_NUMBER
-                ),
+                Ok(()) => {
+                    let estimate = ruleset.max_cyclomatic_estimate(map);
+                    if ruleset.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some() {
+                        println!(
+                            "  Percorso più lungo: numero ciclomatico stimato {estimate} (massimo {MAX_CYCLOMATIC_NUMBER})"
+                        );
+                    } else {
+                        println!(
+                            "  Percorso più lungo: non applicato (nessun bonus), numero ciclomatico stimato {estimate}"
+                        );
+                    }
+                }
                 Err(e) => r.err(format!("Ruleset: {e}")),
             }
             warn_unused_route_points(r, map, ruleset);

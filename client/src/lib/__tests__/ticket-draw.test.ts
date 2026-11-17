@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { canConfirmQuotas, defaultQuotas, moveQuota, quotasPayload } from '../ticket-draw';
+import { describe, expect, it, vi } from 'vitest';
+import { canConfirmQuotas, createDrawLatch, defaultQuotas, moveQuota, quotasPayload } from '../ticket-draw';
 import { passengerChoices, passengerPicks } from '../passengers';
 import { modeBlurb, type RulesetInfo } from '../rulesets';
 import type { TicketDrawMoves } from '../proto';
@@ -73,5 +73,28 @@ describe('modeBlurb delle regole nuove', () => {
     expect(modeBlurb({ ...base, ticketDrawChoice: false, passengers: false, countryCards: true, bonuses: [] })).toBe(
       '89 biglietti in gioco · ricevi 4, tieni 2 · pesca 4, tieni 1 · carte Paese · nessun bonus',
     );
+  });
+});
+
+describe('createDrawLatch', () => {
+  it('due invii consecutivi producono un solo messaggio', () => {
+    const changes: boolean[] = [];
+    const latch = createDrawLatch((p) => changes.push(p));
+    const send = vi.fn(() => true);
+    expect(latch.submit(send)).toBe(true);
+    expect(latch.submit(send)).toBe(false);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(changes).toEqual([true]);
+  });
+
+  it('un invio non partito non blocca, e dopo release si può reinviare', () => {
+    const latch = createDrawLatch(() => {});
+    const send = vi.fn().mockReturnValueOnce(false).mockReturnValue(true);
+    expect(latch.submit(send)).toBe(false);
+    expect(latch.pending).toBe(false);
+    expect(latch.submit(send)).toBe(true);
+    latch.release();
+    expect(latch.submit(send)).toBe(true);
+    expect(send).toHaveBeenCalledTimes(3);
   });
 });

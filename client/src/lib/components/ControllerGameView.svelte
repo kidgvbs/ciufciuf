@@ -7,6 +7,7 @@
   import { PLAYER_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
   import { errorMessage } from '../errors';
   import { nextClientSeq } from '../client-seq';
+  import { createDrawLatch } from '../ticket-draw';
   import { offerKey, isDialogOpen, nextDismissedKey } from '../ticket-offer';
   import { routePoints } from '../map-utils';
   import { mostCommonColor, paymentCards, paymentCovered, suggestLocos } from '../payment';
@@ -267,13 +268,24 @@
     });
   }
 
+  // Anti doppio tap sul picker: il draft iniziale lo lascia visibile fino all'offerta.
+  let drawingTickets = $state(false);
+  const drawLatch = createDrawLatch((pending) => (drawingTickets = pending));
+  $effect(() => {
+    if (offered.length > 0 || connectionStore.lastError || !ticketDraw || !canAct) {
+      drawLatch.release();
+    }
+  });
+
   function drawTicketsWith(counts: TicketDeckCount[]) {
-    const sent = sendAction({
-      actionType: 'DRAW_TICKETS',
-      player_id: playerId,
-      counts,
-      client_seq: nextClientSeq(playerId),
-    });
+    const sent = drawLatch.submit(() =>
+      sendAction({
+        actionType: 'DRAW_TICKETS',
+        player_id: playerId,
+        counts,
+        client_seq: nextClientSeq(playerId),
+      }),
+    );
     if (sent) pickingTickets = false;
   }
 
@@ -591,7 +603,8 @@
     <div class="section initial-ticket-draw">
       <TicketDrawPicker
         draw={ticketDraw}
-        busy={drawBusy}
+        busy={drawBusy || drawingTickets}
+        showRemaining={false}
         title="Biglietti iniziali"
         onConfirm={drawTicketsWith}
       />
@@ -686,7 +699,7 @@
         {#if ticketDraw && pickingTickets}
           <TicketDrawPicker
             draw={ticketDraw}
-            busy={drawBusy}
+            busy={drawBusy || drawingTickets}
             title="Pesca biglietti"
             onConfirm={drawTicketsWith}
             onCancel={() => (pickingTickets = false)}

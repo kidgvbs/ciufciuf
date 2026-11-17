@@ -53,3 +53,32 @@ export function quotasPayload(draw: TicketDrawMoves, quotas: readonly number[]):
     .map((a, i) => ({ deck: a.deck, count: quotas[i] ?? 0 }))
     .filter((q) => q.count > 0);
 }
+
+/**
+ * Un solo invio di `DRAW_TICKETS` per volta: il picker del draft iniziale resta visibile
+ * finché non arriva l'offerta, quindi un doppio tap invierebbe due richieste.
+ * `release()` quando arriva l'offerta o un errore.
+ */
+export function createDrawLatch(onChange: (pending: boolean) => void) {
+  let pending = false;
+  const set = (value: boolean) => {
+    if (pending === value) return;
+    pending = value;
+    onChange(value);
+  };
+  return {
+    get pending() {
+      return pending;
+    },
+    /** Esegue `send` se non c'è un invio in corso; resta bloccato solo se è partito. */
+    submit(send: () => boolean): boolean {
+      if (pending) return false;
+      const sent = send();
+      if (sent) set(true);
+      return sent;
+    },
+    release() {
+      set(false);
+    },
+  };
+}

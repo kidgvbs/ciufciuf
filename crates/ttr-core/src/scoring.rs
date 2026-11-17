@@ -221,6 +221,22 @@ impl PlayerConnectivity {
 }
 
 impl PlayerConnectivity {
+    /// Paesi (in ordine di id) raggiunti dalla rete del giocatore che contiene la città
+    /// `city`; vuoto se `city` è un Paese (un Paese entra in rete solo con una rotta).
+    pub(crate) fn countries_in_city_network(
+        &mut self,
+        player_index: usize,
+        city: &str,
+    ) -> Vec<CityId> {
+        if self.countries.contains(city) {
+            return Vec::new();
+        }
+        let Some(uf) = self.ufs.get_mut(player_index) else {
+            return Vec::new();
+        };
+        uf.countries_connected_to(city, &self.countries)
+    }
+
     /// Union-Find del giocatore, per valutare i biglietti.
     pub(crate) fn uf_mut(&mut self, player_index: usize) -> Option<&mut UnionFind> {
         self.ufs.get_mut(player_index)

@@ -35,11 +35,11 @@ Una mappa (`data/maps/germany.json`) e due modalità:
   - Mannheim–Stuttgart vale 2, anche se il regolamento dice che i corti vanno da 3 a 11;
   - Kiel–Stuttgart vale 17 con un percorso minimo di 16.
 
-  In entrambi i casi si usano i valori stampati.
+  In entrambi i casi si lasciano i valori della fonte: **non verificato** su una foto delle carte 2017 (revisione 17/11/2026: nessuna foto disponibile).
 
 ## Passeggeri
 
-- **Quanti per città:** dallo schema ufficiale di preparazione (https://ultraboardgames.com/ticket-to-ride/gfx/germany2.jpg). Berlino 5; Hamburg, Köln, Mainz e München 4; Leipzig e Stuttgart 3; tutti gli altri posti, Paesi compresi, 1. Totale 60.
+- **Quanti per città:** dallo schema ufficiale di preparazione (https://ultraboardgames.com/ticket-to-ride/gfx/germany2.jpg). Berlino 5; Frankfurt, Hamburg, Köln e München 4; Leipzig e Stuttgart 3; tutti gli altri posti, Paesi compresi, 1. Totale 60.
 - **Colori:** 6 colori da 10 (rosso, nero, verde, giallo, blu, bianco). Viene dalla descrizione su BGG e dal comunicato della versione digitale Marmalade; non ho trovato una foto dei componenti fisici. Una wiki di fan dice 5×12, ma contraddice le altre fonti.
 - **Zero passeggeri di un colore:** non danno punti, nemmeno il secondo posto (testo del regolamento, «for the Passengers they collected»; thread BGG 2422508). Non esiste una risposta ufficiale.
 

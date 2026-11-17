@@ -5,9 +5,11 @@
   import type { TicketDeckCount, TicketDrawMoves } from '../proto';
   import { canConfirmQuotas, deckLabel, defaultQuotas, moveQuota, quotasPayload } from '../ticket-draw';
 
-  let { draw, busy = false, title, onConfirm, onCancel }: {
+  let { draw, busy = false, showRemaining = true, title, onConfirm, onCancel }: {
     draw: TicketDrawMoves;
     busy?: boolean;
+    /** `false` nel draft iniziale: i `count` sono limitati e non sono i biglietti rimasti. */
+    showRemaining?: boolean;
     title: string;
     onConfirm: (counts: TicketDeckCount[]) => void;
     onCancel?: () => void;
@@ -37,7 +39,7 @@
   </p>
   {#each draw.available as deck, i (deck.deck)}
     <div class="deck-row">
-      <span class="deck-name">{deckLabel(deck.deck)} <small>({deck.count} rimasti)</small></span>
+      <span class="deck-name">{deckLabel(deck.deck)}{#if showRemaining} <small>({deck.count} rimasti)</small>{/if}</span>
       <div class="locos-stepper">
         <button
           class="btn"

@@ -487,7 +487,8 @@ pub struct TicketDrawMoves {
     /// essere esattamente questa (meno di `count` del ruleset se i mazzi ne hanno meno).
     pub total: u32,
     /// Biglietti rimasti in ogni mazzo ammesso, nell'ordine del ruleset: la quota di un
-    /// mazzo non può superarli.
+    /// mazzo non può superarli. Nel draft iniziale sono limitati a `total`, perché le
+    /// quote scelte dagli altri sono private.
     pub available: Vec<TicketDeckCount>,
 }
 

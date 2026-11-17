@@ -140,13 +140,21 @@ impl Engine {
     }
 
     /// Come `ticket_draw_moves` per il draft iniziale (`initialTickets.chooseFrom`).
+    ///
+    /// Le quote scelte da chi ha già pescato sono private (D39): i `count` sono limitati a
+    /// `total`, così le pile degli avversari non si deducono dai mazzi rimasti. Non cambia
+    /// la validazione, perché una quota oltre `total` non darebbe comunque la somma giusta.
     pub(crate) fn initial_draw_moves(&self) -> Option<TicketDrawMoves> {
         let initial = &self.ruleset.initial_tickets;
-        self.draw_moves(
+        let mut moves = self.draw_moves(
             initial.choose_from.as_deref()?,
             initial.count,
             initial.keep_min,
-        )
+        )?;
+        for deck in &mut moves.available {
+            deck.count = deck.count.min(moves.total);
+        }
+        Some(moves)
     }
 
     fn draw_moves(&self, decks: &[String], count: u32, keep_min: u32) -> Option<TicketDrawMoves> {

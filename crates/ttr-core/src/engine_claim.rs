@@ -1,6 +1,6 @@
 //! Handler per ClaimRoute e avanzamento turno.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use ttr_proto::CardColor;
 
@@ -186,6 +186,8 @@ impl Engine {
             },
         );
 
+        // Prima della presa: le reti già premiate che la rotta unisce o estende.
+        let rewarded = self.rewarded_countries(player_index, route);
         self.connectivity
             .add_route(player_index, &route.id, &route.from, &route.to);
         self.update_ticket_completion(player_index);
@@ -205,7 +207,7 @@ impl Engine {
         });
 
         self.take_passengers(player_index, route, taken, events);
-        self.take_country_cards(player_index, route, events);
+        self.take_country_cards(player_index, route, &rewarded, events);
         self.advance_turn(events);
     }
 
@@ -290,19 +292,39 @@ impl Engine {
         }
     }
 
-    /// Carte Paese (Poland): una rotta che entra in un Paese dà la carta in cima alla pila
-    /// di ogni Paese della rete del giocatore che la contiene, se la rete ne raggiunge
-    /// almeno due; le pile vuote non danno nulla.
+    /// Paesi delle reti già premiate (almeno due Paesi con una pila) a cui appartengono gli
+    /// estremi della rotta, calcolati prima della presa. Vuoto senza `countryCards`.
+    fn rewarded_countries(&mut self, player_index: usize, route: &Route) -> BTreeSet<CityId> {
+        let mut rewarded = BTreeSet::new();
+        if self.country_stacks.is_empty() {
+            return rewarded;
+        }
+        for city in [&route.from, &route.to] {
+            let network: Vec<CityId> = self
+                .connectivity
+                .countries_in_city_network(player_index, city)
+                .into_iter()
+                .filter(|country| self.country_stacks.contains_key(country))
+                .collect();
+            if network.len() >= 2 {
+                rewarded.extend(network);
+            }
+        }
+        rewarded
+    }
+
+    /// Carte Paese (Poland, D38): se la rete del giocatore che contiene la rotta raggiunge
+    /// almeno due Paesi e ne include uno che non era in una rete già premiata (`rewarded`),
+    /// prende la carta in cima alla pila di ogni Paese della rete; le pile vuote non danno
+    /// nulla. L'esito non dipende dall'ordine delle prese.
     fn take_country_cards(
         &mut self,
         player_index: usize,
         route: &Route,
+        rewarded: &BTreeSet<CityId>,
         events: &mut Vec<GameEvent>,
     ) {
-        let enters_country = [&route.from, &route.to]
-            .into_iter()
-            .any(|city| self.country_ids.contains(city));
-        if self.country_stacks.is_empty() || !enters_country {
+        if self.country_stacks.is_empty() {
             return;
         }
         // Contano solo i Paesi con una pila (`countryCards`): un Paese senza carte non
@@ -313,7 +335,7 @@ impl Engine {
             .into_iter()
             .filter(|country| self.country_stacks.contains_key(country))
             .collect();
-        if network.len() < 2 {
+        if network.len() < 2 || network.iter().all(|country| rewarded.contains(country)) {
             return;
         }
         let mut taken: Vec<(CityId, u32)> = Vec::new();

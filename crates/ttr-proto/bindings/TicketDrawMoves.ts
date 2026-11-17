@@ -12,6 +12,7 @@ export type TicketDrawMoves = {
 total: number, 
 /**
  * Biglietti rimasti in ogni mazzo ammesso, nell'ordine del ruleset: la quota di un
- * mazzo non può superarli.
+ * mazzo non può superarli. Nel draft iniziale sono limitati a `total`, perché le
+ * quote scelte dagli altri sono private.
  */
 available: Array<TicketDeckCount>, };

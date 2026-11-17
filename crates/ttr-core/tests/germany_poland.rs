@@ -314,8 +314,10 @@ fn initial_draft_with_choose_from_draws_by_quota_and_returns_discards_to_the_own
             .iter()
             .map(|a| (a.deck.as_str(), a.count))
             .collect::<Vec<_>>(),
-        [("regular", total("regular")), ("long", total("long"))]
+        // Limitati a `total`: le pile reali restano private (D39).
+        [("regular", 4), ("long", 4)]
     );
+    assert!(total("regular") > 4 && total("long") > 4);
     assert!(legal.can_draw_tickets && legal.ticket_choice.is_none());
 
     // La scelta prima della pesca è rifiutata, anche con keepMin soddisfatto da id inventati.
@@ -362,11 +364,12 @@ fn initial_draft_with_choose_from_draws_by_quota_and_returns_discards_to_the_own
     let legal0 = eng.legal_moves(0);
     assert!(legal0.ticket_draw.is_none() && !legal0.can_draw_tickets);
     assert_eq!(legal0.ticket_choice.unwrap().keep_min, 2);
-    // La pesca di P0 ha già tolto i biglietti dai mazzi visti da P1.
+    // La pesca di P0 non si deduce dalla vista di P1 (D39), ma toglie i biglietti dai mazzi.
     assert_eq!(
-        eng.legal_moves(1).ticket_draw.unwrap().available[1].count,
-        total("long") - 2
+        eng.legal_moves(1).ticket_draw.unwrap(),
+        legal.ticket_draw.clone().unwrap()
     );
+    assert_eq!(eng.ticket_pile_of("long").len() as u32, total("long") - 2);
 
     // Scelte non valide: sotto il minimo, biglietto non offerto.
     assert!(matches!(
@@ -817,6 +820,94 @@ fn country_cards_follow_the_poland_rulebook_example() {
     }
 }
 
+fn mini_engine(map: MapData) -> Engine {
+    Engine::new(
+        3,
+        mini_ruleset(None, true),
+        map,
+        (0..4).map(|i| format!("p{i}")).collect(),
+        (0..4).map(|i| format!("P{i}")).collect(),
+        default_player_colors(4),
+        0,
+    )
+    .unwrap()
+}
+
+/// Esempio 2 del regolamento: due reti già premiate unite da una rotta interna, senza
+/// Paesi nuovi, non danno carte.
+#[test]
+fn joining_two_rewarded_networks_gives_no_country_cards() {
+    let mut eng = mini_engine(mini_map());
+    claim(&mut eng, 0, "rosja_x_1").unwrap();
+    assert!(country_cards_in(&claim(&mut eng, 0, "bialorus_x_1").unwrap()).is_some());
+    claim(&mut eng, 0, "niemcy_y_1").unwrap();
+    assert!(country_cards_in(&claim(&mut eng, 0, "czechy_y_1").unwrap()).is_some());
+    assert_eq!(
+        country_cards_in(&claim(&mut eng, 0, "x_y_1").unwrap()),
+        None
+    );
+}
+
+/// Una seconda rotta verso un Paese già nella rete premiata (seconda città di confine, o
+/// rotta interna) non assegna carte di nuovo.
+#[test]
+fn extra_border_route_to_a_country_already_in_the_network_gives_no_cards() {
+    let mut map = serde_json::to_value(mini_map()).unwrap();
+    map["cities"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"id": "z", "name": "z", "country": false}));
+    for (id, from, to) in [("x_z_1", "x", "z"), ("niemcy_z_1", "niemcy", "z")] {
+        map["routes"].as_array_mut().unwrap().push(json!({
+            "id": id, "from": from, "to": to, "len": 1, "color": "Gray",
+            "double": false, "alwaysOpen": false
+        }));
+    }
+    let mut eng = mini_engine(serde_json::from_value(map).unwrap());
+    claim(&mut eng, 0, "rosja_x_1").unwrap();
+    claim(&mut eng, 0, "niemcy_y_1").unwrap();
+    assert_eq!(
+        country_cards_in(&claim(&mut eng, 0, "x_y_1").unwrap()),
+        Some(cards(&[("niemcy", 7), ("rosja", 7)]))
+    );
+    assert_eq!(
+        country_cards_in(&claim(&mut eng, 0, "x_z_1").unwrap()),
+        None
+    );
+    assert_eq!(
+        country_cards_in(&claim(&mut eng, 0, "niemcy_z_1").unwrap()),
+        None
+    );
+}
+
+/// K2: la stessa rete finale dà le stesse carte in qualunque ordine di presa (D38).
+#[test]
+fn poland_country_cards_do_not_depend_on_the_claim_order() {
+    let border = ["gorzow_wielkopolski_niemcy_1", "olsztyn_rosja_1"];
+    let inner = [
+        "gdansk_olsztyn_1",
+        "bydgoszcz_gdansk_1",
+        "bydgoszcz_pila_1",
+        "gorzow_wielkopolski_pila_1",
+    ];
+    let held = |order: &[&str]| {
+        let mut eng = engine(&poland(), 2);
+        for route in order {
+            claim(&mut eng, 0, route).unwrap();
+        }
+        eng.player(0).unwrap().country_cards.clone()
+    };
+    let border_first: Vec<&str> = border.iter().chain(&inner).copied().collect();
+    let inner_first: Vec<&str> = inner.iter().chain(&border).copied().collect();
+    let expected: BTreeMap<String, Vec<u32>> = [
+        ("niemcy".to_string(), vec![7]),
+        ("rosja".to_string(), vec![7]),
+    ]
+    .into();
+    assert_eq!(held(&border_first), expected);
+    assert_eq!(held(&inner_first), expected);
+}
+
 /// Senza `countryCards` nessuna carta Paese, anche con rotte verso i Paesi.
 #[test]
 fn no_country_cards_without_the_ruleset_field() {
@@ -1209,4 +1300,22 @@ fn passenger_majorities_are_added_to_the_final_total() {
         scores[0].total,
         scores[0].route_points + scores[0].passenger_points
     );
+}
+
+/// Schema di preparazione 2017: Frankfurt 4 (doppie verso Würzburg e Mannheim), Mainz 1,
+/// totale 60.
+#[test]
+fn passenger_placement_matches_the_setup_diagram() {
+    let config = germany_2017().0.passengers.unwrap();
+    assert_eq!(config.placement.values().sum::<u32>(), 60);
+    assert_eq!(config.placement["frankfurt"], 4);
+    assert_eq!(config.placement["mainz"], 1);
+}
+
+/// Europe 1912/Mega/Grandi Città: Angora–Parigi vale 17 (come il percorso minimo).
+#[test]
+fn angora_paris_ticket_is_worth_seventeen() {
+    let map: MapData = load("maps/europe");
+    let ticket = map.tickets.iter().find(|t| t.id == "angora_paris").unwrap();
+    assert_eq!(ticket.points, 17);
 }

@@ -14,7 +14,6 @@
     "locomotives": 14
   },
   "ticketDecks": [
-    "long",
     "regular"
   ],
   "initialTickets": {
