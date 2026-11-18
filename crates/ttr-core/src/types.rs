@@ -131,6 +131,10 @@ pub struct Ruleset {
     /// Passeggeri (Germany 2017); assenti sulle altre mappe.
     #[serde(default)]
     pub passengers: Option<PassengersConfig>,
+    /// Regole speciali della modalità, mostrate ai giocatori a inizio partita (solo
+    /// testo: non influiscono sul motore né sul replay); voci non vuote.
+    #[serde(rename = "specialRules", default)]
+    pub special_rules: Vec<String>,
 }
 
 /// Stazioni per giocatore: `costs[i]` è il costo in carte della stazione `i`-esima.

@@ -117,6 +117,17 @@
     "completedTickets",
     "passengers"
   ],
+  "specialRules": [
+    "Prima mano: ricevi 2 biglietti lunghi e 3 corti. Tienine almeno 2, di cui almeno 1 corto.",
+    "Pesca biglietti: 4 biglietti a caso da un mazzo unico di lunghi e corti, tienine almeno 1. Gli scartati vanno in fondo al mazzo.",
+    "Rotte doppie e triple (Dortmund–Düsseldorf, Düsseldorf–Köln): un giocatore può prendere un solo binario per coppia di città. In 2 o 3 giocatori, preso un binario gli altri si chiudono.",
+    "Paesi confinanti (Dänemark, Niederlande, Frankreich, Schweiz, Österreich): sono vicoli ciechi. Due rotte verso lo stesso Paese non sono collegate tra loro.",
+    "Punti delle rotte: 1→1, 2→2, 3→4, 4→7, 5→10, 6→15, 7→18.",
+    "Passeggeri: quando prendi una rotta prendi un passeggero da ciascuna delle due città collegate, se ce ne sono (scegli tu il colore).",
+    "Fine partita: per ogni colore di passeggero 20 punti a chi ne ha di più e 10 al secondo. Se più giocatori sono primi a pari merito prendono 20 a testa e nessuno prende i 10.",
+    "Niente bonus del percorso più lungo. Globetrotter: +15 a chi ha completato più biglietti (a pari merito, a tutti).",
+    "Parità: vince chi ha completato più biglietti, poi chi ha più passeggeri."
+  ],
   "doubleRouteMinPlayers": 4,
   "finalRoundIncludesTrigger": true
 }

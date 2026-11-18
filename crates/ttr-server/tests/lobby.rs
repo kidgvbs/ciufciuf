@@ -640,7 +640,8 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
                     "ferries": true,
                     "stations": true,
                     "countryCards": false,
-                    "passengers": false
+                    "passengers": false,
+                    "specialRules": []
             }),
             serde_json::json!({
                     "id": "usa_v2",
@@ -665,7 +666,8 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
                     "ferries": false,
                     "stations": false,
                     "countryCards": false,
-                    "passengers": false
+                    "passengers": false,
+                    "specialRules": []
             }),
         ]
     );
@@ -677,6 +679,22 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     assert_eq!(flags("germany"), [Some(false), Some(false)]);
     assert_eq!(flags("germany_2017"), [Some(false), Some(true)]);
     assert_eq!(flags("poland"), [Some(true), Some(false)]);
+    // `specialRules`: testi non vuoti per Germany (entrambe le modalità) e Poland, vuoto altrove.
+    let rules = |id: &str| -> Vec<String> {
+        by_id(id)["specialRules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_owned())
+            .collect()
+    };
+    for (id, count) in [("germany", 7), ("germany_2017", 9), ("poland", 6)] {
+        let texts = rules(id);
+        assert_eq!(texts.len(), count, "{id}");
+        assert!(texts.iter().all(|t| !t.trim().is_empty()), "{id}");
+    }
+    assert!(rules("poland")[0].starts_with("35 treni"));
+    assert!(rules("usa_v2").is_empty());
 }
 
 /// GET /api/rulesets/{id}/layout serve il layout schematico della mappa del ruleset

@@ -22,6 +22,7 @@
   import type { InboundAction, CardColor, PassengerPick, TunnelReveal } from '../proto';
   import { passengerChoices } from '../passengers';
   import TicketChoiceDialog from './TicketChoiceDialog.svelte';
+  import SpecialRulesDialog from './SpecialRulesDialog.svelte';
   import MapSvg from './MapSvg.svelte';
   import TrainCard from './TrainCard.svelte';
   import PaymentPanel from './PaymentPanel.svelte';
@@ -30,6 +31,8 @@
   import TicketColumn from './TicketColumn.svelte';
   import DrawArea from './DrawArea.svelte';
   import { gameMap } from '../game-map.svelte.ts';
+  import { rulesetCatalog } from '../rulesets.svelte.ts';
+  import { autoOpensRules, hasSeenRules, markRulesSeen } from '../special-rules';
 
   const mapData = $derived(gameMap.state.data);
   const ticketMap = $derived(new Map((mapData?.tickets ?? []).map((t) => [t.id, t])));
@@ -118,6 +121,34 @@
   let mapEl = $state<HTMLDivElement>();
   let stationPayEl = $state<HTMLDivElement>();
 
+  // Regole speciali del ruleset (testi dal catalogo del server). A inizio partita il modale viene
+  // PRIMA del dialog dei biglietti; «Ho capito» lo chiude e lo ricorda per questa partita. Il 📜
+  // lo riapre quando si vuole.
+  const gameId = $derived(publicStore.gameId);
+  const specialRules = $derived(rulesetCatalog.specialRules(gameMap.rulesetId));
+  const rulesTitle = $derived(rulesetCatalog.title(gameMap.rulesetId));
+  let rulesSeen = $state(hasSeenRules(publicStore.gameId));
+  let rulesManual = $state(false);
+  $effect(() => {
+    rulesSeen = hasSeenRules(gameId);
+  });
+  const rulesOpen = $derived(rulesManual || autoOpensRules(specialRules.length, gameState, rulesSeen));
+  // Durante il draft, finché il ruleset non è noto non si sa se ci sono regole da mostrare: il
+  // dialog dei biglietti aspetta (l'offerta resta) invece di aprirsi e venire coperto subito dopo.
+  const rulesPending = $derived(
+    gameState === 'INITIAL_DRAFT' &&
+      !rulesSeen &&
+      (gameMap.rulesetId === ''
+        ? gameMap.state.status !== 'error'
+        : rulesetCatalog.status === 'idle' || rulesetCatalog.status === 'loading'),
+  );
+
+  function closeRules() {
+    rulesManual = false;
+    rulesSeen = true;
+    markRulesSeen(gameId);
+  }
+
   // Flash "biglietto completato" (§8.2): salta il primo sync (snapshot/reconnect)
   let knownCompleted: Set<string> | null = null;
   let ticketFlash = $state<string[]>([]);
@@ -127,7 +158,8 @@
   // finché l'offerta non cambia. Quando l'offerta sparisce la chiusura manuale viene dimenticata.
   const offerId = $derived(offerKey(offered));
   let dismissedOfferId = $state('');
-  const ticketDialogOpen = $derived(isDialogOpen(offerId, dismissedOfferId));
+  const ticketDialogWanted = $derived(isDialogOpen(offerId, dismissedOfferId));
+  const ticketDialogOpen = $derived(ticketDialogWanted && !rulesOpen && !rulesPending);
   const ticketChoice = $derived(legalMoves?.ticket_choice ?? null);
   $effect(() => {
     dismissedOfferId = nextDismissedKey(offerId, dismissedOfferId);
@@ -485,7 +517,7 @@
   <!-- Sfondo inerte mentre il dialog dei biglietti è aperto. -->
   <div
     class="cv-bg"
-    inert={ticketDialogOpen || tunnelMove !== null || payingRoute !== null || stationPaying}
+    inert={ticketDialogOpen || rulesOpen || tunnelMove !== null || payingRoute !== null || stationPaying}
   >
   <!-- Header -->
   <div class="header">
@@ -506,6 +538,14 @@
       {/if}
       <span title="Carte nel mazzo">🃏 {publicStore.deckSize}</span>
     </div>
+    {#if specialRules.length > 0}
+      <button
+        class="btn rules-btn"
+        onclick={() => (rulesManual = true)}
+        aria-label="Regole speciali"
+        title="Regole speciali"
+      >📜</button>
+    {/if}
     <button class="btn leave-btn" onclick={onLeave}> Esci </button>
   </div>
 
@@ -518,7 +558,7 @@
     <div class="last-round-banner">⚠️ ULTIMO GIRO</div>
   {/if}
 
-  {#if offerId !== '' && !ticketDialogOpen}
+  {#if offerId !== '' && !ticketDialogWanted}
     <button class="btn reopen-tickets" onclick={() => (dismissedOfferId = '')}>
       🎫 Devi scegliere i biglietti ({offered.length})
     </button>
@@ -687,6 +727,10 @@
 
   </div>
 
+  <!-- Regole speciali: prima della scelta dei biglietti a inizio partita, o dal pulsante 📜 -->
+  {#if rulesOpen}
+    <SpecialRulesDialog title={rulesTitle} rules={specialRules} onClose={closeRules} />
+  {/if}
   <!-- Ticket choice dialog -->
   {#if ticketDialogOpen}
     <TicketChoiceDialog
@@ -831,6 +875,13 @@
     color: #fff;
     padding: 0.35rem 0.75rem;
     font-size: 0.8rem;
+  }
+  .rules-btn {
+    background: var(--chrome-bg-2);
+    border: 1px solid var(--chrome-line);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.95rem;
+    line-height: 1;
   }
 
   /* Status */

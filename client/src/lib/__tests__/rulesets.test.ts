@@ -18,6 +18,7 @@ import {
   rulesetBlurb,
   rulesetTitle,
   rulesetTitleById,
+  specialRules,
   type RulesetInfo,
 } from '../rulesets';
 
@@ -131,6 +132,26 @@ describe('isRulesetInfo', () => {
   it('rifiuta un intervallo di giocatori incoerente', () => {
     expect(isRulesetInfo({ ...usa, minPlayers: 0 })).toBe(false);
     expect(isRulesetInfo({ ...usa, minPlayers: 6, maxPlayers: 5 })).toBe(false);
+  });
+
+  it('specialRules è opzionale (server vecchi) e, se presente, è un array di testi non vuoti', () => {
+    expect(isRulesetInfo({ ...usa, specialRules: [] })).toBe(true);
+    expect(isRulesetInfo({ ...usa, specialRules: ['35 treni a testa.'] })).toBe(true);
+    expect(isRulesetInfo({ ...usa, specialRules: 'regola' })).toBe(false);
+    expect(isRulesetInfo({ ...usa, specialRules: [''] })).toBe(false);
+    expect(isRulesetInfo({ ...usa, specialRules: [3] })).toBe(false);
+  });
+});
+
+describe('specialRules', () => {
+  const poland: RulesetInfo = { ...usa, id: 'poland', specialRules: ['35 treni a testa (non 45).'] };
+
+  it('restituisce i testi del ruleset, vuoto se assenti o ruleset ignoto', () => {
+    const catalog = [usa, poland];
+    expect(specialRules(catalog, 'poland')).toEqual(['35 treni a testa (non 45).']);
+    expect(specialRules(catalog, 'usa_v2')).toEqual([]);
+    expect(specialRules(catalog, 'sconosciuto')).toEqual([]);
+    expect(specialRules(catalog, null)).toEqual([]);
   });
 });
 

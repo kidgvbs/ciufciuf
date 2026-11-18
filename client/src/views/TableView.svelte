@@ -42,6 +42,7 @@
   import TicketDeckCard from '../lib/components/TicketDeckCard.svelte';
   import TunnelCards from '../lib/components/TunnelCards.svelte';
   import RecentMoves from '../lib/components/RecentMoves.svelte';
+  import SpecialRules from '../lib/components/SpecialRules.svelte';
 
   // Il server è sempre quello che serve la pagina (in dev lo raggiunge il proxy di Vite).
   let host = $state<string>(currentHostEnv().origin);
@@ -108,6 +109,21 @@
   const cityNames = $derived(new Map((gameMap.state.data?.cities ?? []).map((c) => [c.id, c.name])));
   function cityName(id: string): string {
     return cityNames.get(id) ?? id;
+  }
+  // Regole speciali del ruleset (testi dal catalogo del server): pannello grande sopra la mappa
+  // per tutto il draft iniziale (chiudibile); dopo, il pulsante «📜 Regole» nella plancia lo riapre.
+  const specialRules = $derived(rulesetCatalog.specialRules(gameMap.rulesetId));
+  const rulesTitle = $derived(rulesetCatalog.title(gameMap.rulesetId));
+  let rulesClosedFor = $state<string>('');
+  let rulesReopenedFor = $state<string>('');
+  const rulesPanelOpen = $derived(
+    specialRules.length > 0 &&
+      (rulesReopenedFor === publicStore.gameId ||
+        (gameState === 'INITIAL_DRAFT' && rulesClosedFor !== publicStore.gameId)),
+  );
+  function closeRules() {
+    rulesReopenedFor = '';
+    rulesClosedFor = publicStore.gameId;
   }
   // Europe: in TUNNEL_RESOLUTION le carte rivelate sono pubbliche; la TV le mostra a tutti.
   const tunnelReveal = $derived(gameState === 'TUNNEL_RESOLUTION' ? publicStore.tunnelReveal : null);
@@ -793,6 +809,9 @@
           <h2>Segnapunti</h2>
           <TicketDeckCard count={publicStore.ticketDeckSize} />
         </div>
+        {#if specialRules.length > 0 && !rulesPanelOpen}
+          <button class="btn rules-btn" onclick={() => (rulesReopenedFor = publicStore.gameId)}>📜 Regole</button>
+        {/if}
         {#each publicStore.playersSummary as p}
           <div class="player-card" class:current-turn={isCurrentPlayer(p.player_id)}
             class:offline={!p.connected}
@@ -880,6 +899,16 @@
         {/if}
       </div>
       <MapSvg focusClaim={claimFocus} />
+      {#if rulesPanelOpen}
+        <div class="rules-overlay">
+          <div class="rules-panel" role="dialog" aria-label="Regole speciali">
+            <SpecialRules title={rulesTitle} rules={specialRules} large />
+            <div class="rules-panel-actions">
+              <button class="btn rules-close" onclick={closeRules}>Chiudi</button>
+            </div>
+          </div>
+        </div>
+      {/if}
       {#if tunnelReveal}
         <div class="tunnel-banner" role="status" aria-live="polite">
           <h2>
@@ -1074,6 +1103,20 @@
   .visible-deck { margin-top:1rem; }
   .sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.5rem; }
   .sidebar-head h2 { margin:0; }
+  .rules-btn { align-self:flex-start; padding:0.25rem 0.7rem; font-size:0.85rem; margin-bottom:0.55rem; }
+  /* Regole speciali a inizio partita: pannello grande sopra la mappa (plancia esclusa) */
+  .rules-overlay {
+    position:fixed; top:0; bottom:0; left:280px; right:0; z-index:40;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.55); padding:1.5rem; box-sizing:border-box;
+  }
+  .rules-panel {
+    box-sizing:border-box; width:100%; max-width:1100px; max-height:100%; overflow-y:auto;
+    background:var(--chrome-bg-1); border:3px solid var(--gold); border-radius:16px;
+    padding:1.4rem 2rem 1.2rem; box-shadow:var(--shadow-board);
+  }
+  .rules-panel-actions { display:flex; justify-content:center; margin-top:1.2rem; }
+  .rules-close { padding:0.5rem 2rem; font-size:1.2rem; }
   .cards-row { display:flex; gap:6px; flex-wrap:wrap; }
   .face-up-cell { flex:0 0 auto; }
   /* Margine per il badge conteggio del mazzo (sporge in basso a destra) */

@@ -8,6 +8,7 @@ import {
   loadRulesets,
   longestPathLabel,
   rulesetTitleById,
+  specialRules,
   type RulesetInfo,
 } from './rulesets';
 
@@ -63,6 +64,11 @@ class RulesetCatalogStore {
   /** Ids delle grandi città del ruleset (vuoto se nessuna o ruleset ignoto). */
   bigCities(rulesetId: string | null | undefined): string[] {
     return bigCities(this.items, rulesetId);
+  }
+
+  /** Regole speciali del ruleset (vuoto se nessuna, ruleset ignoto o catalogo non pronto). */
+  specialRules(rulesetId: string | null | undefined): string[] {
+    return specialRules(this.items, rulesetId);
   }
 
   /** Titolo del ruleset («USA · 1910») o `null` se il catalogo non lo conosce. */

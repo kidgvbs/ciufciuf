@@ -48,6 +48,7 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 - Un biglietto con valori diversi tra modalità è un biglietto distinto (i 4 rivisti del 1910 hanno id `<a>_<b>_1910`).
 - I biglietti nuovi si aggiungono in coda: l'ordine dei biglietti in gioco è parte del replay dei ruleset esistenti.
 - `bigCities` (opzionale) elenca le città da evidenziare sulla mappa nelle modalità Grandi Città; solo visualizzazione, città esistenti e senza duplicati.
+- `specialRules` (opzionale, default vuoto): elenco di testi in italiano con le regole che differiscono dal gioco base (Germany nelle due modalità, Poland), mostrati ai giocatori a inizio partita. Voci non vuote (altrimenti il ruleset non è valido, `EmptySpecialRule`); sono solo testo, quindi non entrano nel replay né nei salvataggi e cambiarli non richiede `RULES_VERSION`. Il server li espone in `GET /api/rulesets` come `specialRules` (`[]` se il ruleset non ne ha); il client non conosce le regole, mostra solo quel che arriva. Vanno tenuti allineati a mano al comportamento del motore.
 
 ## Bonus
 

@@ -98,6 +98,9 @@ struct RulesetListItem {
     country_cards: bool,
     /// Il ruleset ha i passeggeri (Germany 2017).
     passengers: bool,
+    /// Regole speciali (testo) mostrate a inizio partita; vuoto se il ruleset non ne ha.
+    #[serde(rename = "specialRules")]
+    special_rules: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -135,6 +138,7 @@ pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
                 stations: ruleset.stations.is_some(),
                 country_cards: !ruleset.country_cards.is_empty(),
                 passengers: ruleset.passengers.is_some(),
+                special_rules: ruleset.special_rules.clone(),
             })
         })
         .collect();

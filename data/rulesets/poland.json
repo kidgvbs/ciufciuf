@@ -79,6 +79,14 @@
       3
     ]
   },
+  "specialRules": [
+    "35 treni a testa (non 45).",
+    "Rotte verso i Paesi (Niemcy, Rosja, Litwa, Białoruś, Ukraina, Słowacja, Czechy): tutti i binari sono sempre aperti, con qualsiasi numero di giocatori, ma ognuno può prenderne uno solo per rotta. Le altre doppie seguono la regola solita (in 2 o 3 giocatori, preso un binario l'altro si chiude).",
+    "Carte Paese: quando raggiungi un Paese, se la rete che hai appena allungato collega quel Paese e almeno un altro, prendi la carta in cima alla pila di ogni Paese della rete. Pila finita: niente carta per quel Paese.",
+    "Unire due tue reti senza aggiungere un Paese nuovo non dà carte.",
+    "Fine partita: i punti delle carte Paese si sommano. Niente bonus del percorso più lungo né Globetrotter.",
+    "Parità: vince chi ha completato più biglietti, poi chi ha più punti nei biglietti completati."
+  ],
   "doubleRouteMinPlayers": 4,
   "finalRoundIncludesTrigger": true
 }

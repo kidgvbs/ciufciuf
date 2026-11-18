@@ -111,6 +111,7 @@ fn mini_ruleset() -> Ruleset {
     Ruleset {
         tie_breakers: None,
         passengers: None,
+        special_rules: vec![],
         country_cards: BTreeMap::new(),
         name: "Mini".into(),
         mode: "Standard".into(),
@@ -3700,6 +3701,13 @@ fn init_validates_mode_sets_big_cities_and_keep_rules() {
     };
     assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
     rs.big_cities = vec!["A".into(), "B".into()];
+    rs.validate(&mini_map()).unwrap();
+
+    let mut rs = mini_ruleset();
+    rs.special_rules = vec!["Regola".into(), "  ".into()];
+    let expected = EngineInitError::EmptySpecialRule { index: 1 };
+    assert_eq!(init_error(rs.clone(), mini_map(), 2, 0), expected);
+    rs.special_rules = vec!["Regola".into()];
     rs.validate(&mini_map()).unwrap();
 
     let mut rs = mini_ruleset();

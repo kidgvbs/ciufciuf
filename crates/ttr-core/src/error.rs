@@ -136,6 +136,9 @@ pub enum EngineInitError {
     #[error("modalità del ruleset vuota")]
     EmptyRulesetMode,
 
+    #[error("specialRules: la voce {index} è vuota")]
+    EmptySpecialRule { index: usize },
+
     #[error("nessun biglietto della mappa è nel set '{set}'")]
     EmptyTicketSet { set: String },
 

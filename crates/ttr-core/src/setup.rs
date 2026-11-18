@@ -114,6 +114,7 @@ impl Ruleset {
 
         self.check_bonuses()?;
         self.check_big_cities(map)?;
+        self.check_special_rules()?;
         self.check_train_deck(num_players)?;
         self.check_ticket_decks(map, num_players)?;
         self.check_tie_breakers()?;
@@ -143,6 +144,14 @@ impl Ruleset {
             }
         }
         Ok(())
+    }
+
+    /// `specialRules`: nessuna voce vuota.
+    fn check_special_rules(&self) -> Result<(), EngineInitError> {
+        match self.special_rules.iter().position(|r| r.trim().is_empty()) {
+            Some(index) => Err(EngineInitError::EmptySpecialRule { index }),
+            None => Ok(()),
+        }
     }
 
     /// `bigCities`: città esistenti e senza ripetizioni.

@@ -55,6 +55,8 @@ export interface RulesetInfo {
   countryCards?: boolean;
   /** Passeggeri (Germany 2017); assente su server vecchi. */
   passengers?: boolean;
+  /** Regole speciali da mostrare a inizio partita (testi del server); assente su server vecchi. */
+  specialRules?: string[];
 }
 
 /** Mappa con le sue modalità (ruleset) ordinate per `modeOrder`. */
@@ -119,7 +121,9 @@ export function isRulesetInfo(v: unknown): v is RulesetInfo {
     typeof v.stations === 'boolean' &&
     ['countryCards', 'passengers'].every(
       (k) => v[k] === undefined || typeof v[k] === 'boolean',
-    )
+    ) &&
+    (v.specialRules === undefined ||
+      (Array.isArray(v.specialRules) && v.specialRules.every(isNonEmptyString)))
   );
 }
 
@@ -207,6 +211,14 @@ export function bigCities(
   rulesetId: string | null | undefined,
 ): string[] {
   return catalog.find((r) => r.id === rulesetId)?.bigCities ?? [];
+}
+
+/** Regole speciali di `rulesetId` (vuoto se assenti, ruleset ignoto o server vecchio). */
+export function specialRules(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): string[] {
+  return catalog.find((r) => r.id === rulesetId)?.specialRules ?? [];
 }
 
 /** Titolo del ruleset: «USA · 1910»; solo il nome se la modalità è «Standard». */
