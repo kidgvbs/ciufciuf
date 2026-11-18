@@ -57,10 +57,10 @@
     selectedRouteId?: string | null;
     onRouteTap?: (routeId: string) => void;
     compact?: boolean;
-    /** Biglietti destinazione pinnati: pin + dashed line
-        tra le due città, uno per biglietto, con colore ciascuno.
+    /** Biglietti destinazione pinnati: pin sull'origine e su ogni destinazione + dashed line
+        dall'origine a ciascuna, uno per biglietto, con colore ciascuno.
         Solo controller — la TV non li riceve mai. */
-    highlightTickets?: Array<{ from: string; to: string }>;
+    highlightTickets?: Array<{ from: string; to: string[] }>;
     /** Europe: città selezionabili (es. dove costruire una stazione): anello pulsante + area di tap. */
     selectableCityIds?: string[];
     /** Città scelta (anello pieno). */
@@ -520,34 +520,13 @@
   });
 
   // Layer multipli — un pin + una dashed line per OGNI
-  // biglietto pinnato, colore per indice dalla palette (distingue i
+  // biglietto pinnato (con più destinazioni: un pin su origine e su ciascuna destinazione,
+  // una linea dall'origine a ciascuna), colore per indice dalla palette (distingue i
   // tratteggiati quando più biglietti sono pinnati insieme). Decorativo:
   // pointer-events none, il tap-to-claim sulle rotte sottostanti resta
   // intatto. La sparizione al completamento la decide il controller
   // (filtra i biglietti `completed` segnalati dal server): qui zero logica.
-  interface TicketLayer { from: Point; to: Point; d: string; color: string }
-  const ticketLayers = $derived.by(() => {
-    const layers: TicketLayer[] = [];
-    highlightTickets.forEach((t, i) => {
-      const fromPos = cityPositions.get(t.from);
-      const toPos = cityPositions.get(t.to);
-      if (!fromPos || !toPos) return;
-      const dx = toPos.x - fromPos.x;
-      const dy = toPos.y - fromPos.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist === 0) return;
-      // Curva leggera: controllo quadratico spostato sulla normale (~8% della distanza)
-      const mx = (fromPos.x + toPos.x) / 2 - (dy / dist) * dist * 0.08;
-      const my = (fromPos.y + toPos.y) / 2 + (dx / dist) * dist * 0.08;
-      layers.push({
-        from: fromPos,
-        to: toPos,
-        d: `M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`,
-        color: MapUtils.ticketPinColor(i),
-      });
-    });
-    return layers;
-  });
+  const ticketLayers = $derived(MapUtils.ticketLayers(highlightTickets, cityPositions));
 
   function playerColor(pid: string): string {
     const p = publicStore.playersSummary.find(ps => ps.player_id === pid);
@@ -841,9 +820,11 @@
 
       <!-- 6. Linee dei biglietti pinnati (sotto le città) -->
       {#each ticketLayers as layer}
-        <path d={layer.d} class="ticket-line ticket-highlight" aria-hidden="true"
-          fill="none" stroke={layer.color} stroke-width={3.5 * swFactor}
-          stroke-linecap="round" stroke-dasharray="10 7" opacity="0.9" />
+        {#each layer.paths as d}
+          <path {d} class="ticket-line ticket-highlight" aria-hidden="true"
+            fill="none" stroke={layer.color} stroke-width={3.5 * swFactor}
+            stroke-linecap="round" stroke-dasharray="10 7" opacity="0.9" />
+        {/each}
       {/each}
 
       <!-- 7. Città: ombra, pallino a bottone, anello doppio per gli hub.
@@ -930,7 +911,7 @@
            (non coprono più il pallino della città). -->
       {#each ticketLayers as layer}
         <g class="ticket-highlight" aria-hidden="true">
-          {#each [layer.from, layer.to] as pinPos}
+          {#each layer.pins as pinPos}
             <g transform="translate({pinPos.x} {pinPos.y})">
               <circle r={cityDotR + 4} fill="none" stroke={layer.color} stroke-width={2.5 * swFactor} />
               <circle r={cityDotR + 4} fill="none" stroke={layer.color} stroke-width={1.2 * swFactor}

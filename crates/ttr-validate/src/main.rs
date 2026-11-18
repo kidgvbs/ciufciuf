@@ -9,7 +9,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use ttr_core::scoring::{MAX_CYCLOMATIC_NUMBER, UnionFind};
-use ttr_core::types::{LONGEST_PATH_BONUS_TYPE, MAX_PARALLEL_LANES, MapData, Route, Ruleset};
+use ttr_core::types::{
+    LONGEST_PATH_BONUS_TYPE, MAX_PARALLEL_LANES, MapData, Route, Ruleset, TieBreaker,
+};
 
 // ── Validazione ─────────────────────────────────────────────────────
 
@@ -54,13 +56,15 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
             match ruleset.validate(map) {
                 Ok(()) => {
                     let estimate = ruleset.max_cyclomatic_estimate(map);
-                    if ruleset.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some() {
+                    let path_needed = ruleset.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some()
+                        || ruleset.tie_breaker_keys().contains(&TieBreaker::LongestPath);
+                    if path_needed {
                         println!(
                             "  Percorso più lungo: numero ciclomatico stimato {estimate} (massimo {MAX_CYCLOMATIC_NUMBER})"
                         );
                     } else {
                         println!(
-                            "  Percorso più lungo: non applicato (nessun bonus), numero ciclomatico stimato {estimate}"
+                            "  Percorso più lungo: non applicato (nessun bonus né spareggio), numero ciclomatico stimato {estimate}"
                         );
                     }
                 }
@@ -106,7 +110,8 @@ fn warn_unused_route_points(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
     }
 }
 
-/// Ogni biglietto deve collegare due città raggiungibili sul grafo delle rotte, con la stessa
+/// Ogni biglietto deve collegare la partenza a ciascuna destinazione, raggiungibili sul
+/// grafo delle rotte, con la stessa
 /// semantica del motore: un Paese (`country`) è un vicolo cieco, quindi due rotte che vi
 /// entrano non sono collegate tra loro, e un biglietto con estremo Paese è completato da
 /// una qualunque rotta che vi entra.
@@ -131,15 +136,17 @@ fn check_ticket_reachability(r: &mut Report, map: &MapData) {
     }
 
     for t in &map.tickets {
-        // Le città inesistenti le segnala `Ruleset::validate`.
-        if !city_set.contains(t.from.as_str()) || !city_set.contains(t.to.as_str()) {
-            continue;
-        }
-        if !connectivity.connected(&t.from, &t.to) {
-            r.err(format!(
-                "Biglietto '{}': {} → {} non raggiungibile",
-                t.id, t.from, t.to
-            ));
+        for (to, _) in t.destinations() {
+            // Le città inesistenti le segnala `Ruleset::validate`.
+            if !city_set.contains(t.from.as_str()) || !city_set.contains(to) {
+                continue;
+            }
+            if !connectivity.connected(&t.from, to) {
+                r.err(format!(
+                    "Biglietto '{}': {} → {} non raggiungibile",
+                    t.id, t.from, to
+                ));
+            }
         }
     }
 }

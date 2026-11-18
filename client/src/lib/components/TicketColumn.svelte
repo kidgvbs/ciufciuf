@@ -4,6 +4,7 @@
   // Lo stato di completamento arriva dal server (`TicketInfo.completed`).
   import type { TicketInfo } from '../proto';
   import { gameMap } from '../game-map.svelte.ts';
+  import { ticketView } from '../ticket-offer';
   import TicketCard from './TicketCard.svelte';
 
   let {
@@ -66,11 +67,13 @@
         <div class="ticket-list">
           {#each todo as t (t.id)}
             {@const desc = ticketMap.get(t.id)}
+            {@const view = ticketView(t, desc, cityName)}
             <TicketCard
               compact
-              from={desc ? cityName(desc.from) : t.id}
-              to={desc ? cityName(desc.to) : ''}
-              points={t.points}
+              from={view.from}
+              to={view.to}
+              points={view.points}
+              rows={view.rows}
               long={desc?.deck === 'long'}
               active={pinnedIds.includes(t.id)}
               onclick={() => onToggle(t.id)}
@@ -86,12 +89,14 @@
         <div class="ticket-list done-list">
           {#each done as t (t.id)}
             {@const desc = ticketMap.get(t.id)}
+            {@const view = ticketView(t, desc, cityName)}
             <TicketCard
               compact
               completed
-              from={desc ? cityName(desc.from) : t.id}
-              to={desc ? cityName(desc.to) : ''}
-              points={t.points}
+              from={view.from}
+              to={view.to}
+              points={view.points}
+              rows={view.rows}
               long={desc?.deck === 'long'}
             />
           {/each}

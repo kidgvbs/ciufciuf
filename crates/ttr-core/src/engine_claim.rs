@@ -8,13 +8,14 @@ use crate::engine::{Engine, LaneBlock};
 use crate::engine_deck::reveal_from_deck;
 use crate::error::{EngineError, GamePhase};
 use crate::event::{FinalScore, GameEvent};
+use crate::payment::{PaymentError, PaymentSpec, check_declared_colors};
 use crate::scoring::{
-    UnionFind, compute_final_scores, evaluate_tickets, globetrotter_winners,
-    passenger_majority_points,
+    LongestPathRules, TicketSpec, UnionFind, compute_final_scores, evaluate_tickets,
+    globetrotter_winners, passenger_majority_points,
 };
 use crate::types::{
     CityId, ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
-    RouteColor, TieBreaker, points_to_score,
+    TicketDef, TieBreaker, points_to_score,
 };
 
 impl Engine {
@@ -72,63 +73,41 @@ impl Engine {
             route_id: route_id.to_string(),
             needed: len,
         };
-        if cards_discarded.len() != len as usize {
+        let spec = PaymentSpec::new(&route, route_color, &self.ruleset);
+        // Senza sostituzioni le carte dichiarate sono esattamente `len`; con le
+        // sostituzioni la lista può essere più lunga e decide `spec.verify`.
+        if !spec.has_groups() && cards_discarded.len() != len as usize {
             return Err(insufficient_cards());
         }
 
-        // Le carte dichiarate escono dalla mano; se mancano, al loro posto
-        // una locomotiva.
+        // Le carte dichiarate escono dalla mano; se mancano, al loro posto una
+        // locomotiva (solo dove una locomotiva da sola è ammessa).
         let mut hand = self.players[player_index].hand.clone();
         let mut removed: Vec<CardColor> = Vec::with_capacity(cards_discarded.len());
         for card in cards_discarded {
             let pos = hand
                 .iter()
                 .position(|c| c == card)
-                .or_else(|| hand.iter().position(|c| *c == CardColor::Locomotive))
+                .or_else(|| {
+                    spec.single_loco()
+                        .then(|| hand.iter().position(|c| *c == CardColor::Locomotive))
+                        .flatten()
+                })
                 .ok_or_else(insufficient_cards)?;
             removed.push(hand.remove(pos));
         }
 
-        match route_color {
-            RouteColor::Colored(expected) => {
-                for card in cards_discarded {
-                    if *card != expected && *card != CardColor::Locomotive {
-                        return Err(EngineError::InvalidPayload {
-                            reason: format!(
-                                "carta {card:?} non corrisponde al colore della rotta {expected:?}"
-                            ),
-                        });
-                    }
-                }
-            }
-            RouteColor::Gray => {
-                // Tutte le carte non-loco devono essere dello stesso colore.
-                let non_loco_color = cards_discarded
-                    .iter()
-                    .find(|c| **c != CardColor::Locomotive)
-                    .copied();
-                if let Some(color) = non_loco_color {
-                    for card in cards_discarded {
-                        if *card != color && *card != CardColor::Locomotive {
-                            return Err(EngineError::InvalidPayload {
-                                reason: format!(
-                                    "rotta grigia: carte di colori diversi {color:?} e {card:?}"
-                                ),
-                            });
-                        }
-                    }
-                }
-            }
+        // Senza gruppi le carte dichiarate devono rispettare il colore della rotta.
+        if !spec.has_groups() {
+            check_declared_colors(route_color, cards_discarded)
+                .map_err(|reason| EngineError::InvalidPayload { reason })?;
         }
 
-        // I traghetti richiedono almeno `ferries` locomotive tra le carte tolte.
-        let locos_removed = removed
-            .iter()
-            .filter(|c| **c == CardColor::Locomotive)
-            .count();
-        if locos_removed < route.ferries as usize {
-            return Err(insufficient_cards());
-        }
+        // Tutte le carte tolte si assegnano esattamente agli spazi della rotta.
+        spec.verify(&removed).map_err(|err| match err {
+            PaymentError::NotEnough => insufficient_cards(),
+            PaymentError::Invalid(reason) => EngineError::InvalidPayload { reason },
+        })?;
 
         if self.players[player_index].trains_remaining < len {
             return Err(insufficient_cards());
@@ -472,19 +451,24 @@ impl Engine {
             })?
             .clone();
 
+        let locos_usable = self.ruleset.locomotive_usable_on(&route);
         let mut hand = self.players[player_index].hand.clone();
         let mut extra_cards: Vec<CardColor> = Vec::with_capacity(cards_discarded.len());
         for card in cards_discarded {
             let pos = hand
                 .iter()
                 .position(|c| c == card)
-                .or_else(|| hand.iter().position(|c| *c == CardColor::Locomotive))
+                .or_else(|| {
+                    locos_usable
+                        .then(|| hand.iter().position(|c| *c == CardColor::Locomotive))
+                        .flatten()
+                })
                 .ok_or_else(insufficient)?;
             extra_cards.push(hand.remove(pos));
         }
         if let Some(bad) = extra_cards
             .iter()
-            .find(|c| **c != pending.color && **c != CardColor::Locomotive)
+            .find(|c| **c != pending.color && (**c != CardColor::Locomotive || !locos_usable))
         {
             return Err(EngineError::InvalidPayload {
                 reason: format!(
@@ -595,7 +579,13 @@ impl Engine {
             &player_tickets,
             &stations,
             &mut self.connectivity,
-            self.longest_path_bonus_points,
+            LongestPathRules {
+                bonus_points: self.longest_path_bonus_points,
+                tie_break: self
+                    .ruleset
+                    .tie_breaker_keys()
+                    .contains(&TieBreaker::LongestPath),
+            },
         );
 
         let globetrotter = match self.globetrotter_bonus_points {
@@ -612,6 +602,10 @@ impl Engine {
         self.longest_path_routes = scores
             .iter_mut()
             .map(|s| std::mem::take(&mut s.longest_path_routes))
+            .collect();
+        self.final_ticket_results = scores
+            .iter_mut()
+            .map(|s| std::mem::take(&mut s.ticket_results))
             .collect();
 
         let passenger_points: Vec<i32> = match &self.ruleset.passengers {
@@ -690,6 +684,7 @@ impl Engine {
                     TieBreaker::CompletedTickets => i64::from(score.completed_count),
                     TieBreaker::CompletedTicketPoints => i64::from(score.completed_tickets),
                     TieBreaker::LongestPathBonus => i64::from(fs.longest_path_bonus),
+                    TieBreaker::LongestPath => i64::from(score.longest_path),
                     TieBreaker::Passengers => self.players[fs.player_index]
                         .passengers
                         .values()
@@ -715,25 +710,24 @@ impl Engine {
     /// Aggiorna il completamento dei biglietti per un giocatore basandosi sulla
     /// connettività corrente e sulla migliore assegnazione delle stazioni (D32).
     pub(crate) fn update_ticket_completion(&mut self, player_index: usize) {
-        let tickets: Vec<(String, String, String, u32)> = self.players[player_index]
-            .tickets
-            .keys()
-            .filter_map(|tid| {
-                let t = self.tickets_by_id.get(tid)?;
-                Some((tid.clone(), t.from.clone(), t.to.clone(), t.points))
-            })
-            .collect();
-        let list: Vec<(&str, &str, u32)> = tickets
-            .iter()
-            .map(|(_, from, to, points)| (from.as_str(), to.as_str(), *points))
-            .collect();
         let stations = self.station_candidates(player_index);
-        let eval = match self.connectivity.uf_mut(player_index) {
-            Some(uf) => evaluate_tickets(uf, &list, &stations),
-            None => evaluate_tickets(&mut UnionFind::new(), &list, &stations),
+        let (ids, eval) = {
+            let tickets_by_id = &self.tickets_by_id;
+            let defs: Vec<&TicketDef> = self.players[player_index]
+                .tickets
+                .keys()
+                .filter_map(|tid| tickets_by_id.get(tid))
+                .collect();
+            let list: Vec<TicketSpec> = defs.iter().map(|t| TicketSpec::of(t)).collect();
+            let eval = match self.connectivity.uf_mut(player_index) {
+                Some(uf) => evaluate_tickets(uf, &list, &stations),
+                None => evaluate_tickets(&mut UnionFind::new(), &list, &stations),
+            };
+            let ids: Vec<String> = defs.iter().map(|t| t.id.clone()).collect();
+            (ids, eval)
         };
 
-        for ((tid, ..), completed) in tickets.iter().zip(eval.completed) {
+        for (tid, completed) in ids.iter().zip(eval.completed) {
             if let Some(ts) = self.players[player_index].tickets.get_mut(tid) {
                 ts.completed = Some(completed);
             }

@@ -66,7 +66,7 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland] [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic] [--svg OUT.svg]
 //   --map ID       (default usa) mappa: input data/maps/<ID>.json, output data/layouts/<ID>.json.
 //                  Le regolazioni manuali (LABEL_OVERRIDES, F2 shifts, pre-bend Phoenix) sono
 //                  per-mappa (MAP_TUNING): applicate SOLO alla mappa a cui appartengono.
@@ -136,6 +136,49 @@ const MAP_BOUNDS = {
         wroclaw: [309, 622], zakopane: [653, 938], zielona_gora: [171, 483], lodz: [585, 522],
         bialorus: [1048, 406], czechy: [141, 783], litwa: [1031, 78], niemcy: [53, 363],
         rosja: [751, 50], slowacja: [521, 950], ukraina: [1033, 867],
+      },
+    },
+  },
+  // Nordic: posizioni dalla foto del tabellone (percentuali della wiki di fan, scalate a 671×1000);
+  // la geografia reale non rispetta le lunghezze (Murmansk–Lieksa 9 carte, traghetti).
+  nordic: {
+    image: {
+      w: 671,
+      h: 1000,
+      xy: {
+        alborg: [261, 901], andalsnes: [127, 613], arhus: [289, 951], bergen: [72, 760], boden: [348, 302],
+        goteborg: [309, 844], helsinki: [554, 584], honningsvag: [315, 41], imatra: [619, 468],
+        kajaani: [526, 322], karlskrona: [442, 900], kirkenes: [387, 87], kiruna: [240, 247],
+        kobenhavn: [349, 946], kristiansand: [201, 850], kuopio: [560, 401], lahti: [552, 524],
+        lieksa: [575, 349], lillehammer: [195, 680], mo_i_rana: [174, 366], murmansk: [486, 63],
+        narvik: [191, 233], norrkoping: [419, 767], orebro: [327, 729], oslo: [240, 767],
+        ostersund: [251, 532], oulu: [437, 334], rovaniemi: [407, 241], stavanger: [113, 843],
+        stockholm: [423, 699], sundsvall: [333, 549], tallinn: [571, 649], tampere: [496, 524],
+        tornio: [399, 294], tromso: [217, 151], trondheim: [173, 568], turku: [494, 583], umea: [370, 427],
+        vaasa: [412, 461],
+      },
+    },
+  },
+  // Switzerland: seme di posizioni ottimizzato per rispettare le lunghezze delle rotte (rapporto
+  // 0.8–1.6, senza incroci in linea retta) partendo dalla foto del tabellone (1000×666, percentuali
+  // della wiki di fan). I Paesi sono un solo nodo con più bandierine sul tabellone, quindi il
+  // disegno originale non rispetta le lunghezze (Basel e Kreuzlingen a 1 carta da Deutschland).
+  switzerland: {
+    anchor: 0.45,
+    image: {
+      w: 580,
+      h: 479,
+      xy: {
+        baden: [314, 126], basel: [261, 26], bellinzona: [304, 386], bern: [218, 180],
+        brig: [174, 441], brusio: [387, 390], chur: [510, 254], davos: [525, 365],
+        delemont: [153, 61], deutschland: [341, 20], france: [46, 101], fribourg: [188, 254],
+        geneve: [53, 142], interlaken: [194, 330], italia: [359, 459], kreuzlingen: [406, 50],
+        la_chaux_de_fonds: [117, 170], lausanne: [130, 373], locarno: [357, 383], lugano: [376, 350],
+        luzern: [367, 187], martigny: [20, 212], neuchatel: [160, 227], olten: [237, 136],
+        osterreich: [560, 196], pfaffikon: [437, 153], sargans: [529, 220], schaffhausen: [293, 51],
+        schwyz: [409, 222], sion: [53, 320], solothurn: [194, 71], st_gallen: [454, 41],
+        vaduz: [496, 147], wassen: [318, 245], winterthur: [353, 104], yverdon: [128, 334],
+        zug: [407, 180], zurich: [350, 150],
       },
     },
   },
@@ -262,6 +305,8 @@ const MAP_TUNING = {
     ],
   },
   poland: { unit: 40, labelOverrides: {}, f2Shifts: [] },
+  switzerland: { unit: 60, lenOneDense: true, labelOverrides: {}, f2Shifts: [] },
+  nordic: { unit: 40, labelOverrides: {}, f2Shifts: [] },
 };
 const TUNING = MAP_TUNING[MAP_ID];
 

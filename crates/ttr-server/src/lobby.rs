@@ -101,6 +101,17 @@ struct RulesetListItem {
     /// Regole speciali (testo) mostrate a inizio partita; vuoto se il ruleset non ne ha.
     #[serde(rename = "specialRules")]
     special_rules: Vec<String>,
+    /// Tipi di rotta su cui una locomotiva paga da sola uno spazio (`tunnel`, `ferry`);
+    /// assente = tutte.
+    #[serde(
+        rename = "locomotivesUsableOn",
+        skip_serializing_if = "Option::is_none"
+    )]
+    locomotives_usable_on: Option<Vec<String>>,
+    /// Sui traghetti questo numero di carte qualsiasi vale una locomotiva (assente = nessuna
+    /// sostituzione).
+    #[serde(rename = "ferryAnyCards", skip_serializing_if = "Option::is_none")]
+    ferry_any_cards: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -139,6 +150,11 @@ pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
                 country_cards: !ruleset.country_cards.is_empty(),
                 passengers: ruleset.passengers.is_some(),
                 special_rules: ruleset.special_rules.clone(),
+                locomotives_usable_on: ruleset
+                    .locomotives
+                    .as_ref()
+                    .and_then(|l| l.usable_on.clone()),
+                ferry_any_cards: ruleset.ferries.as_ref().map(|f| f.any_cards_per_locomotive),
             })
         })
         .collect();

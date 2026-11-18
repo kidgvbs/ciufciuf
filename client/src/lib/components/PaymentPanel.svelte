@@ -22,6 +22,7 @@
     total,
     hand,
     fixedColor,
+    allowLocos = true,
     title,
     confirmLabel,
     busy = false,
@@ -34,6 +35,8 @@
     hand: CardColor[];
     /** Colore imposto (tunnel); assente = a scelta del giocatore (stazione). */
     fixedColor?: CardColor;
+    /** Le locomotive possono pagare queste carte (`locomotives.usableOn`); default sì. */
+    allowLocos?: boolean;
     title: string;
     confirmLabel: string;
     /** Azione già in volo: il bottone di conferma resta spento. */
@@ -51,9 +54,10 @@
   );
   const locoInHand = $derived(countCards(hand, 'LOCOMOTIVE'));
   const colorCount = $derived(color ? countCards(hand, color) : 0);
-  const spec = $derived({ total, minLocos: 0, colorCount, locoInHand });
+  // Locomotive utilizzabili: quelle in mano se ammesse su questa rotta (`allowLocos`), altrimenti nessuna.
+  const spec = $derived({ total, minLocos: 0, colorCount, locoInHand: allowLocos ? locoInHand : 0 });
   const locos = $derived(locosPick ?? suggestLocos(spec));
-  const maxLocos = $derived(Math.min(locoInHand, total));
+  const maxLocos = $derived(spec.locoInHand === 0 ? 0 : Math.min(spec.locoInHand, total));
   const valid = $derived(paymentCovered(spec, locos));
   const locoOnly = $derived(fixedColor !== undefined && color === null);
   const coloredNeeded = $derived(total - locos);

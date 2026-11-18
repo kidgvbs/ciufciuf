@@ -1,0 +1,1742 @@
+{
+  "cities": [
+    {
+      "id": "baden",
+      "name": "Baden",
+      "lat": 47.473,
+      "lon": 8.308
+    },
+    {
+      "id": "basel",
+      "name": "Basel",
+      "lat": 47.559,
+      "lon": 7.588
+    },
+    {
+      "id": "bellinzona",
+      "name": "Bellinzona",
+      "lat": 46.195,
+      "lon": 9.024
+    },
+    {
+      "id": "bern",
+      "name": "Bern",
+      "lat": 46.948,
+      "lon": 7.447
+    },
+    {
+      "id": "brig",
+      "name": "Brig",
+      "lat": 46.316,
+      "lon": 7.988
+    },
+    {
+      "id": "brusio",
+      "name": "Brusio",
+      "lat": 46.232,
+      "lon": 10.125
+    },
+    {
+      "id": "chur",
+      "name": "Chur",
+      "lat": 46.85,
+      "lon": 9.533
+    },
+    {
+      "id": "davos",
+      "name": "Davos",
+      "lat": 46.804,
+      "lon": 9.837
+    },
+    {
+      "id": "delemont",
+      "name": "Delémont",
+      "lat": 47.365,
+      "lon": 7.345
+    },
+    {
+      "id": "deutschland",
+      "name": "Deutschland",
+      "lat": 47.85,
+      "lon": 8.6,
+      "country": true
+    },
+    {
+      "id": "france",
+      "name": "France",
+      "lat": 46.6,
+      "lon": 5.9,
+      "country": true
+    },
+    {
+      "id": "fribourg",
+      "name": "Fribourg",
+      "lat": 46.806,
+      "lon": 7.162
+    },
+    {
+      "id": "geneve",
+      "name": "Genève",
+      "lat": 46.204,
+      "lon": 6.143
+    },
+    {
+      "id": "interlaken",
+      "name": "Interlaken",
+      "lat": 46.686,
+      "lon": 7.863
+    },
+    {
+      "id": "italia",
+      "name": "Italia",
+      "lat": 45.85,
+      "lon": 9.1,
+      "country": true
+    },
+    {
+      "id": "kreuzlingen",
+      "name": "Kreuzlingen",
+      "lat": 47.651,
+      "lon": 9.175
+    },
+    {
+      "id": "la_chaux_de_fonds",
+      "name": "La Chaux-de-Fonds",
+      "lat": 47.104,
+      "lon": 6.829
+    },
+    {
+      "id": "lausanne",
+      "name": "Lausanne",
+      "lat": 46.52,
+      "lon": 6.632
+    },
+    {
+      "id": "locarno",
+      "name": "Locarno",
+      "lat": 46.171,
+      "lon": 8.8
+    },
+    {
+      "id": "lugano",
+      "name": "Lugano",
+      "lat": 46.004,
+      "lon": 8.951
+    },
+    {
+      "id": "luzern",
+      "name": "Luzern",
+      "lat": 47.05,
+      "lon": 8.309
+    },
+    {
+      "id": "martigny",
+      "name": "Martigny",
+      "lat": 46.103,
+      "lon": 7.072
+    },
+    {
+      "id": "neuchatel",
+      "name": "Neuchâtel",
+      "lat": 46.99,
+      "lon": 6.929
+    },
+    {
+      "id": "olten",
+      "name": "Olten",
+      "lat": 47.35,
+      "lon": 7.903
+    },
+    {
+      "id": "osterreich",
+      "name": "Österreich",
+      "lat": 47.2,
+      "lon": 10.05,
+      "country": true
+    },
+    {
+      "id": "pfaffikon",
+      "name": "Pfäffikon",
+      "lat": 47.201,
+      "lon": 8.779
+    },
+    {
+      "id": "sargans",
+      "name": "Sargans",
+      "lat": 47.049,
+      "lon": 9.441
+    },
+    {
+      "id": "schaffhausen",
+      "name": "Schaffhausen",
+      "lat": 47.697,
+      "lon": 8.635
+    },
+    {
+      "id": "schwyz",
+      "name": "Schwyz",
+      "lat": 47.021,
+      "lon": 8.654
+    },
+    {
+      "id": "sion",
+      "name": "Sion",
+      "lat": 46.229,
+      "lon": 7.359
+    },
+    {
+      "id": "solothurn",
+      "name": "Solothurn",
+      "lat": 47.209,
+      "lon": 7.537
+    },
+    {
+      "id": "st_gallen",
+      "name": "St. Gallen",
+      "lat": 47.425,
+      "lon": 9.377
+    },
+    {
+      "id": "vaduz",
+      "name": "Vaduz",
+      "lat": 47.141,
+      "lon": 9.521
+    },
+    {
+      "id": "wassen",
+      "name": "Wassen",
+      "lat": 46.7,
+      "lon": 8.598
+    },
+    {
+      "id": "winterthur",
+      "name": "Winterthur",
+      "lat": 47.501,
+      "lon": 8.724
+    },
+    {
+      "id": "yverdon",
+      "name": "Yverdon",
+      "lat": 46.779,
+      "lon": 6.641
+    },
+    {
+      "id": "zug",
+      "name": "Zug",
+      "lat": 47.172,
+      "lon": 8.517
+    },
+    {
+      "id": "zurich",
+      "name": "Zürich",
+      "lat": 47.377,
+      "lon": 8.542
+    }
+  ],
+  "routes": [
+    {
+      "id": "baden_basel_1",
+      "from": "baden",
+      "to": "basel",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "baden_olten_1",
+      "from": "baden",
+      "to": "olten",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "baden_zurich_1",
+      "from": "baden",
+      "to": "zurich",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "basel_delemont_1",
+      "from": "basel",
+      "to": "delemont",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "basel_deutschland_1",
+      "from": "basel",
+      "to": "deutschland",
+      "len": 1,
+      "color": "Blue",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "basel_olten_1",
+      "from": "basel",
+      "to": "olten",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bellinzona_locarno_1",
+      "from": "bellinzona",
+      "to": "locarno",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bellinzona_lugano_1",
+      "from": "bellinzona",
+      "to": "lugano",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bellinzona_lugano_2",
+      "from": "bellinzona",
+      "to": "lugano",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bellinzona_wassen_1",
+      "from": "bellinzona",
+      "to": "wassen",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bellinzona_wassen_2",
+      "from": "bellinzona",
+      "to": "wassen",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "bern_fribourg_1",
+      "from": "bern",
+      "to": "fribourg",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bern_fribourg_2",
+      "from": "bern",
+      "to": "fribourg",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bern_interlaken_1",
+      "from": "bern",
+      "to": "interlaken",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bern_luzern_1",
+      "from": "bern",
+      "to": "luzern",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bern_luzern_2",
+      "from": "bern",
+      "to": "luzern",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bern_neuchatel_1",
+      "from": "bern",
+      "to": "neuchatel",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bern_solothurn_1",
+      "from": "bern",
+      "to": "solothurn",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "brig_interlaken_1",
+      "from": "brig",
+      "to": "interlaken",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brig_italia_1",
+      "from": "brig",
+      "to": "italia",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brig_locarno_1",
+      "from": "brig",
+      "to": "locarno",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brig_sion_1",
+      "from": "brig",
+      "to": "sion",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brig_wassen_1",
+      "from": "brig",
+      "to": "wassen",
+      "len": 4,
+      "color": "Red",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brusio_chur_1",
+      "from": "brusio",
+      "to": "chur",
+      "len": 5,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brusio_davos_1",
+      "from": "brusio",
+      "to": "davos",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "brusio_italia_1",
+      "from": "brusio",
+      "to": "italia",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "chur_davos_1",
+      "from": "chur",
+      "to": "davos",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "chur_sargans_1",
+      "from": "chur",
+      "to": "sargans",
+      "len": 1,
+      "color": "White",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "chur_wassen_1",
+      "from": "chur",
+      "to": "wassen",
+      "len": 5,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "davos_italia_1",
+      "from": "davos",
+      "to": "italia",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "davos_osterreich_1",
+      "from": "davos",
+      "to": "osterreich",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "davos_sargans_1",
+      "from": "davos",
+      "to": "sargans",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "delemont_france_1",
+      "from": "delemont",
+      "to": "france",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "delemont_la_chaux_de_fonds_1",
+      "from": "delemont",
+      "to": "la_chaux_de_fonds",
+      "len": 3,
+      "color": "White",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "delemont_solothurn_1",
+      "from": "delemont",
+      "to": "solothurn",
+      "len": 1,
+      "color": "Purple",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "deutschland_kreuzlingen_1",
+      "from": "deutschland",
+      "to": "kreuzlingen",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "deutschland_kreuzlingen_2",
+      "from": "deutschland",
+      "to": "kreuzlingen",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "alwaysOpen": true
+    },
+    {
+      "id": "deutschland_schaffhausen_1",
+      "from": "deutschland",
+      "to": "schaffhausen",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "deutschland_st_gallen_1",
+      "from": "deutschland",
+      "to": "st_gallen",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "france_geneve_1",
+      "from": "france",
+      "to": "geneve",
+      "len": 1,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "france_la_chaux_de_fonds_1",
+      "from": "france",
+      "to": "la_chaux_de_fonds",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "france_martigny_1",
+      "from": "france",
+      "to": "martigny",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "fribourg_lausanne_1",
+      "from": "fribourg",
+      "to": "lausanne",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "fribourg_lausanne_2",
+      "from": "fribourg",
+      "to": "lausanne",
+      "len": 3,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "geneve_lausanne_1",
+      "from": "geneve",
+      "to": "lausanne",
+      "len": 4,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "geneve_lausanne_2",
+      "from": "geneve",
+      "to": "lausanne",
+      "len": 4,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "geneve_yverdon_1",
+      "from": "geneve",
+      "to": "yverdon",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "interlaken_luzern_1",
+      "from": "interlaken",
+      "to": "luzern",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "italia_locarno_1",
+      "from": "italia",
+      "to": "locarno",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "italia_lugano_1",
+      "from": "italia",
+      "to": "lugano",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "kreuzlingen_schaffhausen_1",
+      "from": "kreuzlingen",
+      "to": "schaffhausen",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kreuzlingen_st_gallen_1",
+      "from": "kreuzlingen",
+      "to": "st_gallen",
+      "len": 1,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "kreuzlingen_winterthur_1",
+      "from": "kreuzlingen",
+      "to": "winterthur",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "la_chaux_de_fonds_neuchatel_1",
+      "from": "la_chaux_de_fonds",
+      "to": "neuchatel",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "la_chaux_de_fonds_yverdon_1",
+      "from": "la_chaux_de_fonds",
+      "to": "yverdon",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "lausanne_martigny_1",
+      "from": "lausanne",
+      "to": "martigny",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "lausanne_neuchatel_1",
+      "from": "lausanne",
+      "to": "neuchatel",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "locarno_lugano_1",
+      "from": "locarno",
+      "to": "lugano",
+      "len": 1,
+      "color": "Purple",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "luzern_olten_1",
+      "from": "luzern",
+      "to": "olten",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "luzern_schwyz_1",
+      "from": "luzern",
+      "to": "schwyz",
+      "len": 1,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "luzern_zug_1",
+      "from": "luzern",
+      "to": "zug",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "luzern_zug_2",
+      "from": "luzern",
+      "to": "zug",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "martigny_sion_1",
+      "from": "martigny",
+      "to": "sion",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "neuchatel_solothurn_1",
+      "from": "neuchatel",
+      "to": "solothurn",
+      "len": 4,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "neuchatel_yverdon_1",
+      "from": "neuchatel",
+      "to": "yverdon",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olten_solothurn_1",
+      "from": "olten",
+      "to": "solothurn",
+      "len": 1,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olten_zurich_1",
+      "from": "olten",
+      "to": "zurich",
+      "len": 3,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "osterreich_st_gallen_1",
+      "from": "osterreich",
+      "to": "st_gallen",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "osterreich_vaduz_1",
+      "from": "osterreich",
+      "to": "vaduz",
+      "len": 1,
+      "color": "Red",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "pfaffikon_sargans_1",
+      "from": "pfaffikon",
+      "to": "sargans",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "pfaffikon_schwyz_1",
+      "from": "pfaffikon",
+      "to": "schwyz",
+      "len": 1,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pfaffikon_st_gallen_1",
+      "from": "pfaffikon",
+      "to": "st_gallen",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pfaffikon_zurich_1",
+      "from": "pfaffikon",
+      "to": "zurich",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "sargans_vaduz_1",
+      "from": "sargans",
+      "to": "vaduz",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "schaffhausen_winterthur_1",
+      "from": "schaffhausen",
+      "to": "winterthur",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "schaffhausen_winterthur_2",
+      "from": "schaffhausen",
+      "to": "winterthur",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "schaffhausen_zurich_1",
+      "from": "schaffhausen",
+      "to": "zurich",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "schwyz_wassen_1",
+      "from": "schwyz",
+      "to": "wassen",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "schwyz_wassen_2",
+      "from": "schwyz",
+      "to": "wassen",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "schwyz_zug_1",
+      "from": "schwyz",
+      "to": "zug",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "schwyz_zug_2",
+      "from": "schwyz",
+      "to": "zug",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "st_gallen_vaduz_1",
+      "from": "st_gallen",
+      "to": "vaduz",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": true,
+      "ferries": 0
+    },
+    {
+      "id": "st_gallen_winterthur_1",
+      "from": "st_gallen",
+      "to": "winterthur",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "st_gallen_zurich_1",
+      "from": "st_gallen",
+      "to": "zurich",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "winterthur_zurich_1",
+      "from": "winterthur",
+      "to": "zurich",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "winterthur_zurich_2",
+      "from": "winterthur",
+      "to": "zurich",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "zug_zurich_1",
+      "from": "zug",
+      "to": "zurich",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "zug_zurich_2",
+      "from": "zug",
+      "to": "zurich",
+      "len": 1,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "basel_bern",
+      "from": "basel",
+      "to": "bern",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "basel_brig",
+      "from": "basel",
+      "to": "brig",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "basel_geneve",
+      "from": "basel",
+      "to": "geneve",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "basel_st_gallen",
+      "from": "basel",
+      "to": "st_gallen",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "basel_zurich",
+      "from": "basel",
+      "to": "zurich",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_chur",
+      "from": "bern",
+      "to": "chur",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_deutschland_france_italia_osterreich",
+      "from": "bern",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 6
+        },
+        {
+          "to": "france",
+          "points": 5
+        },
+        {
+          "to": "italia",
+          "points": 8
+        },
+        {
+          "to": "osterreich",
+          "points": 11
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_geneve",
+      "from": "bern",
+      "to": "geneve",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_la_chaux_de_fonds",
+      "from": "bern",
+      "to": "la_chaux_de_fonds",
+      "points": 3,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_lugano",
+      "from": "bern",
+      "to": "lugano",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_schwyz",
+      "from": "bern",
+      "to": "schwyz",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bern_zurich",
+      "from": "bern",
+      "to": "zurich",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "brusio_st_gallen",
+      "from": "brusio",
+      "to": "st_gallen",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "brusio_zurich",
+      "from": "brusio",
+      "to": "zurich",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "chur_deutschland_france_italia_osterreich",
+      "from": "chur",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 6
+        },
+        {
+          "to": "france",
+          "points": 12
+        },
+        {
+          "to": "italia",
+          "points": 5
+        },
+        {
+          "to": "osterreich",
+          "points": 3
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "chur_lugano",
+      "from": "chur",
+      "to": "lugano",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "deutschland_france_italia_osterreich",
+      "from": "deutschland",
+      "destinations": [
+        {
+          "to": "france",
+          "points": 5
+        },
+        {
+          "to": "italia",
+          "points": 13
+        },
+        {
+          "to": "osterreich",
+          "points": 5
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "deutschland_france_italia_osterreich_2",
+      "from": "deutschland",
+      "destinations": [
+        {
+          "to": "france",
+          "points": 5
+        },
+        {
+          "to": "italia",
+          "points": 13
+        },
+        {
+          "to": "osterreich",
+          "points": 5
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "france_deutschland_italia_osterreich",
+      "from": "france",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 5
+        },
+        {
+          "to": "italia",
+          "points": 11
+        },
+        {
+          "to": "osterreich",
+          "points": 14
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "france_deutschland_italia_osterreich_2",
+      "from": "france",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 5
+        },
+        {
+          "to": "italia",
+          "points": 11
+        },
+        {
+          "to": "osterreich",
+          "points": 14
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "fribourg_luzern",
+      "from": "fribourg",
+      "to": "luzern",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "geneve_sion",
+      "from": "geneve",
+      "to": "sion",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "geneve_zurich",
+      "from": "geneve",
+      "to": "zurich",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "interlaken_lausanne",
+      "from": "interlaken",
+      "to": "lausanne",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "interlaken_winterthur",
+      "from": "interlaken",
+      "to": "winterthur",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "italia_deutschland_france_osterreich",
+      "from": "italia",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 13
+        },
+        {
+          "to": "france",
+          "points": 11
+        },
+        {
+          "to": "osterreich",
+          "points": 6
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "italia_deutschland_france_osterreich_2",
+      "from": "italia",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 13
+        },
+        {
+          "to": "france",
+          "points": 11
+        },
+        {
+          "to": "osterreich",
+          "points": 6
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kreuzlingen_zurich",
+      "from": "kreuzlingen",
+      "to": "zurich",
+      "points": 3,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "la_chaux_de_fonds_luzern",
+      "from": "la_chaux_de_fonds",
+      "to": "luzern",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "la_chaux_de_fonds_zurich",
+      "from": "la_chaux_de_fonds",
+      "to": "zurich",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lausanne_luzern",
+      "from": "lausanne",
+      "to": "luzern",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lausanne_st_gallen",
+      "from": "lausanne",
+      "to": "st_gallen",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lugano_deutschland_france_italia_osterreich",
+      "from": "lugano",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 12
+        },
+        {
+          "to": "france",
+          "points": 14
+        },
+        {
+          "to": "italia",
+          "points": 2
+        },
+        {
+          "to": "osterreich",
+          "points": 13
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lugano_zurich",
+      "from": "lugano",
+      "to": "zurich",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "luzern_vaduz",
+      "from": "luzern",
+      "to": "vaduz",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "luzern_zurich",
+      "from": "luzern",
+      "to": "zurich",
+      "points": 2,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "martigny_schaffhausen",
+      "from": "martigny",
+      "to": "schaffhausen",
+      "points": 15,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "neuchatel_winterthur",
+      "from": "neuchatel",
+      "to": "winterthur",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "olten_schaffhausen",
+      "from": "olten",
+      "to": "schaffhausen",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "osterreich_deutschland_france_italia",
+      "from": "osterreich",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 5
+        },
+        {
+          "to": "france",
+          "points": 14
+        },
+        {
+          "to": "italia",
+          "points": 6
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "osterreich_deutschland_france_italia_2",
+      "from": "osterreich",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 5
+        },
+        {
+          "to": "france",
+          "points": 14
+        },
+        {
+          "to": "italia",
+          "points": 6
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "schaffhausen_st_gallen",
+      "from": "schaffhausen",
+      "to": "st_gallen",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "schaffhausen_zug",
+      "from": "schaffhausen",
+      "to": "zug",
+      "points": 3,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "schwyz_winterthur",
+      "from": "schwyz",
+      "to": "winterthur",
+      "points": 3,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "vaduz_zurich",
+      "from": "vaduz",
+      "to": "zurich",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "zurich_deutschland_france_italia_osterreich",
+      "from": "zurich",
+      "destinations": [
+        {
+          "to": "deutschland",
+          "points": 3
+        },
+        {
+          "to": "france",
+          "points": 7
+        },
+        {
+          "to": "italia",
+          "points": 11
+        },
+        {
+          "to": "osterreich",
+          "points": 7
+        }
+      ],
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    }
+  ]
+}

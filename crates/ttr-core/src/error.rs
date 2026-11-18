@@ -251,6 +251,20 @@ pub enum EngineInitError {
     #[error("biglietto '{ticket_id}': partenza e arrivo coincidono ('{city_id}')")]
     TicketSameCity { ticket_id: String, city_id: String },
 
+    #[error("biglietto '{ticket_id}': usare `to` + `points` oppure `destinations`, non entrambi")]
+    TicketFormsBoth { ticket_id: String },
+
+    #[error(
+        "biglietto '{ticket_id}': servono `to` + `points` (una destinazione) oppure `destinations`"
+    )]
+    TicketFormMissing { ticket_id: String },
+
+    #[error("biglietto '{ticket_id}': `destinations` ha {count} voci, ne servono almeno 2")]
+    TicketDestinationsTooFew { ticket_id: String, count: usize },
+
+    #[error("biglietto '{ticket_id}': la destinazione '{city_id}' è ripetuta")]
+    TicketDestinationDuplicate { ticket_id: String, city_id: String },
+
     #[error("rotta '{route_id}': partenza e arrivo coincidono ('{city_id}')")]
     RouteSameCity { route_id: String, city_id: String },
 
@@ -258,7 +272,7 @@ pub enum EngineInitError {
     DoubleRouteBadId { route_id: String },
 
     #[error(
-        "rotta doppia '{route_id}': il gruppo parallelo non è completo: serve '{sister_id}' con stessi estremi, stessa lunghezza e double=true (ids {{base}}_1..{{base}}_k contigui)"
+        "rotta doppia '{route_id}': il gruppo parallelo non è completo: serve '{sister_id}' con stessi estremi e double=true (ids {{base}}_1..{{base}}_k contigui)"
     )]
     DoubleRouteUnpaired { route_id: String, sister_id: String },
 
@@ -286,6 +300,11 @@ pub enum EngineInitError {
 
     #[error("rotta '{route_id}': non può essere insieme tunnel e traghetto")]
     RouteTunnelAndFerry { route_id: String },
+
+    #[error(
+        "rotta '{route_id}': un tunnel non può avere anyCardsPerSpace (il colore del tunnel si ricava dalle carte pagate)"
+    )]
+    RouteTunnelAnyCardsPerSpace { route_id: String },
 
     #[error("rotta tunnel '{route_id}': il ruleset non ha tunnels.revealed >= 1")]
     TunnelsConfigMissing { route_id: String },
@@ -349,6 +368,21 @@ pub enum EngineInitError {
 
     #[error("passengers.majorityPoints deve avere 2 valori, ne ha {len}")]
     PassengersMajorityPoints { len: usize },
+
+    #[error("locomotives.usableOn non può essere vuoto")]
+    LocomotivesUsableOnEmpty,
+
+    #[error("locomotives.usableOn: il valore '{value}' è ripetuto")]
+    LocomotivesUsableOnDuplicate { value: String },
+
+    #[error("locomotives.usableOn: il valore '{value}' è sconosciuto (ammessi: tunnel, ferry)")]
+    LocomotivesUsableOnUnknown { value: String },
+
+    #[error("ferries.anyCardsPerLocomotive deve essere almeno 2, è {value}")]
+    FerriesAnyCardsTooSmall { value: u32 },
+
+    #[error("rotta '{route_id}': anyCardsPerSpace deve essere almeno 2, è {value}")]
+    RouteAnyCardsPerSpaceTooSmall { route_id: String, value: u32 },
 }
 
 /// Fase di gioco (macchina a stati interna).

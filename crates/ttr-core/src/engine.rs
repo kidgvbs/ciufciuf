@@ -16,7 +16,7 @@ use crate::setup::{pair_key, parallel_groups};
 use crate::types::{
     CityId, ClaimedRouteInfo, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
     LONGEST_PATH_BONUS_TYPE, MapData, PendingTunnel, PlayerState, Route, RouteColor, RouteId,
-    Ruleset, TicketDef, TicketId,
+    Ruleset, TicketDef, TicketId, TicketResult,
 };
 
 /// Dati di una rotta risolti al caricamento della mappa.
@@ -98,6 +98,8 @@ pub struct Engine {
     /// Per giocatore, id (ordinati) delle rotte di un suo percorso più lungo, calcolati a
     /// fine partita; vuoto prima.
     pub(crate) longest_path_routes: Vec<Vec<RouteId>>,
+    /// Per giocatore, esito dei biglietti calcolato a fine partita; vuoto prima.
+    pub(crate) final_ticket_results: Vec<Vec<TicketResult>>,
 
     // Log
     pub(crate) action_log: Vec<ActionRecord>,
@@ -183,14 +185,16 @@ impl Engine {
         let mut train_discards: Vec<CardColor> = Vec::new();
         // Gli eventi del setup non vengono pubblicati: nessun client li ha visti.
         let mut setup_events: Vec<GameEvent> = Vec::new();
-        check_and_reset_loco_threshold(
-            &mut face_up,
-            &mut train_cards,
-            &mut train_discards,
-            &mut rng,
-            &ruleset.deck,
-            &mut setup_events,
-        );
+        if ruleset.face_up_reset_enabled() {
+            check_and_reset_loco_threshold(
+                &mut face_up,
+                &mut train_cards,
+                &mut train_discards,
+                &mut rng,
+                &ruleset.deck,
+                &mut setup_events,
+            );
+        }
 
         // --- Ticket decks, mescolati nell'ordine di `ruleset.ticket_decks` ---
         let mut ticket_piles: BTreeMap<String, Vec<TicketId>> = BTreeMap::new();
@@ -349,6 +353,7 @@ impl Engine {
             globetrotter_bonus_points,
             longest_path_inexact: Vec::new(),
             longest_path_routes: Vec::new(),
+            final_ticket_results: Vec::new(),
             country_ids,
             country_stacks,
             passengers_on_city,
@@ -423,6 +428,14 @@ impl Engine {
     #[must_use]
     pub fn longest_path_routes(&self, index: usize) -> &[RouteId] {
         self.longest_path_routes
+            .get(index)
+            .map_or(&[], Vec::as_slice)
+    }
+    /// Esito di ogni biglietto del giocatore a fine partita (destinazione realizzata e
+    /// punti), per id; calcolato a `GameOver`, vuoto prima e per indici sconosciuti.
+    #[must_use]
+    pub fn final_ticket_results(&self, index: usize) -> &[TicketResult] {
+        self.final_ticket_results
             .get(index)
             .map_or(&[], Vec::as_slice)
     }
@@ -638,7 +651,7 @@ impl Engine {
                     t.id.clone(),
                     crate::types::TicketStatus {
                         ticket_id: t.id.clone(),
-                        points: t.points,
+                        points: t.max_points(),
                         completed: None,
                     },
                 )

@@ -9,7 +9,8 @@
   import { nextClientSeq } from '../client-seq';
   import { createDrawLatch } from '../ticket-draw';
   import { offerKey, isDialogOpen, nextDismissedKey } from '../ticket-offer';
-  import { payableRouteIds } from '../payment';
+  import { ticketLabel, ticketPin, type TicketPin } from '../map-utils';
+  import { payableRouteIds, routePaymentRules } from '../payment';
   import { rulesetHasStations } from '../scores';
   import {
     addedColors,
@@ -100,11 +101,11 @@
     new Set(tickets.filter((t) => t.completed).map((t) => t.id))
   );
   const highlightTickets = $derived.by(() => {
-    const out: Array<{ from: string; to: string }> = [];
+    const out: TicketPin[] = [];
     for (const id of pinnedTicketIds) {
       if (completedTicketIds.has(id)) continue;
       const t = ticketMap.get(id);
-      if (t) out.push({ from: t.from, to: t.to });
+      if (t) out.push(ticketPin(t));
     }
     return out;
   });
@@ -130,6 +131,8 @@
   // lo riapre quando si vuole.
   const gameId = $derived(publicStore.gameId);
   const specialRules = $derived(rulesetCatalog.specialRules(gameMap.rulesetId));
+  // Regole di pagamento delle rotte (locomotive ammesse, carte qualsiasi): solo guardie di UX.
+  const paymentRules = $derived(rulesetCatalog.payment(gameMap.rulesetId));
   const rulesTitle = $derived(rulesetCatalog.title(gameMap.rulesetId));
   let rulesSeen = $state(hasSeenRules(publicStore.gameId));
   let rulesManual = $state(false);
@@ -528,7 +531,7 @@
   // nella mano, o tutte senza selezione. `payableRouteIds` è solo una guardia di UX.
   const claimableRouteIds = $derived(
     canAct && legalMoves && !buildingStation
-      ? payableRouteIds(legalMoves.routes, routeMap, hand, selectedColor)
+      ? payableRouteIds(legalMoves.routes, routeMap, hand, selectedColor, paymentRules)
       : [],
   );
 
@@ -751,7 +754,7 @@
       {ticketFlash
         .map((id) => {
           const d = ticketMap.get(id);
-          return d ? cityName(d.from) + ' → ' + cityName(d.to) : id;
+          return d ? ticketLabel(d, cityName) : id;
         })
         .join(', ')}
     </div>
@@ -805,6 +808,7 @@
       {cityName}
       {hand}
       {selectedColor}
+      ruleset={paymentRules}
       {passengerChoiceList}
       onConfirm={confirmClaim}
       onCancel={cancelPayment}
@@ -824,6 +828,7 @@
             total={tunnelMove.extra_cost}
             {hand}
             fixedColor={tunnelMove.color}
+            allowLocos={tunnelRoute ? routePaymentRules(tunnelRoute, paymentRules).singleLoco : true}
             title="Carte extra da pagare"
             confirmLabel="Paga {tunnelMove.extra_cost}"
             busy={drawBusy}

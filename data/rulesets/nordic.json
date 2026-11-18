@@ -1,0 +1,83 @@
+{
+  "name": "Nordic Countries",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "standard",
+  "map": "nordic",
+  "players": {
+    "min": 2,
+    "max": 3
+  },
+  "trainsPerPlayer": 40,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "regular",
+        "count": 5
+      }
+    ],
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 3,
+    "keepMin": 1,
+    "discards": "removed"
+  },
+  "setupDiscards": "removed",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10,
+    "6": 15,
+    "9": 27
+  },
+  "bonuses": [
+    {
+      "type": "globetrotter",
+      "label": "Globetrotter",
+      "points": 10
+    }
+  ],
+  "tieBreakers": [
+    "completedTickets",
+    "longestPath"
+  ],
+  "locomotives": {
+    "usableOn": [
+      "tunnel",
+      "ferry"
+    ],
+    "freeDraw": true,
+    "faceUpReset": false
+  },
+  "ferries": {
+    "anyCardsPerLocomotive": 3
+  },
+  "tunnels": {
+    "revealed": 3
+  },
+  "specialRules": [
+    "2 o 3 giocatori, 40 treni a testa. Biglietti iniziali: 5, ne tieni almeno 2; quelli scartati escono dalla partita. Pescando a metà partita ne vedi 3 e ne tieni almeno 1; anche gli scartati escono dalla partita, e se nel mazzo ne restano meno di 3 peschi quelli che ci sono.",
+    "Locomotive: si possono usare solo per tunnel e traghetti, mai per una rotta normale.",
+    "Pesca delle carte: nessun limite sulle locomotive. Una locomotiva scoperta conta come una carta qualsiasi, quindi puoi prenderla come prima o come seconda carta, e dopo una locomotiva scoperta pesci anche la seconda carta. Con 3 locomotive scoperte il mercato non viene scartato né rimpiazzato.",
+    "Traghetti: ogni simbolo locomotiva sulla rotta richiede 1 locomotiva, oppure 3 carte qualsiasi al suo posto. Per gli altri spazi servono carte del colore della rotta (di un colore a scelta, uguale per tutte, se la rotta è grigia), oppure 1 locomotiva o 3 carte qualsiasi per ogni spazio.",
+    "Tunnel: come in Europe, si girano 3 carte dal mazzo e per ogni carta del colore usato (o locomotiva) devi aggiungerne un'altra uguale (o una locomotiva).",
+    "Murmansk–Lieksa (lunghezza 9, grigia, 27 punti): al posto della carta di colore di ogni spazio puoi usare 4 carte qualsiasi, locomotive comprese, tutte le volte che vuoi. Esempio: 7 carte verdi e 8 carte qualsiasi.",
+    "Rotte doppie: in 2 giocatori si usa un solo binario (preso uno, l'altro si chiude); in 3 giocatori sono aperti entrambi, ma non puoi prenderli tutti e due. Anche le coppie con due binari di lunghezza diversa (Mo i Rana–Trondheim, Stavanger–Kristiansand) sono rotte doppie.",
+    "Punti delle rotte: 1/2/4/7/10/15 per le lunghezze 1–6, 27 per la lunghezza 9.",
+    "Fine partita: chi arriva a 2 treni o meno scatena l'ultimo giro, che gioca anche lui. Bonus Globetrotter: +10 punti a chi ha completato più biglietti (a tutti i pari merito). Niente bonus del percorso più lungo, niente stazioni.",
+    "Parità di punti: vince chi ha completato più biglietti, poi chi ha il percorso più lungo (anche se non vale punti)."
+  ],
+  "doubleRouteMinPlayers": 3,
+  "finalRoundIncludesTrigger": true
+}

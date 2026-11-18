@@ -606,7 +606,9 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
             row("europe_mega", "Mega", 101, 7, 3, 3, &[lp], 0),
             row("germany", "Deutschland", 62, 5, 2, 4, &[gt], 0),
             row("germany_2017", "Passeggeri", 89, 5, 2, 4, &[gt], 0),
+            row("nordic", "Standard", 46, 5, 2, 3, &[gt], 0),
             row("poland", "Standard", 35, 4, 2, 3, &[], 0),
+            row("switzerland", "Standard", 46, 5, 2, 3, &[lp], 0),
             row("usa_v2", "Standard", 33, 4, 2, 3, &[lp], 0),
             row("usa_1910", "1910", 35, 4, 2, 3, &[gt], 0),
             row("usa_big_cities", "Grandi Città", 35, 4, 2, 4, &[], 7),
@@ -679,6 +681,13 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     assert_eq!(flags("germany"), [Some(false), Some(false)]);
     assert_eq!(flags("germany_2017"), [Some(false), Some(true)]);
     assert_eq!(flags("poland"), [Some(true), Some(false)]);
+    // Le pescabili arrivano da `legal_moves.draw_face_up`: il catalogo non espone `freeDraw`.
+    assert_eq!(
+        by_id("nordic")["locomotivesUsableOn"],
+        serde_json::json!(["tunnel", "ferry"])
+    );
+    assert_eq!(by_id("nordic")["ferryAnyCards"], 3);
+    assert!(by_id("nordic").get("freeLocomotiveDraw").is_none());
     // `specialRules`: testi non vuoti per Germany (entrambe le modalità) e Poland, vuoto altrove.
     let rules = |id: &str| -> Vec<String> {
         by_id(id)["specialRules"]
@@ -688,7 +697,12 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
             .map(|v| v.as_str().unwrap().to_owned())
             .collect()
     };
-    for (id, count) in [("germany", 7), ("germany_2017", 9), ("poland", 6)] {
+    for (id, count) in [
+        ("germany", 7),
+        ("germany_2017", 9),
+        ("nordic", 10),
+        ("poland", 6),
+    ] {
         let texts = rules(id);
         assert_eq!(texts.len(), count, "{id}");
         assert!(texts.iter().all(|t| !t.trim().is_empty()), "{id}");

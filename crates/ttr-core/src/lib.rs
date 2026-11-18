@@ -29,6 +29,7 @@ mod engine_tickets;
 pub mod error;
 pub mod event;
 pub mod legal;
+mod payment;
 mod rng;
 pub mod scoring;
 mod setup;

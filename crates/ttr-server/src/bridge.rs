@@ -7,8 +7,8 @@ use ttr_core::{Action, ActionRecord, GameEvent};
 use ttr_proto::{
     BorrowedRoute, CardColor, CityPassengers, ClaimedRoute, CountryCards, ErrorReason,
     FinalScoreInfo, GameState, LegalMoves, PassengerCount, PlayerSummary, RECENT_MOVES_MAX,
-    RecentMove, StationPlacement, TicketChoiceMoves, TicketInfo, TicketKeepLimit,
-    TunnelDecisionMoves, TunnelOutcome, TunnelReveal,
+    RecentMove, StationPlacement, TicketChoiceMoves, TicketDestinationInfo, TicketInfo,
+    TicketKeepLimit, TicketResultInfo, TunnelDecisionMoves, TunnelOutcome, TunnelReveal,
 };
 
 use crate::session::{GameSession, SessionPlayer};
@@ -504,11 +504,7 @@ pub(crate) fn build_private_state(
         let mut tix: Vec<TicketInfo> = player
             .tickets
             .iter()
-            .map(|(tid, ts)| TicketInfo {
-                id: tid.clone(),
-                points: ts.points,
-                completed: ts.completed.unwrap_or(false),
-            })
+            .map(|(tid, ts)| ticket_info(map, tid, ts.completed.unwrap_or(false)))
             .collect();
         tix.sort_by(|a, b| a.id.cmp(&b.id));
         tix
@@ -574,33 +570,13 @@ fn build_offered_tickets(
             let done = player.map(|p| p.initial_draft_done).unwrap_or(true);
             if !done && let Some(initial) = engine.initial_tickets_for(pi) {
                 for tid in initial {
-                    let points = map
-                        .tickets
-                        .iter()
-                        .find(|t| &t.id == tid)
-                        .map(|t| t.points)
-                        .unwrap_or(0);
-                    offered.push(TicketInfo {
-                        id: tid.clone(),
-                        points,
-                        completed: false,
-                    });
+                    offered.push(ticket_info(map, tid, false));
                 }
             }
         }
         GamePhase::TicketChoice if engine.current_player() == pi => {
             for tid in engine.pending_tickets() {
-                let points = map
-                    .tickets
-                    .iter()
-                    .find(|t| &t.id == tid)
-                    .map(|t| t.points)
-                    .unwrap_or(0);
-                offered.push(TicketInfo {
-                    id: tid.clone(),
-                    points,
-                    completed: false,
-                });
+                offered.push(ticket_info(map, tid, false));
             }
         }
         _ => {}
@@ -610,6 +586,27 @@ fn build_offered_tickets(
     offered
 }
 
+/// `TicketInfo` di un biglietto della mappa: tutte le destinazioni con i punti, e come
+/// `points` il valore più alto. Un id sconosciuto dà un biglietto senza destinazioni.
+fn ticket_info(map: &ttr_core::MapData, ticket_id: &str, completed: bool) -> TicketInfo {
+    let def = map.tickets.iter().find(|t| t.id == ticket_id);
+    TicketInfo {
+        id: ticket_id.to_string(),
+        points: def.map_or(0, ttr_core::types::TicketDef::max_points),
+        completed,
+        destinations: def
+            .map(|t| {
+                t.destinations()
+                    .map(|(city_id, points)| TicketDestinationInfo {
+                        city_id: city_id.to_string(),
+                        points,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
+}
+
 // ── FinalScoreInfo ───────────────────────────────────────────────────
 
 pub(crate) fn build_final_scores(
@@ -617,6 +614,7 @@ pub(crate) fn build_final_scores(
     _longest_path_players: &[usize],
     players: &[SessionPlayer],
     player_index: &BTreeMap<String, usize>,
+    engine: &ttr_core::Engine,
 ) -> Vec<FinalScoreInfo> {
     // Mappa engine_index → player_id usando SessionPlayer.index.
     let index_to_id: BTreeMap<usize, &String> = player_index
@@ -648,6 +646,16 @@ pub(crate) fn build_final_scores(
                 winner: fs.winner,
                 country_points: fs.country_points,
                 passenger_points: fs.passenger_points,
+                tickets: engine
+                    .final_ticket_results(fs.player_index)
+                    .iter()
+                    .map(|t| TicketResultInfo {
+                        ticket_id: t.ticket_id.clone(),
+                        completed: t.completed,
+                        city_id: t.destination.clone(),
+                        points: t.points,
+                    })
+                    .collect(),
                 borrowed_routes: fs
                     .borrowed_routes
                     .iter()

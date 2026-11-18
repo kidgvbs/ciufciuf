@@ -29,12 +29,14 @@ export interface RouteData {
   ferries?: number;
   /** Germany/Poland: binari tutti aperti con qualunque numero di giocatori. Assente = false. */
   alwaysOpen?: boolean;
+  /** Nordic: ogni spazio si paga anche con questo numero di carte qualsiasi (locomotive comprese). Assente = no. */
+  anyCardsPerSpace?: number;
 }
 
 export interface MapData {
   cities: CityData[];
   routes: RouteData[];
-  tickets: { id: string; from: string; to: string; points: number; deck: string }[];
+  tickets: TicketDesc[];
 }
 
 export interface Point {
@@ -220,19 +222,102 @@ export function ticketPinColor(index: number): string {
   return TICKET_PIN_COLORS[index % TICKET_PIN_COLORS.length] ?? '#0f766e';
 }
 
+/** Biglietto della mappa: classico (`to` + `points`) oppure multi-destinazione (`destinations`, ≥ 2). */
+export interface TicketDesc {
+  id: string;
+  from: string;
+  to?: string;
+  points?: number;
+  destinations?: TicketDestination[];
+  deck: string;
+}
+
+/** Destinazione di un biglietto con i punti che vale. */
+export interface TicketDestination {
+  to: string;
+  points: number;
+}
+
+/** Destinazioni di un biglietto nell'ordine della mappa; una sola per il biglietto classico. */
+export function ticketDestinations(t: Pick<TicketDesc, 'to' | 'points' | 'destinations'>): TicketDestination[] {
+  if (t.destinations) return t.destinations;
+  return t.to !== undefined ? [{ to: t.to, points: t.points ?? 0 }] : [];
+}
+
+/** Città da evidenziare per un biglietto: la partenza e tutte le destinazioni. */
+export interface TicketPin {
+  from: string;
+  to: string[];
+}
+
+/** Pin di un biglietto: origine e tutte le sue destinazioni. */
+export function ticketPin(t: Pick<TicketDesc, 'from' | 'to' | 'points' | 'destinations'>): TicketPin {
+  return { from: t.from, to: ticketDestinations(t).map((d) => d.to) };
+}
+
+/** «Origine → Destinazione» o, con più destinazioni, «Origine → A / B / C». */
+export function ticketLabel(
+  t: Pick<TicketDesc, 'from' | 'to' | 'points' | 'destinations'>,
+  cityName: (id: string) => string,
+): string {
+  return `${cityName(t.from)} → ${ticketDestinations(t).map((d) => cityName(d.to)).join(' / ')}`;
+}
+
 /**
- * Coppie città da evidenziare per i biglietti offerti, nello stesso ordine: solo quelli in
- * `shown` (i selezionati). Gli altri, e quelli senza descrittore, danno una coppia vuota che
- * la mappa salta, così gli indici, e quindi i colori, restano allineati alle card.
+ * Pin dei biglietti offerti, nello stesso ordine: solo quelli in `shown` (i selezionati).
+ * Gli altri, e quelli senza descrittore, danno un pin vuoto che la mappa salta, così gli
+ * indici, e quindi i colori, restano allineati alle card.
  */
 export function offeredTicketPins(
   offered: ReadonlyArray<{ id: string }>,
-  tickets: ReadonlyArray<{ id: string; from: string; to: string }>,
+  tickets: ReadonlyArray<Pick<TicketDesc, 'id' | 'from' | 'to' | 'points' | 'destinations'>>,
   shown: ReadonlySet<string>,
-): Array<{ from: string; to: string }> {
+): TicketPin[] {
   const byId = new Map(tickets.map((t) => [t.id, t]));
   return offered.map((o) => {
     const t = shown.has(o.id) ? byId.get(o.id) : undefined;
-    return { from: t?.from ?? '', to: t?.to ?? '' };
+    return t ? ticketPin(t) : { from: '', to: [] };
   });
+}
+
+/** Cosa disegnare per un biglietto evidenziato: pin su origine e destinazioni, una linea per destinazione. */
+export interface TicketLayer {
+  pins: Point[];
+  /** Curve SVG `M … Q …` dall'origine a ciascuna destinazione. */
+  paths: string[];
+  color: string;
+}
+
+/**
+ * Layer dei biglietti evidenziati: colore per indice, curva leggera (controllo quadratico
+ * spostato sulla normale di ~8% della distanza). Salta i pin senza origine sulla mappa e le
+ * destinazioni mancanti o coincidenti con l'origine; senza destinazioni disegnabili il
+ * biglietto non dà alcun layer (l'indice, e quindi il colore, resta comunque quello del pin).
+ */
+export function ticketLayers(
+  pins: ReadonlyArray<TicketPin>,
+  positions: ReadonlyMap<string, Point>,
+): TicketLayer[] {
+  const layers: TicketLayer[] = [];
+  pins.forEach((t, i) => {
+    const fromPos = positions.get(t.from);
+    if (!fromPos) return;
+    const targets: Point[] = [];
+    const paths: string[] = [];
+    for (const id of t.to) {
+      const toPos = positions.get(id);
+      if (!toPos) continue;
+      const dx = toPos.x - fromPos.x;
+      const dy = toPos.y - fromPos.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist === 0) continue;
+      const mx = (fromPos.x + toPos.x) / 2 - (dy / dist) * dist * 0.08;
+      const my = (fromPos.y + toPos.y) / 2 + (dx / dist) * dist * 0.08;
+      targets.push(toPos);
+      paths.push(`M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`);
+    }
+    if (paths.length === 0) return;
+    layers.push({ pins: [fromPos, ...targets], paths, color: ticketPinColor(i) });
+  });
+  return layers;
 }

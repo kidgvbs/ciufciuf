@@ -171,6 +171,27 @@ describe('isMapData: Paesi e gruppi sempre aperti', () => {
   });
 });
 
+describe('isMapData: biglietti multi-destinazione', () => {
+  const withTicket = (t: Record<string, unknown>) => ({ ...MAP, tickets: [{ id: 'm', from: 'a', deck: 'regular', ...t }] });
+  const dests = [
+    { to: 'b', points: 5 },
+    { to: 'c', points: 9 },
+  ];
+
+  it('accetta `destinations` (≥ 2 voci) al posto di `to`', () => {
+    expect(isMapData(withTicket({ destinations: dests }))).toBe(true);
+    expect(isMapData(withTicket({ to: 'b', points: 5 }))).toBe(true);
+  });
+
+  it('rifiuta entrambe le forme, nessuna forma, poche voci o voci malformate', () => {
+    expect(isMapData(withTicket({ to: 'b', points: 5, destinations: dests }))).toBe(false);
+    expect(isMapData(withTicket({}))).toBe(false);
+    expect(isMapData(withTicket({ destinations: [dests[0]] }))).toBe(false);
+    expect(isMapData(withTicket({ destinations: [dests[0], { to: 'c' }] }))).toBe(false);
+    expect(isMapData(withTicket({ destinations: 'b' }))).toBe(false);
+  });
+});
+
 describe('isMapLayout', () => {
   it('accetta il layout completo e ignora i campi opzionali assenti', () => {
     expect(isMapLayout(LAYOUT)).toBe(true);

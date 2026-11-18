@@ -4,7 +4,7 @@
   // prestito) e chi ha il bonus del percorso più lungo. Solo dati del server.
   import type { Snippet } from 'svelte';
   import { PLAYER_COLOR_CSS } from '../colors';
-  import { rankedScores, winnerNames, borrowedRouteLabel } from '../scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel, ticketResultLabel } from '../scores';
   import type { MapData } from '../map-utils';
   import type { FinalScoreInfo, PlayerSummary } from '../proto';
 
@@ -59,6 +59,16 @@
           Rotte in prestito:
           {borrowed.map((b) => borrowedRouteLabel(b, mapData)).join(', ')}
         </div>
+      {/if}
+      {#if (fs.tickets ?? []).length > 0}
+        <details class="ticket-results">
+          <summary>Biglietti ({fs.tickets.length})</summary>
+          <ul>
+            {#each fs.tickets as r (r.ticketId)}
+              <li>{ticketResultLabel(r, mapData)}</li>
+            {/each}
+          </ul>
+        </details>
       {/if}
     </div>
   {/each}
@@ -139,5 +149,18 @@
     color: var(--gold);
     font-weight: bold;
     font-size: 1.1rem;
+  }
+  .ticket-results {
+    margin: 0.25rem 0 0 22px;
+    font-size: 0.8rem;
+    color: var(--chrome-muted);
+  }
+  .ticket-results summary {
+    cursor: pointer;
+  }
+  .ticket-results ul {
+    list-style: none;
+    margin: 0.2rem 0 0;
+    padding: 0;
   }
 </style>

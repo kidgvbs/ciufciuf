@@ -3,7 +3,13 @@
   // selezionato appare sulla mappa con la linea tratteggiata del suo colore; deselezionato, sparisce.
 
   import type { TicketInfo } from '../proto';
-  import { canConfirmTicketChoice, ticketChoiceHint, ticketChoiceProblem, type TicketChoiceRules } from '../ticket-offer';
+  import {
+    canConfirmTicketChoice,
+    ticketChoiceHint,
+    ticketChoiceProblem,
+    ticketView,
+    type TicketChoiceRules,
+  } from '../ticket-offer';
   import { gameMap } from '../game-map.svelte.ts';
   import { offeredTicketPins, ticketPinColor } from '../map-utils';
   import MapSvg from './MapSvg.svelte';
@@ -148,6 +154,7 @@
     <div class="ticket-list">
       {#each offeredTickets as t, i (t.id)}
         {@const desc = ticketMap.get(t.id)}
+        {@const view = ticketView(t, desc, cityName)}
         <button
           class="ticket-item"
           class:selected={selected.has(t.id)}
@@ -155,9 +162,10 @@
           onclick={() => toggle(t.id)}
         >
           <TicketCard
-            from={desc ? cityName(desc.from) : t.id}
-            to={desc ? cityName(desc.to) : ''}
-            points={t.points}
+            from={view.from}
+            to={view.to}
+            points={view.points}
+            rows={view.rows}
             long={desc?.deck === 'long'}
             selected={selected.has(t.id)}
             color={desc && selected.has(t.id) ? ticketPinColor(i) : undefined}

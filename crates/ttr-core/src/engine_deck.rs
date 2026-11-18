@@ -89,8 +89,9 @@ pub fn reveal_from_deck(
 
 /// Pesca la carta scoperta all'indice dato e la sostituisce dal mazzo.
 ///
-/// Aggiunge a `events`, in ordine, la carta apparsa nello slot, le eventuali
-/// ricostruzioni del mazzo e il reset delle locomotive.
+/// Aggiunge a `events`, in ordine, la carta apparsa nello slot e le eventuali
+/// ricostruzioni del mazzo. Il reset delle locomotive (`check_and_reset_loco_threshold`)
+/// spetta al chiamante: dipende da `locomotives.faceUpReset`.
 pub fn draw_from_face_up(
     index: usize,
     face_up: &mut [Option<CardColor>],
@@ -113,8 +114,6 @@ pub fn draw_from_face_up(
             card: replacement,
         });
     }
-
-    check_and_reset_loco_threshold(face_up, draw_pile, discards, rng, deck, events);
 
     Some(card)
 }

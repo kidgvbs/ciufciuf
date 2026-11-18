@@ -418,6 +418,22 @@ pub struct FinalScoreInfo {
     /// Germany 2017: punti delle maggioranze di passeggeri (0 senza passeggeri).
     #[serde(default)]
     pub passenger_points: i32,
+    /// Esito di ogni biglietto del giocatore (per id): destinazione realizzata e punti.
+    #[serde(default)]
+    pub tickets: Vec<TicketResultInfo>,
+}
+
+/// Esito finale di un biglietto.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export)]
+pub struct TicketResultInfo {
+    pub ticket_id: TicketId,
+    pub completed: bool,
+    /// Destinazione realizzata (la collegata di punti più alti); `None` se fallito.
+    pub city_id: Option<CityId>,
+    /// Punti guadagnati o, se fallito, persi (negativi).
+    pub points: i32,
 }
 
 /// Rotta avversaria usata da una stazione nel punteggio finale.
@@ -442,12 +458,27 @@ pub struct PrivateState {
     pub legal_moves: LegalMoves,
 }
 
+/// Biglietto in mano o offerto. Le destinazioni sono sempre almeno una (i biglietti classici
+/// ne hanno una sola); la partenza e i nomi delle città vengono dalla mappa.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct TicketInfo {
     pub id: TicketId,
+    /// Punti del biglietto; con più destinazioni il valore più alto.
     pub points: u32,
     pub completed: bool,
+    /// Destinazioni con i loro punti, nell'ordine della mappa. Con più destinazioni vale
+    /// il punteggio più alto tra quelle collegate; se nessuna lo è si perde il più basso.
+    #[serde(default)]
+    pub destinations: Vec<TicketDestinationInfo>,
+}
+
+/// Destinazione di un biglietto con i punti che vale.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct TicketDestinationInfo {
+    pub city_id: CityId,
+    pub points: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -879,6 +910,12 @@ mod tests {
                 station_points: 4,
                 country_points: 7,
                 passenger_points: 0,
+                tickets: vec![TicketResultInfo {
+                    ticket_id: "a_b_c".into(),
+                    completed: true,
+                    city_id: Some("b".into()),
+                    points: 13,
+                }],
                 total: 91,
                 winner: true,
                 borrowed_routes: vec![BorrowedRoute {
@@ -944,6 +981,10 @@ mod tests {
                 id: "denver_phoenix".into(),
                 points: 11,
                 completed: false,
+                destinations: vec![TicketDestinationInfo {
+                    city_id: "phoenix".into(),
+                    points: 11,
+                }],
             }],
             offered_tickets: vec![],
             legal_moves: LegalMoves {

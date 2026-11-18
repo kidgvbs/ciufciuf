@@ -15,12 +15,17 @@
   import {
     PLAIN_CARD_COLORS,
     countCards,
+    findRoutePayment,
+    locoBounds,
+    maxGroups,
     mostCommonColor,
-    paymentCards,
-    paymentCovered,
     routeColorToCard,
     routePayableWith,
-    suggestLocos,
+    routePaymentCards,
+    routePaymentRules,
+    routePaymentValid,
+    suggestRoutePayment,
+    type RulesetPayment,
   } from '../payment';
   import TrainCard from './TrainCard.svelte';
 
@@ -29,6 +34,7 @@
     cityName,
     hand,
     selectedColor = null,
+    ruleset = null,
     passengerChoiceList = [],
     onConfirm,
     onCancel,
@@ -38,6 +44,8 @@
     hand: CardColor[];
     /** Carta toccata nella mano: colore preselezionato se vale per questa rotta. */
     selectedColor?: CardColor | null;
+    /** Regole di pagamento del ruleset (locomotive ammesse, carte qualsiasi); assenti = classiche. */
+    ruleset?: RulesetPayment | null;
     /** Estremi con passeggeri di più colori (Germany 2017). */
     passengerChoiceList?: Array<{ cityId: string; passengers: PassengerCount[] }>;
     onConfirm: (cards: CardColor[], passengers: PassengerPick[] | undefined) => void;
@@ -48,68 +56,67 @@
 
   const routeCard = $derived(routeColorToCard(route.color));
   const isGray = $derived(routeCard === null);
+  const rules = $derived(routePaymentRules(route, ruleset));
   /** Locomotive obbligatorie (traghetto); 0 sulle rotte normali. */
-  const ferries = $derived(route.ferries ?? 0);
+  const ferries = $derived(rules.ferries);
+  /** Carte qualsiasi che pagano uno spazio (gruppo); `null` = nessuna sostituzione. */
+  const groupSize = $derived(rules.groupSize);
   const locoInHand = $derived(countCards(hand, 'LOCOMOTIVE'));
-  const maxLocos = $derived(Math.min(locoInHand, route.len));
+  const bounds = $derived(locoBounds(rules, locoInHand));
+  const groupLimit = $derived(maxGroups(rules, hand));
 
   // Scelte dell'utente; finché non tocca nulla valgono i default calcolati qui sotto.
   let colorPick = $state<CardColor | null>(null);
   let locosPick = $state<number | null>(null);
+  let groupsPick = $state<number | null>(null);
   let passengerPicked = $state<Record<string, string>>({});
 
-  // Colore preselezionato: quello della carta toccata in mano se paga questa rotta, altrimenti il più presente.
-  const preferredColor = $derived(
-    selectedColor !== null &&
+  // Colore preselezionato: quello della carta toccata in mano se paga questa rotta, altrimenti il più
+  // presente; se con quello la mano non copre il pagamento (gruppi di carte qualsiasi) il primo che lo copre.
+  const preferredColor = $derived.by(() => {
+    const preferred =
+      selectedColor !== null &&
       selectedColor !== 'LOCOMOTIVE' &&
-      routePayableWith(route, hand, selectedColor)
-      ? selectedColor
-      : mostCommonColor(hand),
-  );
+      routePayableWith(route, hand, selectedColor, ruleset)
+        ? selectedColor
+        : mostCommonColor(hand);
+    if (preferred === null || findRoutePayment(rules, hand, preferred) !== null) return preferred;
+    return (
+      PLAIN_CARD_COLORS.find((c) => countCards(hand, c) > 0 && findRoutePayment(rules, hand, c) !== null) ??
+      preferred
+    );
+  });
   const payColor = $derived<CardColor | null>(routeCard ?? colorPick ?? preferredColor);
   // Toccato il jolly in mano (e nessun colore scelto dopo): si parte pagando con sole locomotive.
-  const allLocos = $derived(
-    selectedColor === 'LOCOMOTIVE' && colorPick === null && locoInHand >= route.len,
+  const allLocosPayment = $derived(
+    selectedColor === 'LOCOMOTIVE' && colorPick === null ? findRoutePayment(rules, hand, null) : null,
   );
-  const payLocos = $derived(
-    locosPick ??
-      (allLocos
-        ? route.len
-        : suggestLocos({
-            total: route.len,
-            minLocos: ferries,
-            colorCount: payColor ? countCards(hand, payColor) : 0,
-            locoInHand,
-          })),
-  );
-  const coloredNeeded = $derived(route.len - payLocos);
+  const suggestion = $derived(allLocosPayment ?? suggestRoutePayment(rules, hand, payColor));
+  const payLocos = $derived(locosPick ?? suggestion.locos);
+  const payGroups = $derived(groupsPick ?? suggestion.groups);
+  const coloredNeeded = $derived(route.len - payLocos - payGroups);
   const payValid = $derived(
-    paymentCovered(
-      {
-        total: route.len,
-        minLocos: ferries,
-        colorCount: payColor ? countCards(hand, payColor) : 0,
-        locoInHand,
-      },
-      payLocos,
-    ),
+    routePaymentValid(rules, hand, payColor, { locos: payLocos, groups: payGroups }),
   );
   const summaryText = $derived.by(() => {
     const parts: string[] = [];
     if (coloredNeeded > 0 && payColor) parts.push(`${coloredNeeded}× ${CARD_COLOR_NAME[payColor]}`);
     if (payLocos > 0) parts.push(`${payLocos}× ${CARD_COLOR_NAME.LOCOMOTIVE}`);
+    if (payGroups > 0) parts.push(`${payGroups}× ${groupSize} carte qualsiasi`);
     return parts.length > 0 ? parts.join(' + ') : '—';
   });
 
   function pickColor(c: CardColor) {
     colorPick = c;
-    locosPick = null; // le locomotive tornano al default per il nuovo colore
+    // Locomotive e gruppi tornano al default per il nuovo colore.
+    locosPick = null;
+    groupsPick = null;
   }
 
   function confirm() {
     if (!payValid) return;
     onConfirm(
-      paymentCards(hand, payColor, route.len, payLocos),
+      routePaymentCards(rules, hand, payColor, { locos: payLocos, groups: payGroups }),
       passengerPicks(passengerChoiceList, passengerPicked),
     );
   }
@@ -164,7 +171,15 @@
       </p>
     </header>
 
-    {#if ferries > 0}
+    {#if route.anyCardsPerSpace !== undefined}
+      <p class="cd-note">
+        Ogni spazio si può pagare con {route.anyCardsPerSpace} carte qualsiasi (locomotive comprese).
+      </p>
+    {:else if ferries > 0 && groupSize !== null}
+      <p class="cd-note">
+        ⛴ Traghetto: servono {ferries} locomotive, ognuna sostituibile da {groupSize} carte qualsiasi.
+      </p>
+    {:else if ferries > 0}
       <p class="cd-note">⛴ Traghetto: servono almeno {ferries} locomotive.</p>
     {/if}
     {#if route.tunnel}
@@ -198,30 +213,56 @@
           </p>
         {/if}
 
-        <div class="cd-locos">
-          <span class="cd-label">Jolly (hai {locoInHand}):</span>
-          <div class="cd-stepper">
-            <button
-              type="button"
-              class="btn"
-              onclick={() => (locosPick = Math.max(ferries, payLocos - 1))}
-              aria-label="Meno locomotive"
-              disabled={payLocos <= ferries}
-            >−</button>
-            <span class="cd-locos-value">{payLocos}</span>
-            <button
-              type="button"
-              class="btn"
-              onclick={() => (locosPick = Math.min(maxLocos, payLocos + 1))}
-              aria-label="Più locomotive"
-              disabled={payLocos >= maxLocos}
-            >+</button>
+        {#if rules.singleLoco || ferries > 0}
+          <div class="cd-locos">
+            <span class="cd-label">Jolly (hai {locoInHand}):</span>
+            <div class="cd-stepper">
+              <button
+                type="button"
+                class="btn"
+                onclick={() => (locosPick = Math.max(bounds.min, payLocos - 1))}
+                aria-label="Meno locomotive"
+                disabled={payLocos <= bounds.min}
+              >−</button>
+              <span class="cd-locos-value">{payLocos}</span>
+              <button
+                type="button"
+                class="btn"
+                onclick={() => (locosPick = Math.min(bounds.max, payLocos + 1))}
+                aria-label="Più locomotive"
+                disabled={payLocos >= bounds.max || coloredNeeded <= 0}
+              >+</button>
+            </div>
           </div>
-        </div>
+        {:else}
+          <p class="cd-label">Le locomotive non sono ammesse su questa rotta{groupSize !== null ? ' (solo nei gruppi di carte qualsiasi)' : ''}.</p>
+        {/if}
+        {#if groupSize !== null}
+          <div class="cd-locos">
+            <span class="cd-label">Gruppi di {groupSize} carte qualsiasi:</span>
+            <div class="cd-stepper">
+              <button
+                type="button"
+                class="btn"
+                onclick={() => (groupsPick = Math.max(0, payGroups - 1))}
+                aria-label="Meno gruppi di carte qualsiasi"
+                disabled={payGroups <= 0}
+              >−</button>
+              <span class="cd-locos-value">{payGroups}</span>
+              <button
+                type="button"
+                class="btn"
+                onclick={() => (groupsPick = Math.min(groupLimit, payGroups + 1))}
+                aria-label="Più gruppi di carte qualsiasi"
+                disabled={payGroups >= groupLimit || coloredNeeded <= 0}
+              >+</button>
+            </div>
+          </div>
+        {/if}
         <p class="cd-summary">Paghi: {summaryText}</p>
         {#if !payValid}
           <p class="cd-invalid">
-            {ferries > locoInHand
+            {ferries > locoInHand && groupSize === null
               ? `Servono almeno ${ferries} locomotive (ne hai ${locoInHand})`
               : 'Carte insufficienti per questa combinazione'}
           </p>

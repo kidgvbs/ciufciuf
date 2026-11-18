@@ -13,7 +13,7 @@
     selectedRouteId?: string | null;
     onRouteTap?: (routeId: string) => void;
     compact?: boolean;
-    highlightTickets?: Array<{ from: string; to: string }>;
+    highlightTickets?: Array<{ from: string; to: string[] }>;
     selectableCityIds?: string[];
     selectedCityId?: string | null;
     onCityTap?: (cityId: string) => void;

@@ -957,11 +957,15 @@ impl GameSession {
                                 "percorso più lungo non esatto: budget di ricerca esaurito"
                             );
                         }
+                        let Some(engine) = self.engine.as_ref() else {
+                            continue;
+                        };
                         self.final_scores = Some(bridge::build_final_scores(
                             final_scores,
                             longest_path_players,
                             &self.players,
                             &self.player_index,
+                            engine,
                         ));
                         self.longest_path_player_ids = Some(
                             longest_path_players

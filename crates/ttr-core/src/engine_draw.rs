@@ -47,7 +47,7 @@ impl Engine {
                 // Il mazzo nuovo D27 può sbloccare un mercato rimasto con ≥3
                 // locomotive dopo un reset senza uscita (D26): un solo controllo,
                 // mai a ogni pesca, che altrimenti rimescolerebbe le scoperte.
-                if rebuilt {
+                if rebuilt && self.ruleset.face_up_reset_enabled() {
                     check_and_reset_loco_threshold(
                         &mut self.face_up,
                         &mut self.draw_pile,
@@ -78,7 +78,8 @@ impl Engine {
                 };
                 let is_loco = slot_card == CardColor::Locomotive;
 
-                if self.phase == GamePhase::SecondCardDraw && is_loco {
+                let free_draw = self.ruleset.free_locomotive_draw();
+                if self.phase == GamePhase::SecondCardDraw && is_loco && !free_draw {
                     return Err(EngineError::LocomotiveAsSecondCard);
                 }
 
@@ -93,6 +94,16 @@ impl Engine {
                     &mut replenish_events,
                 )
                 .ok_or(EngineError::CardNotAvailable { index })?;
+                if self.ruleset.face_up_reset_enabled() {
+                    check_and_reset_loco_threshold(
+                        &mut self.face_up,
+                        &mut self.draw_pile,
+                        &mut self.train_discards,
+                        &mut self.rng,
+                        &self.ruleset.deck,
+                        &mut replenish_events,
+                    );
+                }
 
                 self.players[player_index].hand.push(card);
                 events.push(GameEvent::CardDrawnFromFaceUp {
@@ -102,8 +113,9 @@ impl Engine {
                 });
                 events.extend(replenish_events);
 
-                if self.phase == GamePhase::SecondCardDraw || is_loco {
-                    // Seconda carta, oppure locomotiva scoperta: pescata intera.
+                if self.phase == GamePhase::SecondCardDraw || (is_loco && !free_draw) {
+                    // Seconda carta, oppure locomotiva scoperta (se non `freeDraw`):
+                    // pescata intera.
                     events.push(GameEvent::DrawTurnComplete { player_index });
                     self.advance_turn(&mut events);
                 } else {

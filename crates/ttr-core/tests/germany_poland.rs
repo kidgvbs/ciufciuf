@@ -202,8 +202,9 @@ fn extra_ticket(id: &str, from: &str, to: &str) -> TicketDef {
     TicketDef {
         id: id.into(),
         from: from.into(),
-        to: to.into(),
-        points: 4,
+        to: Some(to.into()),
+        points: Some(4),
+        destinations: None,
         deck: "regular".into(),
         sets: vec!["deutschland".into()],
     }
@@ -1308,5 +1309,5 @@ fn passenger_placement_matches_the_setup_diagram() {
 fn angora_paris_ticket_is_worth_seventeen() {
     let map: MapData = load("maps/europe");
     let ticket = map.tickets.iter().find(|t| t.id == "angora_paris").unwrap();
-    assert_eq!(ticket.points, 17);
+    assert_eq!(ticket.max_points(), 17);
 }

@@ -8,9 +8,11 @@ import {
   loadRulesets,
   longestPathLabel,
   rulesetTitleById,
+  rulesetPayment,
   specialRules,
   type RulesetInfo,
 } from './rulesets';
+import type { RulesetPayment } from './payment';
 
 export type RulesetCatalogStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -69,6 +71,11 @@ class RulesetCatalogStore {
   /** Regole speciali del ruleset (vuoto se nessuna, ruleset ignoto o catalogo non pronto). */
   specialRules(rulesetId: string | null | undefined): string[] {
     return specialRules(this.items, rulesetId);
+  }
+
+  /** Regole di pagamento delle rotte del ruleset (classiche se assenti o catalogo non pronto). */
+  payment(rulesetId: string | null | undefined): RulesetPayment {
+    return rulesetPayment(this.items, rulesetId);
   }
 
   /** Titolo del ruleset («USA · 1910») o `null` se il catalogo non lo conosce. */

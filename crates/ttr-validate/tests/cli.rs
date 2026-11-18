@@ -183,10 +183,10 @@ const CASES: &[Case] = &[
         expected: "_1, _2, _3 o _4",
     },
     Case {
-        name: "double-route-length-mismatch",
+        name: "double-route-sister-not-double",
         mutate: |map, _| {
             let i = first_double_route(map);
-            map["routes"][i]["len"] = Value::from(6);
+            map["routes"][i]["double"] = Value::from(false);
         },
         expected: "gruppo parallelo",
     },
@@ -500,6 +500,15 @@ fn ttr_validate_rejects_inconsistent_new_rules() {
             "city-id-with-hash",
             |map, _| map["cities"][0]["id"] = Value::from("a#b"),
             "'#' è riservato",
+        ),
+        (
+            "tunnel-with-any-cards-per-space",
+            |map, _| {
+                let route = &mut map["routes"][0];
+                route["tunnel"] = Value::from(true);
+                route["anyCardsPerSpace"] = Value::from(4);
+            },
+            "un tunnel non può avere anyCardsPerSpace",
         ),
     ];
     for (name, mutate, expected) in germany {

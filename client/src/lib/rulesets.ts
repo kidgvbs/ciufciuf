@@ -7,6 +7,7 @@
 
 import { isRecord } from './guards';
 import { LobbyClient } from './lobby';
+import type { RulesetPayment } from './payment';
 
 /** Bonus di fine partita del ruleset (tipi sconosciuti ammessi: i consumatori li ignorano). */
 export interface RulesetBonus {
@@ -57,6 +58,10 @@ export interface RulesetInfo {
   passengers?: boolean;
   /** Regole speciali da mostrare a inizio partita (testi del server); assente su server vecchi. */
   specialRules?: string[];
+  /** Rotte su cui una locomotiva paga da sola uno spazio (`tunnel`, `ferry`); assente = tutte. */
+  locomotivesUsableOn?: string[];
+  /** Sui traghetti questo numero di carte qualsiasi vale una locomotiva; assente = nessuna sostituzione. */
+  ferryAnyCards?: number;
 }
 
 /** Mappa con le sue modalità (ruleset) ordinate per `modeOrder`. */
@@ -123,7 +128,12 @@ export function isRulesetInfo(v: unknown): v is RulesetInfo {
       (k) => v[k] === undefined || typeof v[k] === 'boolean',
     ) &&
     (v.specialRules === undefined ||
-      (Array.isArray(v.specialRules) && v.specialRules.every(isNonEmptyString)))
+      (Array.isArray(v.specialRules) && v.specialRules.every(isNonEmptyString))) &&
+    (v.locomotivesUsableOn === undefined ||
+      (Array.isArray(v.locomotivesUsableOn) &&
+        v.locomotivesUsableOn.length > 0 &&
+        v.locomotivesUsableOn.every(isNonEmptyString))) &&
+    (v.ferryAnyCards === undefined || (isCount(v.ferryAnyCards) && v.ferryAnyCards >= 2))
   );
 }
 
@@ -219,6 +229,18 @@ export function specialRules(
   rulesetId: string | null | undefined,
 ): string[] {
   return catalog.find((r) => r.id === rulesetId)?.specialRules ?? [];
+}
+
+/** Regole di pagamento delle rotte di `rulesetId` (classiche se assenti, ruleset ignoto o server vecchio). */
+export function rulesetPayment(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): RulesetPayment {
+  const ruleset = catalog.find((r) => r.id === rulesetId);
+  return {
+    usableOn: ruleset?.locomotivesUsableOn ?? null,
+    ferryAnyCards: ruleset?.ferryAnyCards ?? null,
+  };
 }
 
 /** Titolo del ruleset: «USA · 1910»; solo il nome se la modalità è «Standard». */

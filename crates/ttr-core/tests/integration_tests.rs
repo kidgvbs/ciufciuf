@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use ttr_core::error::GamePhase;
 use ttr_core::types::{
     Bonus, City, ClaimedRouteInfo, DeckConfig, InitialTickets, MapData, PlayersConfig, Route,
-    Ruleset, SetupDiscards, TicketDealtEntry, TicketDef, TicketDraw,
+    Ruleset, SetupDiscards, TicketDealtEntry, TicketDef, TicketDiscards, TicketDraw,
 };
 use ttr_core::{Action, DrawSource, Engine, EngineError, EngineInitError, GameEvent};
 use ttr_proto::CardColor;
@@ -27,6 +27,7 @@ fn route(id: &str, from: &str, to: &str, len: u32, color: &str, double: bool) ->
         always_open: false,
         tunnel: false,
         ferries: 0,
+        any_cards_per_space: None,
     }
 }
 
@@ -34,8 +35,9 @@ fn ticket(id: &str, from: &str, to: &str, points: u32) -> TicketDef {
     TicketDef {
         id: id.into(),
         from: from.into(),
-        to: to.into(),
-        points,
+        to: Some(to.into()),
+        points: Some(points),
+        destinations: None,
         deck: "regular".into(),
         sets: vec!["mini".into()],
     }
@@ -112,6 +114,8 @@ fn mini_ruleset() -> Ruleset {
         tie_breakers: None,
         passengers: None,
         special_rules: vec![],
+        locomotives: None,
+        ferries: None,
         country_cards: BTreeMap::new(),
         name: "Mini".into(),
         mode: "Standard".into(),
@@ -139,6 +143,7 @@ fn mini_ruleset() -> Ruleset {
             deck: "regular".into(),
             count: 3,
             keep_min: 1,
+            discards: TicketDiscards::default(),
         },
         setup_discards: SetupDiscards::ReshuffleBottom,
         route_points: rp,
@@ -2988,7 +2993,7 @@ fn dense_map(cities: usize) -> MapData {
     map.routes = routes;
     for t in &mut map.tickets {
         t.from = "c0".into();
-        t.to = "c1".into();
+        t.to = Some("c1".into());
     }
     map
 }
@@ -3035,7 +3040,7 @@ fn engine_new_rejects_ticket_to_unknown_city() {
 #[test]
 fn engine_new_rejects_ticket_with_same_endpoints() {
     let mut map = mini_map();
-    map.tickets[0].to = "A".into();
+    map.tickets[0].to = Some("A".into());
     assert_eq!(
         init_error(mini_ruleset(), map, 2, 0),
         EngineInitError::TicketSameCity {
@@ -3094,16 +3099,25 @@ fn engine_new_rejects_double_route_without_pair_suffix() {
 }
 
 #[test]
+fn engine_new_accepts_double_route_lanes_of_different_length() {
+    let mut map = double_route_map();
+    map.routes[1].len = 3;
+    map.routes[1].tunnel = false;
+    let (ids, names, colors) = fuzz_players(2);
+    let eng = Engine::new(1, mini_ruleset(), map, ids, names, colors, 0)
+        .expect("binari di lunghezza diversa nello stesso gruppo");
+    assert_eq!(eng.num_players(), 2);
+}
+
+#[test]
 fn engine_new_rejects_double_route_with_mismatched_sister() {
-    let mut longer = double_route_map();
-    longer.routes[1].len = 3;
     let mut other_ends = double_route_map();
     other_ends.routes[1].to = "C".into();
     let mut single = double_route_map();
     single.routes.remove(1);
     let mut not_double = double_route_map();
     not_double.routes[1].double = false;
-    for map in [longer, other_ends, single, not_double] {
+    for map in [other_ends, single, not_double] {
         assert!(
             matches!(
                 init_error(mini_ruleset(), map, 2, 0),
@@ -3271,7 +3285,7 @@ fn usa_longest_path_estimate_is_within_the_threshold() {
 fn usa_density_estimate_is_pinned() {
     assert_eq!(
         usa_ruleset().max_cyclomatic_estimate(&usa_map()),
-        13,
+        9,
         "update the pinned value only after verifying time and exactness of the longest \
          path search (e.g. run the `--ignored` timing test in release)"
     );
@@ -3339,7 +3353,7 @@ fn grid_map(components: usize) -> MapData {
     }
     for t in &mut map.tickets {
         t.from = "g00_1".into();
-        t.to = "g01_0".into();
+        t.to = Some("g01_0".into());
     }
     map
 }
@@ -3917,6 +3931,7 @@ fn globetrotter_winners_handles_ties_and_zero() {
         longest_path_exact: true,
         longest_path_routes: Vec::new(),
         borrowed_routes: Vec::new(),
+        ticket_results: Vec::new(),
     };
     let winners = |counts: &[u32]| {
         let scores: Vec<PlayerScore> = counts.iter().map(|&c| score(c)).collect();

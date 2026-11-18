@@ -2,12 +2,13 @@
   // Biglietto destinazione in stile "tagliando ferroviario vintage" nostro
   // con città di partenza in alto, punti in grande al centro,
   // città di arrivo in basso. Spunta verde se completato.
+  // Con più destinazioni (`rows`) mostra l'origine e una riga per destinazione con i suoi punti.
   //
   // Usato nella mano del controller e nel dialog di scelta biglietti.
   let {
     from,
-    to,
-    points,
+    to = '',
+    points = 0,
     completed = false,
     selected = false,
     active = false,
@@ -15,13 +16,16 @@
     color,
     long = false,
     compact = false,
+    rows,
   }: {
     from: string;
-    to: string;
-    points: number;
+    to?: string;
+    points?: number;
+    /** Biglietto multi-destinazione: una riga per destinazione (`to` e `points` sono ignorati). */
+    rows?: Array<{ name: string; points: number }>;
     completed?: boolean;
     selected?: boolean;
-    /** Evidenziato sulla mappa: pin + dashed line sulle due città. */
+    /** Evidenziato sulla mappa: pin + dashed line dall'origine a ogni destinazione. */
     active?: boolean;
     /** Se presente, il card è un <button> (toggle evidenza sulla mappa). */
     onclick?: () => void;
@@ -38,6 +42,7 @@
   this={onclick ? 'button' : 'div'}
   class="ticket"
   class:compact
+  class:multi={rows !== undefined && rows.length > 1}
   class:long
   class:completed
   class:selected
@@ -48,11 +53,19 @@
   {onclick}
 >
   <div class="t-city from">{from}</div>
-  <div class="t-mid">
-    <span class="t-pts">{points}</span>
-    <span class="t-pts-label">punti</span>
-  </div>
-  <div class="t-city to">{to}</div>
+  {#if rows && rows.length > 1}
+    <ul class="t-rows">
+      {#each rows as row (row.name)}
+        <li><span class="t-row-name">{row.name}</span><span class="t-row-pts">{row.points}</span></li>
+      {/each}
+    </ul>
+  {:else}
+    <div class="t-mid">
+      <span class="t-pts">{points}</span>
+      <span class="t-pts-label">punti</span>
+    </div>
+    <div class="t-city to">{to}</div>
+  {/if}
   {#if color}
     <span class="t-marker" style:background={color} aria-hidden="true"></span>
   {/if}
@@ -253,5 +266,57 @@
     bottom: auto;
     right: auto;
     left: 8px;
+  }
+
+  /* Multi-destinazione: origine in alto, una riga «destinazione ... punti» per ciascuna. */
+  .ticket.multi,
+  .ticket.multi.compact {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 2px;
+    text-align: left;
+  }
+  .ticket.multi .t-city.from,
+  .ticket.multi.compact .t-city.from {
+    border-bottom: 1px solid rgba(109, 87, 49, 0.45);
+    padding-bottom: 2px;
+    width: 100%;
+  }
+  .t-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .t-rows li {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  .t-row-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .t-row-name::before {
+    content: '→ ';
+  }
+  .t-row-pts {
+    flex: none;
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: var(--gold-deep);
+  }
+  .ticket.completed .t-row-pts {
+    color: #1e8449;
   }
 </style>

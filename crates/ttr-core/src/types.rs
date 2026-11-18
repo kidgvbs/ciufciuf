@@ -49,18 +49,63 @@ pub struct Route {
     /// Traghetto (Europe): locomotive obbligatorie nel pagamento.
     #[serde(default)]
     pub ferries: u32,
+    /// Ogni spazio della rotta è pagabile anche con questo numero di carte qualsiasi
+    /// (locomotive comprese) al posto della carta del colore (Nordic: Murmansk–Lieksa);
+    /// almeno 2.
+    #[serde(
+        rename = "anyCardsPerSpace",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub any_cards_per_space: Option<u32>,
 }
 
+/// Biglietto: `from` più UNA tra due forme (la validazione le impone esclusive):
+/// - classica: `to` + `points`, una sola destinazione;
+/// - multi-destinazione (Switzerland): `destinations`, almeno 2 voci. Vale il punteggio
+///   più alto tra le destinazioni collegate; se nessuna lo è si perde il valore più basso.
+///
+/// Il motore legge le destinazioni solo con [`TicketDef::destinations`], che tratta la
+/// forma classica come una lista di una destinazione.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TicketDef {
     pub id: String,
     pub from: String,
-    pub to: String,
-    pub points: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub points: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destinations: Option<Vec<TicketDestination>>,
     pub deck: String, // "regular" | "long" (future)
     /// Modalità (`Ruleset::ticket_set`) in cui il biglietto è in gioco; non vuoto,
     /// senza duplicati.
     pub sets: Vec<String>,
+}
+
+/// Una destinazione di un biglietto multi-destinazione, con i suoi punti.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TicketDestination {
+    pub to: CityId,
+    pub points: u32,
+}
+
+impl TicketDef {
+    /// Destinazioni `(città, punti)` nell'ordine del file: una per il biglietto classico.
+    pub fn destinations(&self) -> impl Iterator<Item = (&str, u32)> {
+        self.to.as_deref().zip(self.points).into_iter().chain(
+            self.destinations
+                .iter()
+                .flatten()
+                .map(|d| (d.to.as_str(), d.points)),
+        )
+    }
+
+    /// Punti più alti tra le destinazioni (quelli del biglietto classico).
+    #[must_use]
+    pub fn max_points(&self) -> u32 {
+        self.destinations().map(|(_, p)| p).max().unwrap_or(0)
+    }
 }
 
 impl MapData {
@@ -121,7 +166,8 @@ pub struct Ruleset {
     #[serde(default)]
     pub tunnels: Option<TunnelsConfig>,
     /// Spareggi tra pari punti, in ordine di importanza (`completedTickets`,
-    /// `completedTicketPoints`, `longestPathBonus`); assente = `DEFAULT_TIE_BREAKERS`.
+    /// `completedTicketPoints`, `longestPathBonus`, `longestPath`, `passengers`); assente =
+    /// `DEFAULT_TIE_BREAKERS`.
     #[serde(rename = "tieBreakers", default)]
     pub tie_breakers: Option<Vec<String>>,
     /// Carte Paese (Poland): per Paese (città `country`), i valori dall'alto in basso.
@@ -135,6 +181,12 @@ pub struct Ruleset {
     /// testo: non influiscono sul motore né sul replay); voci non vuote.
     #[serde(rename = "specialRules", default)]
     pub special_rules: Vec<String>,
+    /// Regole delle locomotive (uso sulle rotte, pesca, mercato); assente = default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub locomotives: Option<LocomotivesConfig>,
+    /// Regole dei traghetti; assente = nessuna sostituzione delle locomotive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ferries: Option<FerriesConfig>,
 }
 
 /// Stazioni per giocatore: `costs[i]` è il costo in carte della stazione `i`-esima.
@@ -150,6 +202,36 @@ pub struct StationsConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelsConfig {
     pub revealed: u32,
+}
+
+/// Regole delle locomotive. Il default (campo assente) è il comportamento classico:
+/// usabili su ogni rotta, mai come seconda carta scoperta, reset del mercato con 3 scoperte.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocomotivesConfig {
+    /// Tipi di rotta su cui una locomotiva può pagare da sola uno spazio (`tunnel`,
+    /// `ferry`); assente = tutte le rotte. Dentro un gruppo di carte qualsiasi
+    /// (`anyCardsPerSpace`, `ferries.anyCardsPerLocomotive`) la locomotiva è sempre ammessa.
+    #[serde(rename = "usableOn", default, skip_serializing_if = "Option::is_none")]
+    pub usable_on: Option<Vec<String>>,
+    /// Una locomotiva scoperta conta come una carta normale: chiude il turno solo come
+    /// seconda pescata e si può prendere come seconda carta.
+    #[serde(rename = "freeDraw", default)]
+    pub free_draw: bool,
+    /// Con 3 locomotive scoperte il mercato si scarta e rimpiazza (default `true`).
+    #[serde(rename = "faceUpReset", default = "default_face_up_reset")]
+    pub face_up_reset: bool,
+}
+
+fn default_face_up_reset() -> bool {
+    true
+}
+
+/// Regole dei traghetti.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FerriesConfig {
+    /// Sui traghetti questo numero di carte qualsiasi vale una locomotiva (almeno 2).
+    #[serde(rename = "anyCardsPerLocomotive")]
+    pub any_cards_per_locomotive: u32,
 }
 
 /// Passeggeri (Germany 2017): un sacchetto di `colors × perColor` passeggeri mescolato a
@@ -214,6 +296,20 @@ pub struct TicketDraw {
     pub count: u32,
     #[serde(rename = "keepMin")]
     pub keep_min: u32,
+    /// Cosa succede ai biglietti scartati a metà partita (default `bottom`).
+    #[serde(default)]
+    pub discards: TicketDiscards,
+}
+
+/// Destino dei biglietti scartati dopo una pesca a metà partita (`ticketDraw.discards`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum TicketDiscards {
+    /// In fondo al proprio mazzo (o alla pila unita di `mergeDecks`), nell'ordine di offerta.
+    #[default]
+    Bottom,
+    /// Rimossi dalla partita (Nordic, Switzerland): il mazzo può esaurirsi.
+    Removed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -331,6 +427,18 @@ pub struct TicketStatus {
     pub completed: Option<bool>,
 }
 
+/// Esito finale di un biglietto: completato (con la destinazione realizzata, quella di
+/// punti più alti tra le collegate) o fallito (nessuna destinazione).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TicketResult {
+    pub ticket_id: TicketId,
+    pub completed: bool,
+    /// Destinazione realizzata; `None` se il biglietto è fallito.
+    pub destination: Option<CityId>,
+    /// Punti guadagnati (> 0) o persi (≤ 0: il valore più basso del biglietto).
+    pub points: i32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClaimedRouteRecord {
     pub points: u32,
@@ -419,6 +527,9 @@ pub enum TieBreaker {
     CompletedTicketPoints,
     /// Bonus del percorso più lungo ricevuto.
     LongestPathBonus,
+    /// Lunghezza del percorso più lungo del giocatore, calcolata a fine partita anche senza
+    /// il bonus `longest_path`.
+    LongestPath,
     /// Numero totale di passeggeri raccolti.
     Passengers,
 }
@@ -431,6 +542,7 @@ impl TieBreaker {
             "completedTickets" => Some(Self::CompletedTickets),
             "completedTicketPoints" => Some(Self::CompletedTicketPoints),
             "longestPathBonus" => Some(Self::LongestPathBonus),
+            "longestPath" => Some(Self::LongestPath),
             "passengers" => Some(Self::Passengers),
             _ => None,
         }
@@ -525,6 +637,10 @@ mod tests {
             TieBreaker::parse("passengers"),
             Some(TieBreaker::Passengers)
         );
-        assert_eq!(TieBreaker::parse("longestPath"), None);
+        assert_eq!(
+            TieBreaker::parse("longestPath"),
+            Some(TieBreaker::LongestPath)
+        );
+        assert_eq!(TieBreaker::parse("longest_path"), None);
     }
 }

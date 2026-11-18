@@ -11,8 +11,56 @@ use crate::scoring::MAX_CYCLOMATIC_NUMBER;
 use crate::types::{
     COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE, LOCO_RESET_THRESHOLD,
     LONGEST_PATH_BONUS_TYPE, MAX_PARALLEL_LANES, MapData, Route, RouteColor, Ruleset,
-    SetupDiscards, TieBreaker, route_lane,
+    SetupDiscards, TicketDef, TieBreaker, route_lane,
 };
+
+/// Un biglietto ha `to` + `points` (una destinazione) oppure `destinations` (almeno 2),
+/// mai entrambe le forme.
+fn check_ticket_form(ticket: &TicketDef) -> Result<(), EngineInitError> {
+    let ticket_id = || ticket.id.clone();
+    match &ticket.destinations {
+        Some(_) if ticket.to.is_some() || ticket.points.is_some() => {
+            Err(EngineInitError::TicketFormsBoth {
+                ticket_id: ticket_id(),
+            })
+        }
+        Some(list) if list.len() < 2 => Err(EngineInitError::TicketDestinationsTooFew {
+            ticket_id: ticket_id(),
+            count: list.len(),
+        }),
+        None if ticket.to.is_none() || ticket.points.is_none() => {
+            Err(EngineInitError::TicketFormMissing {
+                ticket_id: ticket_id(),
+            })
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Rotte `(da, a, lunghezza)` come le può costruire un giocatore: un giocatore prende al
+/// massimo un binario per gruppo parallelo, quindi ogni gruppo `double` (stessi estremi e
+/// base dell'id `{base}_{n}`) vale una sola rotta, di lunghezza pari al suo binario più
+/// corto: un limite superiore valido anche con binari di lunghezza diversa. Ordine del file.
+fn claimable_routes(map: &MapData) -> Vec<(&str, &str, u32)> {
+    let mut out: Vec<(&str, &str, u32)> = Vec::with_capacity(map.routes.len());
+    let mut groups: BTreeMap<(&str, &str, &str), usize> = BTreeMap::new();
+    for route in &map.routes {
+        let lane_base = route_lane(&route.id).map(|(base, _)| base);
+        let Some(base) = lane_base.filter(|_| route.double) else {
+            out.push((&route.from, &route.to, route.len));
+            continue;
+        };
+        let (a, b) = pair_key(route);
+        match groups.get(&(a, b, base)) {
+            Some(&at) => out[at].2 = out[at].2.min(route.len),
+            None => {
+                groups.insert((a, b, base), out.len());
+                out.push((&route.from, &route.to, route.len));
+            }
+        }
+    }
+    out
+}
 
 /// Binari dichiarati come gruppo parallelo, per coppia non ordinata di città.
 pub(crate) fn parallel_groups(routes: &[Route]) -> BTreeMap<(&str, &str), Vec<&Route>> {
@@ -33,7 +81,8 @@ pub(crate) fn pair_key(route: &Route) -> (&str, &str) {
 }
 
 /// Un binario `double` ha un id `{base}_{n}` e appartiene a un gruppo di 2–4 binari con
-/// gli stessi estremi, la stessa lunghezza e lo stesso `alwaysOpen`, ids `{base}_1..{base}_k`.
+/// gli stessi estremi e lo stesso `alwaysOpen`, ids `{base}_1..{base}_k`. I binari possono
+/// avere lunghezze diverse (Nordic: traghetto e tunnel sulla stessa coppia di città).
 fn check_double_route(
     route: &Route,
     groups: &BTreeMap<(&str, &str), Vec<&Route>>,
@@ -65,9 +114,6 @@ fn check_double_route(
         }
     }
     for other in group {
-        if other.len != route.len {
-            return Err(unpaired(other.id.clone()));
-        }
         if other.always_open != route.always_open {
             return Err(EngineInitError::DoubleGroupAlwaysOpenMismatch {
                 route_id: route.id.clone(),
@@ -115,13 +161,16 @@ impl Ruleset {
         self.check_bonuses()?;
         self.check_big_cities(map)?;
         self.check_special_rules()?;
+        self.check_payment_rules(map)?;
         self.check_train_deck(num_players)?;
         self.check_ticket_decks(map, num_players)?;
         self.check_tie_breakers()?;
         self.check_country_cards(map)?;
         self.check_passengers(map)?;
-        // Senza il bonus il percorso più lungo non viene mai calcolato.
-        if self.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some() {
+        // Il percorso più lungo si calcola con il bonus o come spareggio `longestPath`.
+        if self.bonus_points(LONGEST_PATH_BONUS_TYPE).is_some()
+            || self.tie_breaker_keys().contains(&TieBreaker::LongestPath)
+        {
             self.check_longest_path_budget(map)?;
         }
         Ok(())
@@ -253,6 +302,11 @@ impl Ruleset {
                     route_id: route.id.clone(),
                 });
             }
+            if route.tunnel && route.any_cards_per_space.is_some() {
+                return Err(EngineInitError::RouteTunnelAnyCardsPerSpace {
+                    route_id: route.id.clone(),
+                });
+            }
             if route.tunnel && self.tunnels.as_ref().is_none_or(|t| t.revealed == 0) {
                 return Err(EngineInitError::TunnelsConfigMissing {
                     route_id: route.id.clone(),
@@ -261,19 +315,31 @@ impl Ruleset {
         }
 
         for ticket in &map.tickets {
-            for city in [&ticket.from, &ticket.to] {
-                if !cities.contains(city.as_str()) {
+            check_ticket_form(ticket)?;
+            let ends = std::iter::once(ticket.from.as_str())
+                .chain(ticket.destinations().map(|(to, _)| to));
+            for city in ends {
+                if !cities.contains(city) {
                     return Err(EngineInitError::TicketCityUnknown {
                         ticket_id: ticket.id.clone(),
-                        city_id: city.clone(),
+                        city_id: city.to_string(),
                     });
                 }
             }
-            if ticket.from == ticket.to {
-                return Err(EngineInitError::TicketSameCity {
-                    ticket_id: ticket.id.clone(),
-                    city_id: ticket.from.clone(),
-                });
+            let mut seen: BTreeSet<&str> = BTreeSet::new();
+            for (to, _) in ticket.destinations() {
+                if to == ticket.from {
+                    return Err(EngineInitError::TicketSameCity {
+                        ticket_id: ticket.id.clone(),
+                        city_id: ticket.from.clone(),
+                    });
+                }
+                if !seen.insert(to) {
+                    return Err(EngineInitError::TicketDestinationDuplicate {
+                        ticket_id: ticket.id.clone(),
+                        city_id: to.to_string(),
+                    });
+                }
             }
             if ticket.sets.is_empty() {
                 return Err(EngineInitError::TicketSetsEmpty {
@@ -308,13 +374,14 @@ impl Ruleset {
     /// Rejects maps where a player's claimable routes could form a component the longest
     /// path search cannot solve exactly.
     ///
-    /// A player claims at most `k` routes, the shortest ones that fit in `trains_per_player`,
-    /// and the estimate is the density bound of `max_cyclomatic_number` over each connected
-    /// group of routes of the map.
+    /// A player claims at most `k` routes, the shortest ones that fit in `trains_per_player`
+    /// (at most one lane per parallel group, see `claimable_routes`), and the estimate is
+    /// the density bound of `max_cyclomatic_number` over each connected group of routes of
+    /// the map.
     fn check_longest_path_budget(&self, map: &MapData) -> Result<(), EngineInitError> {
         let cyclomatic = self.max_cyclomatic_estimate(map);
         if cyclomatic > MAX_CYCLOMATIC_NUMBER {
-            let mut lens: Vec<u32> = map.routes.iter().map(|r| r.len).collect();
+            let mut lens: Vec<u32> = claimable_routes(map).iter().map(|r| r.2).collect();
             lens.sort_unstable();
             let mut trains = u64::from(self.trains_per_player);
             let mut claimable = 0usize;
@@ -343,15 +410,10 @@ impl Ruleset {
             .enumerate()
             .map(|(i, city)| (city.id.as_str(), i))
             .collect();
-        let spans: Vec<RouteSpan> = map
-            .routes
-            .iter()
-            .filter_map(|r| {
-                Some((
-                    *index.get(r.from.as_str())?,
-                    *index.get(r.to.as_str())?,
-                    u64::from(r.len),
-                ))
+        let spans: Vec<RouteSpan> = claimable_routes(map)
+            .into_iter()
+            .filter_map(|(from, to, len)| {
+                Some((*index.get(from)?, *index.get(to)?, u64::from(len)))
             })
             .collect();
         let bound = max_cyclomatic_number(&spans, index.len(), u64::from(self.trains_per_player));

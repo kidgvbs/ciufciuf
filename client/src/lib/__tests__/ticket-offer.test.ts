@@ -6,6 +6,7 @@ import {
   canConfirmTicketChoice,
   ticketChoiceHint,
   ticketChoiceProblem,
+  ticketView,
   type TicketChoiceRules,
 } from '../ticket-offer';
 
@@ -158,5 +159,63 @@ describe('conferma della scelta dei biglietti', () => {
     expect(ticketChoiceProblem(sel('l1'), r, deck)).toBe('Tieni almeno 1 biglietto corto');
     expect(ticketChoiceProblem(sel('l1', 'l2', 'r1'), r, deck)).toBe('Tieni al massimo 1 biglietto lungo');
     expect(ticketChoiceProblem(sel('r1'), null, deck)).toBeNull();
+  });
+});
+
+describe('ticketView', () => {
+  const name = (id: string) => id.toUpperCase();
+
+  it('biglietto classico: origine, destinazione e punti', () => {
+    const info = { id: 'a_b', points: 8, destinations: [{ city_id: 'b', points: 8 }] };
+    expect(ticketView(info, { from: 'a', to: 'b', points: 8 }, name)).toEqual({
+      from: 'A',
+      to: 'B',
+      points: 8,
+      rows: undefined,
+    });
+  });
+
+  it('biglietto multi-destinazione: tutte le destinazioni con i loro punti, `points` è il massimo', () => {
+    const info = {
+      id: 'fr_de_it',
+      points: 13,
+      destinations: [
+        { city_id: 'de', points: 5 },
+        { city_id: 'it', points: 13 },
+      ],
+    };
+    expect(ticketView(info, { from: 'fr' }, name)).toEqual({
+      from: 'FR',
+      to: '',
+      points: 13,
+      rows: [
+        { name: 'DE', points: 5 },
+        { name: 'IT', points: 13 },
+      ],
+    });
+  });
+
+  it('senza destinazioni dal server usa il descrittore della mappa', () => {
+    const desc = {
+      from: 'fr',
+      destinations: [
+        { to: 'de', points: 5 },
+        { to: 'it', points: 13 },
+      ],
+    };
+    expect(ticketView({ id: 'x', points: 13 }, desc, name).rows).toEqual([
+      { name: 'DE', points: 5 },
+      { name: 'IT', points: 13 },
+    ]);
+    expect(ticketView({ id: 'x', points: 4 }, { from: 'a', to: 'b' }, name)).toMatchObject({ to: 'B', points: 4 });
+  });
+
+  it('senza descrittore né destinazioni restano id e punti', () => {
+    expect(ticketView({ id: 'x_y', points: 6 }, undefined, name)).toEqual({
+      from: 'x_y',
+      to: '',
+      points: 6,
+      rows: undefined,
+    });
   });
 });

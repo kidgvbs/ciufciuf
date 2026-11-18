@@ -1,8 +1,13 @@
 //! Test property-based sul motore: conservazione, azioni fallite,
-//! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany e Poland reali.
+//! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany, Poland,
+//! Nordic e Switzerland reali.
 //!
 //! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel; sulla
-//! Germany scelgono i biglietti rispettando minimi e massimi per mazzo.
+//! Germany scelgono i biglietti rispettando minimi e massimi per mazzo. I pagamenti delle
+//! rotte sono generati da `payment_candidates` leggendo le regole dal ruleset (locomotive
+//! ammesse, gruppi di carte qualsiasi): sul Nordic coprono i traghetti da 3 carte e
+//! Murmansk–Lieksa da 4 per spazio, sulla Switzerland le locomotive solo sui tunnel e i
+//! biglietti multi-destinazione.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
@@ -10,12 +15,13 @@ use std::sync::LazyLock;
 use proptest::prelude::*;
 use ttr_core::error::GamePhase;
 use ttr_core::types::{
-    GLOBETROTTER_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Ruleset, SetupDiscards, TRAIN_COLORS,
+    GLOBETROTTER_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Route, Ruleset, SetupDiscards,
+    TRAIN_COLORS, TicketDef,
 };
 use ttr_core::{Action, DrawSource, Engine, GameEvent, RouteColor, default_player_colors};
 use ttr_proto::CardColor;
 
-/// Carte di un mazzo completo (12 × 8 colori + 14 locomotive, come USA, Europe, Germany e Poland).
+/// Carte di un mazzo completo (12 × 8 colori + 14 locomotive, come tutte le mappe testate).
 const FULL_DECK: usize = 110;
 
 /// Massimo di mosse per partita casuale.
@@ -42,6 +48,13 @@ enum Game {
     Poland,
     /// Germany 2017: 89 biglietti, passeggeri con scelta del colore al claim.
     Germany2017,
+    /// Nordic: locomotive solo su tunnel e traghetti, traghetti pagabili con 3 carte qualsiasi
+    /// per locomotiva, Murmansk–Lieksa con 4 per spazio, pesca libera delle locomotive
+    /// scoperte senza reset del mercato, Globetrotter.
+    Nordic,
+    /// Switzerland: locomotive solo sui tunnel, pesca libera delle locomotive scoperte con
+    /// reset del mercato, biglietti multi-destinazione, percorso più lungo.
+    Switzerland,
 }
 
 static USA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_v2", "usa"));
@@ -56,6 +69,9 @@ static GERMANY: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("germany", 
 static POLAND: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("poland", "poland"));
 static GERMANY_2017: LazyLock<(Ruleset, MapData)> =
     LazyLock::new(|| load("germany_2017", "germany"));
+static NORDIC: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("nordic", "nordic"));
+static SWITZERLAND: LazyLock<(Ruleset, MapData)> =
+    LazyLock::new(|| load("switzerland", "switzerland"));
 
 fn load(ruleset: &str, map: &str) -> (Ruleset, MapData) {
     let ruleset = std::fs::read_to_string(format!("../../data/rulesets/{ruleset}.json")).unwrap();
@@ -77,6 +93,8 @@ fn data(game: Game) -> &'static (Ruleset, MapData) {
         Game::Germany => &GERMANY,
         Game::Poland => &POLAND,
         Game::Germany2017 => &GERMANY_2017,
+        Game::Nordic => &NORDIC,
+        Game::Switzerland => &SWITZERLAND,
     }
 }
 
@@ -109,14 +127,8 @@ fn new_engine(game: Game, seed: u64, players: usize) -> Engine {
     .unwrap()
 }
 
-/// Pagamento valido per la rotta con le carte in mano, se esiste: i traghetti
-/// richiedono almeno `ferries` locomotive.
-fn build_payment(
-    hand: &[CardColor],
-    color: RouteColor,
-    len: usize,
-    ferries: usize,
-) -> Option<Vec<CardColor>> {
+/// `len` carte di un colore (più locomotive) dalla mano, se esistono: costo di una stazione.
+fn build_payment(hand: &[CardColor], color: RouteColor, len: usize) -> Option<Vec<CardColor>> {
     let count = |c: CardColor| hand.iter().filter(|h| **h == c).count();
     let locos = count(CardColor::Locomotive);
     let colors: Vec<CardColor> = match color {
@@ -124,7 +136,7 @@ fn build_payment(
         RouteColor::Gray => TRAIN_COLORS.to_vec(),
     };
     for c in colors {
-        let colored = count(c).min(len - ferries);
+        let colored = count(c).min(len);
         if locos >= len - colored {
             let mut payment = vec![c; colored];
             payment.resize(len, CardColor::Locomotive);
@@ -134,15 +146,270 @@ fn build_payment(
     (locos >= len).then(|| vec![CardColor::Locomotive; len])
 }
 
-fn route_payment(eng: &Engine, player: usize, route_id: &str) -> Option<Vec<CardColor>> {
-    let route = eng.get_route(route_id)?;
-    let color = RouteColor::parse(&route.color)?;
-    build_payment(
-        eng.player_hand(player)?,
-        color,
-        route.len as usize,
-        route.ferries as usize,
-    )
+/// Regole di pagamento di una rotta, lette dai dati del ruleset e non dal motore.
+struct PayRules {
+    len: usize,
+    /// Spazi locomotiva del traghetto.
+    ferries: usize,
+    /// Una locomotiva paga da sola uno spazio colore (`locomotives.usableOn`).
+    single_loco: bool,
+    /// Carte qualsiasi che valgono una locomotiva sugli spazi locomotiva del traghetto.
+    loco_group: Option<usize>,
+    /// Dimensioni dei gruppi di carte qualsiasi (locomotive comprese) che pagano uno spazio
+    /// colore, ordinate e senza ripetizioni.
+    color_groups: Vec<usize>,
+}
+
+impl PayRules {
+    fn of(ruleset: &Ruleset, route: &Route) -> Self {
+        let usable_on = ruleset
+            .locomotives
+            .as_ref()
+            .and_then(|l| l.usable_on.as_ref());
+        let single_loco = usable_on.is_none_or(|list| {
+            let has = |value: &str| list.iter().any(|v| v == value);
+            (route.tunnel && has("tunnel")) || (route.ferries > 0 && has("ferry"))
+        });
+        let loco_group = ruleset
+            .ferries
+            .as_ref()
+            .filter(|_| route.ferries > 0)
+            .map(|f| f.any_cards_per_locomotive as usize);
+        let mut color_groups: Vec<usize> = loco_group
+            .into_iter()
+            .chain(route.any_cards_per_space.map(|v| v as usize))
+            .collect();
+        color_groups.sort_unstable();
+        color_groups.dedup();
+        Self {
+            len: route.len as usize,
+            ferries: route.ferries as usize,
+            single_loco,
+            loco_group,
+            color_groups,
+        }
+    }
+
+    fn has_groups(&self) -> bool {
+        self.loco_group.is_some() || !self.color_groups.is_empty()
+    }
+}
+
+/// Tutti i pagamenti strutturati di una rotta con la mano data. Gli spazi locomotiva del
+/// traghetto si pagano con una locomotiva o un gruppo; gli spazi colore con una carta del
+/// colore, una locomotiva (se ammessa) o un gruppo; i gruppi sono carte qualsiasi della
+/// mano non usate come singole. Ordine: prima i pagamenti con più carte singole; i gruppi si
+/// riempiono con le carte più rare, le locomotive per ultime (per prime con `loco_filler`).
+fn payment_candidates(
+    hand: &[CardColor],
+    rules: &PayRules,
+    color: RouteColor,
+    loco_filler: bool,
+) -> Vec<Vec<CardColor>> {
+    let count = |cards: &[CardColor], c: CardColor| cards.iter().filter(|h| **h == c).count();
+    let locos = count(hand, CardColor::Locomotive);
+    let colors: Vec<CardColor> = match color {
+        RouteColor::Colored(c) => vec![c],
+        RouteColor::Gray => TRAIN_COLORS.to_vec(),
+    };
+    let spaces = rules.len - rules.ferries;
+    let sizes: Vec<Option<usize>> = if rules.color_groups.is_empty() {
+        vec![None]
+    } else {
+        rules.color_groups.iter().map(|g| Some(*g)).collect()
+    };
+    let min_loco_spaces = if rules.loco_group.is_some() {
+        0
+    } else {
+        rules.ferries
+    };
+    let max_single_locos = if rules.single_loco { spaces } else { 0 };
+    let mut out = Vec::new();
+    for color in colors {
+        let have = count(hand, color);
+        for loco_spaces in (min_loco_spaces..=rules.ferries).rev() {
+            let loco_groups = rules.ferries - loco_spaces;
+            for single_locos in 0..=max_single_locos {
+                if loco_spaces + single_locos > locos {
+                    break;
+                }
+                for &size in &sizes {
+                    let max_groups = if size.is_some() {
+                        spaces - single_locos
+                    } else {
+                        0
+                    };
+                    for groups in 0..=max_groups {
+                        let singles = spaces - single_locos - groups;
+                        let filler = loco_groups * rules.loco_group.unwrap_or(0)
+                            + groups * size.unwrap_or(0);
+                        let used = singles + loco_spaces + single_locos;
+                        if singles > have || hand.len() - used < filler {
+                            continue;
+                        }
+                        let mut cards = vec![color; singles];
+                        cards.resize(used, CardColor::Locomotive);
+                        let mut rest = hand.to_vec();
+                        for card in &cards {
+                            let at = rest.iter().position(|h| h == card).unwrap();
+                            rest.remove(at);
+                        }
+                        let snapshot = rest.clone();
+                        rest.sort_by_key(|c| match (*c == CardColor::Locomotive, loco_filler) {
+                            (true, true) => 0,
+                            (true, false) => usize::MAX,
+                            (false, _) => 1 + count(&snapshot, *c),
+                        });
+                        cards.extend(rest.into_iter().take(filler));
+                        out.push(cards);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Quante carte di ogni colore e locomotive: chiave per confrontare i pagamenti come insiemi.
+fn card_counts(cards: &[CardColor]) -> [usize; 9] {
+    let mut counts = [0; 9];
+    for card in cards {
+        let at = TRAIN_COLORS.iter().position(|c| c == card);
+        counts[at.unwrap_or(8)] += 1;
+    }
+    counts
+}
+
+fn push_distinct(out: &mut Vec<Vec<CardColor>>, cards: &[CardColor]) {
+    if !out.iter().any(|c| card_counts(c) == card_counts(cards)) {
+        out.push(cards.to_vec());
+    }
+}
+
+/// Pagamenti validi per la rotta con la mano del giocatore (vuoto se non esiste): quello
+/// con più carte singole, quello con più carte in tutto e, dove ci sono gruppi, uno con le
+/// locomotive nei gruppi.
+fn route_payments(game: Game, eng: &Engine, player: usize, route_id: &str) -> Vec<Vec<CardColor>> {
+    let (ruleset, _) = data(game);
+    let (Some(route), Some(hand)) = (eng.get_route(route_id), eng.player_hand(player)) else {
+        return Vec::new();
+    };
+    let Some(color) = RouteColor::parse(&route.color) else {
+        return Vec::new();
+    };
+    let rules = PayRules::of(ruleset, route);
+    let plain = payment_candidates(hand, &rules, color, false);
+    let mut out = Vec::new();
+    if let Some(first) = plain.first() {
+        push_distinct(&mut out, first);
+    }
+    if let Some(longest) = plain.iter().max_by_key(|c| c.len()) {
+        push_distinct(&mut out, longest);
+    }
+    if rules.has_groups() {
+        let with_locos = payment_candidates(hand, &rules, color, true);
+        if let Some(longest) = with_locos.iter().max_by_key(|c| c.len()) {
+            push_distinct(&mut out, longest);
+        }
+    }
+    out
+}
+
+fn route_payment(
+    game: Game,
+    eng: &Engine,
+    player: usize,
+    route_id: &str,
+) -> Option<Vec<CardColor>> {
+    route_payments(game, eng, player, route_id)
+        .into_iter()
+        .next()
+}
+
+/// Pagamenti che il ruleset deve rifiutare, derivati da uno valido su una rotta senza
+/// gruppi: una carta in meno e, dove una locomotiva sola non è ammessa, una locomotiva al
+/// posto di una carta colorata (solo se la mano ne ha una libera).
+fn invalid_payments(
+    rules: &PayRules,
+    hand: &[CardColor],
+    valid: &[CardColor],
+) -> Vec<Vec<CardColor>> {
+    if rules.has_groups() {
+        return Vec::new();
+    }
+    let mut short = valid.to_vec();
+    short.pop();
+    let mut out = vec![short];
+    let locos = |cards: &[CardColor]| {
+        cards
+            .iter()
+            .filter(|c| **c == CardColor::Locomotive)
+            .count()
+    };
+    if !rules.single_loco && rules.ferries == 0 && locos(hand) > locos(valid) {
+        let mut swapped = valid.to_vec();
+        if let Some(at) = swapped.iter().position(|c| *c != CardColor::Locomotive) {
+            swapped[at] = CardColor::Locomotive;
+            out.push(swapped);
+        }
+    }
+    out
+}
+
+/// Biglietto della mappa per id.
+fn ticket_def(game: Game, id: &str) -> &'static TicketDef {
+    data(game).1.tickets.iter().find(|t| t.id == id).unwrap()
+}
+
+/// Destinazioni di `def` collegate dalle rotte reclamate dal giocatore, senza stazioni. Un
+/// Paese è un vicolo cieco: ogni rotta che lo tocca ha un suo nodo privato.
+fn connected_destinations(
+    game: Game,
+    eng: &Engine,
+    player: usize,
+    def: &TicketDef,
+) -> Vec<(String, u32)> {
+    let (_, map) = data(game);
+    let is_country = |city: &str| map.cities.iter().any(|c| c.id == city && c.country);
+    let node = |city: &str, route_id: &str| {
+        if is_country(city) {
+            format!("{city}#{route_id}")
+        } else {
+            city.to_string()
+        }
+    };
+    let mut adjacent: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for route_id in eng.player(player).unwrap().claimed_routes.keys() {
+        let route = eng.get_route(route_id).unwrap();
+        let (a, b) = (node(&route.from, route_id), node(&route.to, route_id));
+        adjacent.entry(a.clone()).or_default().push(b.clone());
+        adjacent.entry(b).or_default().push(a);
+    }
+    let nodes_of = |city: &str| -> Vec<String> {
+        if is_country(city) {
+            let prefix = format!("{city}#");
+            adjacent
+                .keys()
+                .filter(|n| n.starts_with(&prefix))
+                .cloned()
+                .collect()
+        } else {
+            vec![city.to_string()]
+        }
+    };
+    let mut reached: BTreeSet<String> = nodes_of(&def.from).into_iter().collect();
+    let mut frontier: Vec<String> = reached.iter().cloned().collect();
+    while let Some(at) = frontier.pop() {
+        for next in adjacent.get(&at).into_iter().flatten() {
+            if reached.insert(next.clone()) {
+                frontier.push(next.clone());
+            }
+        }
+    }
+    def.destinations()
+        .filter(|(to, _)| nodes_of(to).iter().any(|n| reached.contains(n)))
+        .map(|(to, points)| (to.to_string(), points))
+        .collect()
 }
 
 /// Passeggeri da prendere con la rotta: il primo colore (alfabetico) di ogni estremo che ne
@@ -163,7 +430,7 @@ fn passenger_picks(eng: &Engine, route_id: &str) -> BTreeMap<String, String> {
 
 /// `cost` carte di un solo colore (più locomotive) per una stazione, se la mano le ha.
 fn station_payment(eng: &Engine, player: usize, cost: usize) -> Option<Vec<CardColor>> {
-    build_payment(eng.player_hand(player)?, RouteColor::Gray, cost, 0)
+    build_payment(eng.player_hand(player)?, RouteColor::Gray, cost)
 }
 
 /// `extra` carte del colore del tunnel o locomotive (solo locomotive con `Locomotive`).
@@ -262,13 +529,16 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
             let legal = eng.legal_moves(pi);
             let mut actions = Vec::new();
             for route_id in &legal.routes {
-                let cards = route_payment(eng, pi, route_id).expect("rotta legale non pagabile");
-                actions.push(Action::ClaimRoute {
-                    player_index: pi,
-                    route_id: route_id.clone(),
-                    cards_discarded: cards,
-                    passengers: passenger_picks(eng, route_id),
-                });
+                let payments = route_payments(game, eng, pi, route_id);
+                assert!(!payments.is_empty(), "rotta legale non pagabile");
+                for cards in payments {
+                    actions.push(Action::ClaimRoute {
+                        player_index: pi,
+                        route_id: route_id.clone(),
+                        cards_discarded: cards,
+                        passengers: passenger_picks(eng, route_id),
+                    });
+                }
             }
             if let Some(tunnel) = &legal.tunnel {
                 actions.push(Action::TunnelDecision {
@@ -373,7 +643,7 @@ fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
             let len = route.map_or(1, |r| r.len as usize);
             let hand = eng.player_hand(player_index).unwrap_or_default();
             let mut cards: Vec<CardColor> = if picks[3].is_multiple_of(2) {
-                route_payment(eng, player_index, &route_id).unwrap_or_default()
+                route_payment(game, eng, player_index, &route_id).unwrap_or_default()
             } else {
                 hand.iter()
                     .cycle()
@@ -739,23 +1009,49 @@ fn check_legal_moves_agree_with_apply(
             .take(map.routes.len())
         {
             let listed = lm.routes.contains(&route.id);
-            let Some(cards) = route_payment(eng, pi, &route.id) else {
+            let mut payments = route_payments(game, eng, pi, &route.id);
+            if payments.is_empty() {
                 prop_assert!(!listed, "rotta {} elencata ma non pagabile", route.id);
                 continue;
-            };
-            if listed {
-                if listed_checked == 3 {
-                    continue;
-                }
-                listed_checked += 1;
             }
-            let action = Action::ClaimRoute {
-                player_index: pi,
-                route_id: route.id.clone(),
-                cards_discarded: cards,
-                passengers: passenger_picks(eng, &route.id),
-            };
-            check(eng, action, listed, &format!("rotta {}", route.id))?;
+            let rules = PayRules::of(&data(game).0, route);
+            let hand = eng.player_hand(pi).unwrap().to_vec();
+            let invalid = invalid_payments(&rules, &hand, &payments[0]);
+            // Le mosse elencate si provano su una copia: al più 3 pagamenti a passo, a
+            // rotazione tra le varianti della rotta.
+            if listed {
+                let shift = usize::from(window[1]) % payments.len();
+                payments.rotate_left(shift);
+            }
+            for cards in payments {
+                if listed {
+                    if listed_checked == 3 {
+                        break;
+                    }
+                    listed_checked += 1;
+                }
+                let action = Action::ClaimRoute {
+                    player_index: pi,
+                    route_id: route.id.clone(),
+                    cards_discarded: cards,
+                    passengers: passenger_picks(eng, &route.id),
+                };
+                check(eng, action, listed, &format!("rotta {}", route.id))?;
+            }
+            for cards in invalid {
+                let action = Action::ClaimRoute {
+                    player_index: pi,
+                    route_id: route.id.clone(),
+                    cards_discarded: cards,
+                    passengers: passenger_picks(eng, &route.id),
+                };
+                check(
+                    eng,
+                    action,
+                    false,
+                    &format!("pagamento vietato {}", route.id),
+                )?;
+            }
         }
         for index in 0..eng.face_up_cards().len() {
             let action = Action::DrawTrainCard {
@@ -1138,19 +1434,49 @@ fn check_full_game_invariants(
     }
     for fs in &finished.final_scores {
         let state = eng.player(fs.player_index).unwrap();
-        // L'esito live dei biglietti coincide con quello finale (stesse stazioni e rotte).
-        let completed: i32 = state
-            .tickets
-            .values()
-            .filter(|t| t.completed == Some(true))
-            .map(|t| i32::try_from(t.points).unwrap())
-            .sum();
-        let failed: i32 = state
-            .tickets
-            .values()
-            .filter(|t| t.completed != Some(true))
-            .map(|t| i32::try_from(t.points).unwrap())
-            .sum();
+        // Biglietti classici: punti fissi dallo stato. Multi-destinazione (Switzerland): il
+        // massimo tra le destinazioni collegate dalle rotte del giocatore, altrimenti −minimo.
+        let results = eng.final_ticket_results(fs.player_index);
+        prop_assert_eq!(results.len(), state.tickets.len());
+        let (mut completed, mut failed) = (0i32, 0i32);
+        for result in results {
+            let status = &state.tickets[&result.ticket_id];
+            prop_assert_eq!(status.completed == Some(true), result.completed);
+            let def = ticket_def(game, &result.ticket_id);
+            if def.destinations.is_none() {
+                let points = i32::try_from(status.points).unwrap();
+                prop_assert_eq!(
+                    result.points,
+                    if result.completed { points } else { -points }
+                );
+            } else {
+                prop_assert!(ruleset.stations.is_none(), "stazioni e biglietti multipli");
+                let connected = connected_destinations(game, &eng, fs.player_index, def);
+                let best = connected.iter().map(|(_, p)| *p).max();
+                prop_assert_eq!(result.completed, best.is_some(), "{}", def.id);
+                if let Some(best) = best {
+                    prop_assert_eq!(result.points, i32::try_from(best).unwrap(), "{}", def.id);
+                    let to = result.destination.as_deref();
+                    prop_assert!(
+                        connected
+                            .iter()
+                            .any(|(d, p)| Some(d.as_str()) == to && *p == best),
+                        "{}: destinazione realizzata {:?}",
+                        def.id,
+                        to
+                    );
+                } else {
+                    let lowest = def.destinations().map(|(_, p)| p).min().unwrap();
+                    prop_assert_eq!(result.points, -i32::try_from(lowest).unwrap(), "{}", def.id);
+                    prop_assert!(result.destination.is_none());
+                }
+            }
+            if result.completed {
+                completed += result.points;
+            } else {
+                failed += result.points;
+            }
+        }
         let bonus = if finished.longest_path_players.contains(&fs.player_index) {
             i32::try_from(finished.longest_path_bonus).unwrap()
         } else {
@@ -1160,7 +1486,7 @@ fn check_full_game_invariants(
         prop_assert_eq!(fs.route_points, finished.route_points[fs.player_index]);
         prop_assert_eq!(fs.route_points, state.score);
         prop_assert_eq!(fs.ticket_completed, completed);
-        prop_assert_eq!(fs.ticket_failed, -failed);
+        prop_assert_eq!(fs.ticket_failed, failed);
         prop_assert_eq!(fs.longest_path_bonus, bonus);
         prop_assert_eq!(fs.station_points, unbuilt * unbuilt_points);
         let country: u32 = state.country_cards.values().flatten().sum();
@@ -1277,6 +1603,70 @@ proptest! {
         choices in prop::collection::vec(any::<u16>(), 64..256),
     ) {
         check_full_game_invariants(Game::Germany2017, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn nordic_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::Nordic, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn switzerland_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::Switzerland, seed, players, &choices)?;
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 24, ..ProptestConfig::default() })]
+
+    #[test]
+    fn nordic_cards_and_tickets_are_conserved((seed, players, choices) in game_inputs()) {
+        check_conservation(Game::Nordic, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn nordic_failed_action_leaves_state_identical((seed, players, choices) in game_inputs()) {
+        check_failed_action_leaves_state_identical(Game::Nordic, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn nordic_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::Nordic, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn nordic_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::Nordic, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn switzerland_cards_and_tickets_are_conserved((seed, players, choices) in game_inputs()) {
+        check_conservation(Game::Switzerland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn switzerland_failed_action_leaves_state_identical(
+        (seed, players, choices) in game_inputs()
+    ) {
+        check_failed_action_leaves_state_identical(Game::Switzerland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn switzerland_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::Switzerland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn switzerland_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::Switzerland, seed, players, &choices)?;
     }
 }
 
@@ -1399,6 +1789,7 @@ mod longest_path_threshold {
                     always_open: false,
                     tunnel: false,
                     ferries: 0,
+                    any_cards_per_space: None,
                 },
             );
         }
@@ -1706,4 +2097,103 @@ fn europe_bots_exercise_stations_tunnels_and_ferries() {
         "stazioni {stations}, rinunce {declined}, pagati {paid}, traghetti {ferries}, prestiti {borrowed}"
     );
     assert!(stations > 0 && declined > 0 && paid > 0 && ferries > 0);
+}
+
+fn seeded_choices(seed: u64) -> Vec<u16> {
+    (0..200u64)
+        .map(|i| (seed.wrapping_mul(7919).wrapping_add(i * 31) % 65_536) as u16)
+        .collect()
+}
+
+/// I bot Nordic pagano i traghetti con gruppi di carte qualsiasi; i bot Switzerland tengono,
+/// completano e falliscono biglietti multi-destinazione (esito verificato sulle rotte da
+/// `check_full_game_invariants`).
+#[test]
+fn bots_exercise_card_groups_and_multi_destination_tickets() {
+    let mut ferry_groups = 0;
+    for seed in 0..40u64 {
+        let players = 2 + seed as usize % 2;
+        let (eng, _) =
+            play_to_game_over(Game::Nordic, seed, players, &seeded_choices(seed)).unwrap();
+        for record in eng.action_log() {
+            let claimed = record
+                .events
+                .iter()
+                .any(|e| matches!(e, GameEvent::RouteClaimed { .. }));
+            if let Action::ClaimRoute {
+                route_id,
+                cards_discarded,
+                ..
+            } = &record.action
+            {
+                let route = eng.get_route(route_id).unwrap();
+                if claimed && route.ferries > 0 && cards_discarded.len() > route.len as usize {
+                    ferry_groups += 1;
+                }
+            }
+        }
+    }
+    let (mut held, mut completed, mut failed) = (0, 0, 0);
+    for seed in 0..40u64 {
+        let players = 2 + seed as usize % 2;
+        let (eng, _) =
+            play_to_game_over(Game::Switzerland, seed, players, &seeded_choices(seed)).unwrap();
+        for p in 0..players {
+            for result in eng.final_ticket_results(p) {
+                if ticket_def(Game::Switzerland, &result.ticket_id)
+                    .destinations
+                    .is_some()
+                {
+                    held += 1;
+                    if result.completed {
+                        completed += 1;
+                    } else {
+                        failed += 1;
+                    }
+                }
+            }
+        }
+    }
+    eprintln!(
+        "traghetti con gruppi {ferry_groups}, multi-destinazione tenuti {held} (completati {completed}, falliti {failed})"
+    );
+    assert!(ferry_groups > 0, "nessun traghetto pagato con gruppi");
+    assert!(
+        completed > 0 && failed > 0,
+        "biglietti multi-destinazione non esercitati"
+    );
+}
+
+/// Murmansk–Lieksa si paga con 7 carte verdi più 8 qualsiasi: il generatore le produce e il
+/// motore le accetta; con le sole locomotive in mano la rotta non è pagabile.
+#[test]
+fn nordic_long_route_is_paid_with_groups_of_any_cards() {
+    let mut eng = new_engine(Game::Nordic, 3, 2);
+    while eng.phase() == GamePhase::InitialDraft {
+        let action = progress_actions(Game::Nordic, &eng).remove(0);
+        eng.apply(action).unwrap();
+    }
+    let pi = eng.current_player();
+    let route_id = "lieksa_murmansk_1";
+    let mut hand = vec![CardColor::Green; 7];
+    hand.extend([CardColor::Red; 4]);
+    hand.extend([CardColor::Blue; 3]);
+    hand.push(CardColor::Locomotive);
+    eng.set_player_hand(pi, hand);
+    assert!(eng.legal_moves(pi).routes.contains(&route_id.to_string()));
+    let payments = route_payments(Game::Nordic, &eng, pi, route_id);
+    assert!(payments.iter().all(|p| p.len() == 15), "{payments:?}");
+    for cards in payments {
+        let action = Action::ClaimRoute {
+            player_index: pi,
+            route_id: route_id.into(),
+            cards_discarded: cards,
+            passengers: BTreeMap::new(),
+        };
+        eng.clone().apply(action).unwrap();
+    }
+
+    eng.set_player_hand(pi, vec![CardColor::Locomotive; 9]);
+    assert!(route_payments(Game::Nordic, &eng, pi, route_id).is_empty());
+    assert!(!eng.legal_moves(pi).routes.contains(&route_id.to_string()));
 }

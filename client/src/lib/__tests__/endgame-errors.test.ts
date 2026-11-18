@@ -18,6 +18,7 @@ function fs(playerId: string, total: number, winner: boolean): FinalScoreInfo {
     borrowedRoutes: [],
     countryPoints: 0,
     passengerPoints: 0,
+    tickets: [],
   };
 }
 

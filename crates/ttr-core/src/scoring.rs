@@ -5,7 +5,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::Bound;
 
-use crate::types::{CityId, ClaimedRouteInfo, Route, RouteId, TicketDef, points_to_score};
+use crate::types::{
+    CityId, ClaimedRouteInfo, Route, RouteId, TicketDef, TicketResult, points_to_score,
+};
 
 /// Nome del nodo di un estremo di rotta: la città stessa, oppure per un Paese il nodo
 /// privato `paese#rotta` (i Paesi sono vicoli ciechi: due rotte che vi entrano non sono
@@ -265,6 +267,9 @@ pub struct StationCandidates {
 pub struct TicketEvaluation {
     /// Un esito per biglietto, nell'ordine di `tickets`.
     pub completed: Vec<bool>,
+    /// Per ogni biglietto, l'indice in `TicketSpec::destinations` della destinazione
+    /// realizzata (la collegata di punti più alti, la prima a parità); `None` se fallito.
+    pub reached: Vec<Option<usize>>,
     /// Somma dei punti dei biglietti completati.
     pub completed_points: i32,
     /// Somma negata dei punti dei biglietti falliti (≤ 0).
@@ -280,30 +285,109 @@ impl TicketEvaluation {
     }
 }
 
-fn score_tickets(uf: &mut UnionFind, tickets: &[(&str, &str, u32)]) -> TicketEvaluation {
+/// Un biglietto da valutare: partenza e destinazioni `(città, punti)`; quello classico ha
+/// una sola destinazione.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TicketSpec<'a> {
+    pub from: &'a str,
+    pub destinations: Vec<(&'a str, u32)>,
+}
+
+impl<'a> TicketSpec<'a> {
+    #[must_use]
+    pub fn of(def: &'a TicketDef) -> Self {
+        Self {
+            from: &def.from,
+            destinations: def.destinations().collect(),
+        }
+    }
+
+    /// Biglietto classico: una sola destinazione.
+    #[must_use]
+    pub fn single(from: &'a str, to: &'a str, points: u32) -> Self {
+        Self {
+            from,
+            destinations: vec![(to, points)],
+        }
+    }
+
+    /// Punti persi se nessuna destinazione è collegata: il valore più basso.
+    fn failed_points(&self) -> u32 {
+        self.destinations.iter().map(|&(_, p)| p).min().unwrap_or(0)
+    }
+
+    /// La destinazione collegata di punti più alti (la prima a parità): `(indice, punti)`.
+    fn best_connected(&self, uf: &mut UnionFind) -> Option<(usize, u32)> {
+        let mut best: Option<(usize, u32)> = None;
+        for (i, &(to, points)) in self.destinations.iter().enumerate() {
+            if best.is_some_and(|(_, p)| p >= points) {
+                continue;
+            }
+            if uf.connected(self.from, to) {
+                best = Some((i, points));
+            }
+        }
+        best
+    }
+}
+
+fn score_tickets(uf: &mut UnionFind, tickets: &[TicketSpec]) -> TicketEvaluation {
     let mut eval = TicketEvaluation {
         completed: Vec::with_capacity(tickets.len()),
+        reached: Vec::with_capacity(tickets.len()),
         completed_points: 0,
         failed_points: 0,
         completed_count: 0,
         borrowed: Vec::new(),
     };
-    for &(from, to, points) in tickets {
-        let done = uf.connected(from, to);
-        eval.completed.push(done);
-        if done {
+    for spec in tickets {
+        let best = spec.best_connected(uf);
+        eval.completed.push(best.is_some());
+        eval.reached.push(best.map(|(i, _)| i));
+        if let Some((_, points)) = best {
             eval.completed_points = eval
                 .completed_points
                 .saturating_add(points_to_score(points));
             eval.completed_count += 1;
         } else {
-            eval.failed_points = eval.failed_points.saturating_sub(points_to_score(points));
+            eval.failed_points = eval
+                .failed_points
+                .saturating_sub(points_to_score(spec.failed_points()));
         }
     }
     eval
 }
 
-/// Valuta i biglietti `(da, a, punti)` con la connettività propria `own` e, per ogni
+/// Esito per biglietto di una valutazione: destinazione realizzata e punti guadagnati o persi.
+fn ticket_results(
+    defs: &[&TicketDef],
+    specs: &[TicketSpec],
+    eval: &TicketEvaluation,
+) -> Vec<TicketResult> {
+    defs.iter()
+        .zip(specs)
+        .zip(&eval.reached)
+        .map(|((def, spec), reached)| match reached {
+            Some(k) => {
+                let (to, points) = spec.destinations[*k];
+                TicketResult {
+                    ticket_id: def.id.clone(),
+                    completed: true,
+                    destination: Some(to.to_string()),
+                    points: points_to_score(points),
+                }
+            }
+            None => TicketResult {
+                ticket_id: def.id.clone(),
+                completed: false,
+                destination: None,
+                points: -points_to_score(spec.failed_points()),
+            },
+        })
+        .collect()
+}
+
+/// Valuta i biglietti con la connettività propria `own` e, per ogni
 /// stazione, la scelta di non usarne nessuna o di prendere in prestito una delle sue
 /// rotte avversarie. Vince l'assegnazione che massimizza punti completati meno punti
 /// falliti; a parità la prima in ordine canonico (stazioni in ordine di costruzione,
@@ -313,7 +397,7 @@ fn score_tickets(uf: &mut UnionFind, tickets: &[(&str, &str, u32)]) -> TicketEva
 /// canonico vengono scartate (vedi `prune_station_options`): il risultato non cambia.
 pub fn evaluate_tickets(
     own: &mut UnionFind,
-    tickets: &[(&str, &str, u32)],
+    tickets: &[TicketSpec],
     stations: &[StationCandidates],
 ) -> TicketEvaluation {
     if stations.is_empty() {
@@ -361,7 +445,7 @@ fn prune_station_options(
 
 fn search_stations(
     uf: &mut UnionFind,
-    tickets: &[(&str, &str, u32)],
+    tickets: &[TicketSpec],
     stations: &[StationCandidates],
     picks: &mut Vec<Option<usize>>,
     best: &mut Option<TicketEvaluation>,
@@ -899,6 +983,16 @@ pub struct PlayerScore {
     pub longest_path_routes: Vec<RouteId>,
     /// Rotte avversarie prese in prestito dalle stazioni: (città, rotta).
     pub borrowed_routes: Vec<(CityId, RouteId)>,
+    /// Esito di ogni biglietto, nell'ordine degli id.
+    pub ticket_results: Vec<TicketResult>,
+}
+
+/// Regole sul percorso più lungo di un ruleset: punti del bonus (`None` = nessun bonus) e se
+/// serve calcolarlo come spareggio `longestPath` anche senza bonus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LongestPathRules {
+    pub bonus_points: Option<u32>,
+    pub tie_break: bool,
 }
 
 /// Calcola il punteggio finale per tutti i giocatori.
@@ -906,9 +1000,9 @@ pub struct PlayerScore {
 /// - Somma punti rotte (già accumulati in `player.score`)
 /// - Biglietti: ±valore in base alla connettività Union-Find, con la migliore
 ///   assegnazione delle stazioni (D32, `stations` per giocatore)
-/// - Longest Continuous Path: +bonus a chi ha il percorso più lungo
-///   (parità → bonus a tutti i pari merito); con `bonus_points = None` il bonus
-///   non esiste e il percorso più lungo non viene calcolato
+/// - Longest Continuous Path: +bonus a chi ha il percorso più lungo (parità → bonus a tutti
+///   i pari merito). Il percorso si calcola solo con il bonus o con lo spareggio
+///   (`path_rules`); senza bonus nessuno vince il bonus
 pub fn compute_final_scores(
     claimed_routes: &[Vec<ClaimedRouteInfo>], // per giocatore
     routes_map: &BTreeMap<RouteId, Route>,
@@ -916,8 +1010,9 @@ pub fn compute_final_scores(
     player_tickets: &[BTreeMap<String, bool>], // ticket_id → kept
     stations: &[Vec<StationCandidates>],       // per giocatore, in ordine di costruzione
     connectivity: &mut PlayerConnectivity,
-    bonus_points: Option<u32>,
+    path_rules: LongestPathRules,
 ) -> (Vec<PlayerScore>, Vec<usize>, u32) {
+    let bonus_points = path_rules.bonus_points;
     let num_players = claimed_routes.len();
     let mut scores: Vec<PlayerScore> = (0..num_players)
         .map(|_| PlayerScore {
@@ -929,12 +1024,13 @@ pub fn compute_final_scores(
             longest_path_exact: true,
             longest_path_routes: Vec::new(),
             borrowed_routes: Vec::new(),
+            ticket_results: Vec::new(),
         })
         .collect();
 
-    // Calcola longest path per ogni giocatore, solo se il bonus esiste
+    // Calcola longest path per ogni giocatore, solo se serve (bonus o spareggio)
     let mut longest_paths: Vec<u32> = vec![0; num_players];
-    let path_routes: &[Vec<ClaimedRouteInfo>] = if bonus_points.is_some() {
+    let path_routes: &[Vec<ClaimedRouteInfo>] = if bonus_points.is_some() || path_rules.tie_break {
         claimed_routes
     } else {
         &[]
@@ -953,7 +1049,7 @@ pub fn compute_final_scores(
     let max_path = longest_paths.iter().copied().max().unwrap_or(0);
 
     // Chi ha il max (o pari merito) prende il bonus
-    let bonus_winners: Vec<usize> = if max_path > 0 {
+    let bonus_winners: Vec<usize> = if bonus_points.is_some() && max_path > 0 {
         longest_paths
             .iter()
             .enumerate()
@@ -970,10 +1066,7 @@ pub fn compute_final_scores(
             .keys()
             .filter_map(|tid| tickets.iter().find(|t| &t.id == tid))
             .collect();
-        let list: Vec<(&str, &str, u32)> = defs
-            .iter()
-            .map(|t| (t.from.as_str(), t.to.as_str(), t.points))
-            .collect();
+        let list: Vec<TicketSpec> = defs.iter().map(|t| TicketSpec::of(t)).collect();
         let own_stations = stations.get(pi).map_or(&[][..], Vec::as_slice);
         let eval = match connectivity.uf_mut(pi) {
             Some(uf) => evaluate_tickets(uf, &list, own_stations),
@@ -982,6 +1075,7 @@ pub fn compute_final_scores(
         scores[pi].completed_tickets = eval.completed_points;
         scores[pi].failed_tickets = eval.failed_points;
         scores[pi].completed_count = eval.completed_count;
+        scores[pi].ticket_results = ticket_results(&defs, &list, &eval);
         scores[pi].borrowed_routes = eval.borrowed;
     }
 
@@ -1065,6 +1159,7 @@ mod tests {
             always_open: false,
             tunnel: false,
             ferries: 0,
+            any_cards_per_space: None,
         }
     }
 
@@ -1618,7 +1713,7 @@ mod tests {
         // A–S si completa solo con una rotta verso M: la prima in ordine di id.
         let eval = evaluate_tickets(
             &mut own.deep_clone(),
-            &[("a", "s", 8)],
+            &[TicketSpec::single("a", "s", 8)],
             std::slice::from_ref(&station),
         );
         assert_eq!(eval.completed, [true]);
@@ -1627,14 +1722,17 @@ mod tests {
         // Già completo senza stazione: "nessuna rotta" vince a parità.
         let eval = evaluate_tickets(
             &mut own.deep_clone(),
-            &[("a", "m", 8)],
+            &[TicketSpec::single("a", "m", 8)],
             std::slice::from_ref(&station),
         );
         assert_eq!(eval.completed, [true]);
         assert!(eval.borrowed.is_empty());
 
         // Con più biglietti vince il netto migliore, non il numero di completati.
-        let tickets = [("a", "s", 3), ("s", "z", 5)];
+        let tickets = [
+            TicketSpec::single("a", "s", 3),
+            TicketSpec::single("s", "z", 5),
+        ];
         let eval = evaluate_tickets(&mut own.deep_clone(), &tickets, &[station]);
         assert_eq!(eval.completed, [false, true]);
         assert_eq!(eval.borrowed, [("s".to_string(), "r1".to_string())]);
@@ -1647,15 +1745,113 @@ mod tests {
         own.union("a", "m");
         let station = candidates("s", &[("r1", "a"), ("r2", "b")]);
         // S–A e S–B richiedono due rotte diverse: una stazione ne prende una sola.
-        let eval = evaluate_tickets(&mut own, &[("s", "a", 4), ("s", "b", 5)], &[station]);
+        let tickets = [
+            TicketSpec::single("s", "a", 4),
+            TicketSpec::single("s", "b", 5),
+        ];
+        let eval = evaluate_tickets(&mut own, &tickets, &[station]);
         assert_eq!(eval.completed, [false, true]);
         assert_eq!(eval.borrowed, [("s".to_string(), "r2".to_string())]);
+    }
+
+    fn multi(from: &'static str, destinations: &[(&'static str, u32)]) -> TicketSpec<'static> {
+        TicketSpec {
+            from,
+            destinations: destinations.to_vec(),
+        }
+    }
+
+    /// Biglietto multi-destinazione: nessuna collegata = perde il valore più basso; una =
+    /// i suoi punti; più d'una = il massimo (anche se non è la prima nell'elenco).
+    #[test]
+    fn multi_destination_ticket_scores_best_connected_or_loses_the_lowest() {
+        let ticket = multi("a", &[("b", 5), ("c", 13), ("d", 8)]);
+        let eval = |edges: &[(&str, &str)]| {
+            let mut uf = UnionFind::new();
+            for (x, y) in edges {
+                uf.union(x, y);
+            }
+            evaluate_tickets(&mut uf, std::slice::from_ref(&ticket), &[])
+        };
+
+        let none = eval(&[("a", "z")]);
+        assert_eq!(none.completed, [false]);
+        assert_eq!(none.reached, [None]);
+        assert_eq!((none.completed_points, none.failed_points), (0, -5));
+        assert_eq!(none.completed_count, 0);
+
+        let one = eval(&[("a", "d")]);
+        assert_eq!(one.completed, [true]);
+        assert_eq!(one.reached, [Some(2)]);
+        assert_eq!((one.completed_points, one.failed_points), (8, 0));
+        assert_eq!(one.completed_count, 1);
+
+        let several = eval(&[("a", "b"), ("b", "c"), ("c", "d")]);
+        assert_eq!(several.reached, [Some(1)]);
+        assert_eq!((several.completed_points, several.failed_points), (13, 0));
+        assert_eq!(several.completed_count, 1);
+
+        // A pari punti vince la prima destinazione dell'elenco.
+        let tied = multi("a", &[("b", 7), ("c", 7)]);
+        let mut uf = UnionFind::new();
+        uf.union("a", "b");
+        uf.union("a", "c");
+        let eval = evaluate_tickets(&mut uf, &[tied], &[]);
+        assert_eq!(eval.reached, [Some(0)]);
+    }
+
+    /// Con i Paesi (vicoli ciechi) come partenza e come destinazioni: una rotta che entra
+    /// nel Paese basta, ma due rotte verso lo stesso Paese non si collegano tra loro.
+    #[test]
+    fn multi_destination_ticket_with_countries() {
+        let countries: BTreeSet<CityId> = ["fr", "de", "it"].iter().map(|s| (*s).into()).collect();
+        let mut conn = PlayerConnectivity::with_countries(1, countries);
+        let ticket = multi("fr", &[("de", 5), ("it", 13)]);
+        let eval = |conn: &mut PlayerConnectivity| {
+            let uf = conn.uf_mut(0).unwrap();
+            evaluate_tickets(uf, std::slice::from_ref(&ticket), &[])
+        };
+
+        // Solo la rotta verso la Francia: nessuna destinazione collegata.
+        conn.add_route(0, "r1", "a", "fr");
+        let eval0 = eval(&mut conn);
+        assert_eq!((eval0.completed_points, eval0.failed_points), (0, -5));
+
+        // La Germania entra nella stessa rete: 5 punti.
+        conn.add_route(0, "r2", "a", "de");
+        let eval1 = eval(&mut conn);
+        assert_eq!(eval1.reached, [Some(0)]);
+        assert_eq!((eval1.completed_points, eval1.failed_points), (5, 0));
+
+        // L'Italia è raggiunta da una rete separata: non cambia nulla.
+        conn.add_route(0, "r3", "b", "it");
+        assert_eq!(eval(&mut conn).reached, [Some(0)]);
+
+        // Collegando le due reti vale la destinazione migliore.
+        conn.add_route(0, "r4", "a", "b");
+        let eval2 = eval(&mut conn);
+        assert_eq!(eval2.reached, [Some(1)]);
+        assert_eq!((eval2.completed_points, eval2.failed_points), (13, 0));
+
+        // Partenza città e destinazioni Paesi; due rotte verso lo stesso Paese non si collegano.
+        let mut conn = PlayerConnectivity::with_countries(
+            1,
+            ["fr", "de"].iter().map(|s| (*s).into()).collect(),
+        );
+        conn.add_route(0, "x1", "a", "fr");
+        conn.add_route(0, "x2", "b", "fr");
+        let uf = conn.uf_mut(0).unwrap();
+        let to_fr = multi("a", &[("fr", 4), ("de", 9)]);
+        let between = multi("a", &[("b", 3), ("c", 6)]);
+        let eval = evaluate_tickets(uf, &[to_fr, between], &[]);
+        assert_eq!(eval.completed, [true, false]);
+        assert_eq!((eval.completed_points, eval.failed_points), (4, -3));
     }
 
     /// Riferimento: la ricerca esaustiva su tutte le opzioni, senza potatura.
     fn evaluate_tickets_brute_force(
         own: &mut UnionFind,
-        tickets: &[(&str, &str, u32)],
+        tickets: &[TicketSpec],
         stations: &[StationCandidates],
     ) -> TicketEvaluation {
         if stations.is_empty() {
@@ -1717,9 +1913,9 @@ mod tests {
                 .iter()
                 .map(|&(a, b, p)| (city(a), city(b), p))
                 .collect();
-            let tickets: Vec<(&str, &str, u32)> = names
+            let tickets: Vec<TicketSpec> = names
                 .iter()
-                .map(|(a, b, p)| (a.as_str(), b.as_str(), *p))
+                .map(|(a, b, p)| TicketSpec::single(a, b, *p))
                 .collect();
 
             let expected = evaluate_tickets_brute_force(&mut own.deep_clone(), &tickets, &stations);

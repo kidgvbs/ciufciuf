@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use crate::engine::Engine;
 use crate::error::{EngineError, GamePhase};
 use crate::event::GameEvent;
-use crate::types::{SetupDiscards, TicketId, TicketStatus};
+use crate::types::{SetupDiscards, TicketDef, TicketDiscards, TicketId, TicketStatus};
 
 /// Valida una scelta di biglietti da tenere tra quelli offerti.
 ///
@@ -106,7 +106,7 @@ impl Engine {
     /// Aggiunge ai biglietti del giocatore quelli tenuti, ancora da valutare.
     fn add_kept_tickets(&mut self, player_index: usize, keep: &[TicketId]) {
         for tid in keep {
-            let points = self.tickets_by_id.get(tid).map_or(0, |t| t.points);
+            let points = self.tickets_by_id.get(tid).map_or(0, TicketDef::max_points);
             self.players[player_index].tickets.insert(
                 tid.clone(),
                 TicketStatus {
@@ -305,9 +305,12 @@ impl Engine {
 
         self.add_kept_tickets(player_index, keep);
 
-        // Gli scartati vanno in fondo al proprio mazzo, in ordine.
-        for ticket_id in &discarded {
-            self.return_to_own_deck(ticket_id);
+        // Con `discards: removed` gli scartati escono dalla partita; altrimenti vanno in
+        // fondo al proprio mazzo, in ordine.
+        if self.ruleset.ticket_draw.discards == TicketDiscards::Bottom {
+            for ticket_id in &discarded {
+                self.return_to_own_deck(ticket_id);
+            }
         }
         self.pending_tickets.clear();
 

@@ -6,7 +6,8 @@ use ttr_proto::CardColor;
 
 use crate::engine::{Engine, RouteInfo};
 use crate::error::GamePhase;
-use crate::types::{CityId, Route, RouteColor, RouteId, TicketId};
+use crate::payment::{PaymentSpec, Tally};
+use crate::types::{CityId, Route, RouteId, TicketId};
 
 /// Mosse legali per un giocatore.
 #[derive(Debug, Clone)]
@@ -173,12 +174,14 @@ impl Engine {
     }
 
     fn legal_moves_second_draw(&self) -> LegalMoves {
+        // Con `freeDraw` la locomotiva scoperta è una carta normale anche come seconda.
+        let free_draw = self.ruleset.free_locomotive_draw();
         let draw_face_up: Vec<usize> = self
             .face_up
             .iter()
             .enumerate()
             .filter(|(_, c)| c.is_some())
-            .filter(|(_, c)| !matches!(c, Some(CardColor::Locomotive)))
+            .filter(|(_, c)| free_draw || !matches!(c, Some(CardColor::Locomotive)))
             .map(|(i, _)| i)
             .collect();
 
@@ -197,9 +200,13 @@ impl Engine {
     fn legal_moves_tunnel(&self, player_index: usize) -> LegalMoves {
         let tunnel = self.pending_tunnel.as_ref().map(|pending| {
             let hand = &self.players[player_index].hand;
+            let locos_usable = self
+                .routes_by_id
+                .get(&pending.route_id)
+                .is_none_or(|route| self.ruleset.locomotive_usable_on(route));
             let usable = hand
                 .iter()
-                .filter(|c| **c == CardColor::Locomotive || **c == pending.color)
+                .filter(|c| **c == pending.color || (**c == CardColor::Locomotive && locos_usable))
                 .count();
             TunnelMoves {
                 route_id: pending.route_id.clone(),
@@ -242,8 +249,7 @@ impl Engine {
 
     fn claimable_routes(&self, player_index: usize, hand: &[CardColor]) -> Vec<RouteId> {
         let mut result = Vec::new();
-        let loco_count = hand.iter().filter(|c| **c == CardColor::Locomotive).count();
-        let color_counts = count_colors(hand);
+        let tally = Tally::of(hand);
 
         for route in &self.map.routes {
             let Some(info) = self.route_info.get(&route.id) else {
@@ -252,18 +258,10 @@ impl Engine {
             if !self.route_open_for(player_index, route, info) {
                 continue;
             }
-            let rid = &route.id;
-
-            let can_pay = Self::can_pay_route(
-                info.color,
-                route.len as usize,
-                route.ferries as usize,
-                hand.len(),
-                loco_count,
-                &color_counts,
-            );
-            if can_pay {
-                result.push(rid.clone());
+            // Reclamabile se un sottoinsieme della mano paga la rotta (sostituzioni e
+            // restrizioni sulle locomotive comprese).
+            if PaymentSpec::new(route, info.color, &self.ruleset).payable_from(&tally) {
+                result.push(route.id.clone());
             }
         }
         result
@@ -296,29 +294,6 @@ impl Engine {
                     .is_some_and(|info| self.route_open_for(player_index, route, info))
             })
         })
-    }
-
-    fn can_pay_route(
-        route_color: RouteColor,
-        len: usize,
-        ferries: usize,
-        hand_len: usize,
-        loco_count: usize,
-        color_counts: &BTreeMap<CardColor, usize>,
-    ) -> bool {
-        if hand_len < len || loco_count < ferries {
-            return false;
-        }
-        match route_color {
-            RouteColor::Gray => {
-                color_counts.iter().any(|(color, count)| {
-                    *color != CardColor::Locomotive && count + loco_count >= len
-                }) || loco_count >= len
-            }
-            RouteColor::Colored(card_color) => {
-                color_counts.get(&card_color).copied().unwrap_or(0) + loco_count >= len
-            }
-        }
     }
 
     fn can_draw_from_deck(&self) -> bool {

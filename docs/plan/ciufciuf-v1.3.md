@@ -1,7 +1,7 @@
 # CiufCiuf! — Piano completo — Gioco stile Ticket to Ride su LAN
 
 **Versione:** 1.3 — 3 novembre 2026 *(supera la v1.2: integra D22 Svelte + D23 repo GitHub privato/RECAP)*
-**Stato (aggiornato 18/11/2026):** Fasi 0–4 completate; 13 ruleset su 5 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata — §3.4, §3.5); prossima la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D42) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
+**Stato (aggiornato 18/11/2026):** Fasi 0–4 completate; 15 ruleset su 7 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland — §3.4, §3.5); prossima la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D45) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
 **Fonti:** ricerca web (Wikipedia, BGA, Marmalade/Steam, Days of Wonder), studio preliminare, GDD esterno revisionato dall'utente, decisioni prese in sessione, revisione esterna del piano v1.1 (verificata), risposte definitive dell'utente del 3/11/2026 (12 punti — integrate come D8/D19/D20/D21 e in §14) e conferme successive dello stesso giorno (**D22**: Svelte; **D23**: repo GitHub privato + `RECAP.md`).
 
 > Questo documento **supera** lo studio preliminare. Regola dell'ultimo giro: chi innesca la fine **gioca** l'ultimo turno
@@ -171,7 +171,7 @@ I valori esatti di ogni ruleset sono nei file `data/rulesets/*.json` (fonte di v
 
 Nota: tipo e valore dei bonus variano per ruleset (Longest Path 10, European Express 10, Globetrotter 15, Mega con due bonus) → i bonus *devono* essere parametrici. Anche la composizione dei mazzi di biglietti (singolo o lungo/regolare) è un parametro. Le soglie delle rotte doppie (`doubleRouteMinPlayers: 4`) e l'ultimo giro (`finalRoundIncludesTrigger: true`) sono parametri del ruleset.
 
-Altre mappe dell'app 2023 (Nordic, India, Legendary Asia, San Francisco, Switzerland, Japan, Africa) arrivano **dopo** USA+Europe: ogni mappa = dati + modulo regole, zero fork del motore. **Germany, Poland e Basilicata** (mappa di prova) sono entrate il 17/11/2026 come primo caso (§3.5).
+Altre mappe dell'app 2023 (India, Legendary Asia, San Francisco, Japan, Africa) arrivano **dopo** USA+Europe: ogni mappa = dati + modulo regole, zero fork del motore. **Germany, Poland e Basilicata** (mappa di prova) sono entrate il 17/11/2026 come primo caso, **Nordic Countries e Switzerland** il 18/11/2026 (§3.5).
 
 ### 3.5 Altre mappe e regole della casa (dal 17/11/2026)
 
@@ -181,6 +181,9 @@ Altre mappe dell'app 2023 (Nordic, India, Legendary Asia, San Francisco, Switzer
 - **Germany, regola della casa (D40, diversa dal regolamento ufficiale)**: mano iniziale distribuita **2 lunghi + 3 corti**, si tengono almeno 2 biglietti di cui almeno 1 corto (`keepMin` per voce di `initialTickets.dealt`). Finito il draft, i mazzi di `ticketDraw.mergeDecks` confluiscono in `ticketDraw.deck` in **una sola pila** mescolata con l'RNG del motore (deterministica); `DRAW_TICKETS` pesca 4, tieni ≥1, gli scartati (anche lunghi) vanno in fondo alla pila. `PublicState.ticket_deck_size` conta i biglietti pescabili.
 - **Regole speciali come dato (D42)**: i ruleset che differiscono dal gioco base hanno `specialRules` (testi), mostrati dal client a inizio partita senza che il client conosca le regole.
 - **Edge case aggiuntivi**: unione dei mazzi una sola volta e riprodotta identica al replay/resume; pesca limitata ai biglietti rimasti; `reshuffleBottom` incompatibile con `mergeDecks` (rifiutato dalla validazione).
+- **Nordic Countries (D43, D45)**: 2–3 giocatori, 40 treni; locomotive solo su tunnel e traghetti (`locomotives.usableOn`), pescabili come carte normali (`freeDraw`), niente reset con 3 scoperte (`faceUpReset: false`); sui traghetti 3 carte qualsiasi valgono una locomotiva (`ferries.anyCardsPerLocomotive`); Murmansk–Lieksa (9) con 4 carte qualsiasi per spazio (`anyCardsPerSpace`); biglietti scartati rimossi anche a metà partita (`ticketDraw.discards: "removed"`); Globetrotter +10, nessun percorso più lungo, spareggio `completedTickets` poi `longestPath`. Gruppi paralleli con binari di lunghezza diversa ammessi.
+- **Switzerland (D43, D44)**: 2–3 giocatori, 40 treni; locomotive solo sui tunnel, pescabili come carte normali (il reset con 3 scoperte resta); 4 Paesi confinanti; 12 biglietti con più destinazioni (`destinations`): vale la destinazione collegata di valore più alto, nessuna collegata = −valore più basso; scarti rimossi al setup e a metà partita; percorso più lungo +10.
+- **Pagamento delle rotte**: valido solo se tutte le carte dichiarate si assegnano esattamente agli spazi (`ttr-core/src/payment.rs`); senza sostituzioni né restrizioni resta il controllo storico (carte = lunghezza).
 
 Convenzioni dei dati: `docs/data-conventions.md`; fonti per mappa: `docs/data-sources-*.md`.
 
