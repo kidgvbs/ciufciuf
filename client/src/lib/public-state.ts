@@ -23,6 +23,8 @@ export function normalizePublicState(ps: PublicState): NormalizedPublicState {
     tunnel_reveal: ps.tunnel_reveal ?? null,
     country_stacks: ps.country_stacks ?? [],
     passengers: ps.passengers ?? [],
+    blocked_route_ids: ps.blocked_route_ids ?? [],
+    ticket_deck_size: ps.ticket_deck_size ?? 0,
     players_summary: ps.players_summary.map((p) => ({
       ...p,
       country_cards: p.country_cards ?? [],

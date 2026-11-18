@@ -1076,11 +1076,12 @@ fn validate_save(save: &SaveData, ruleset: &ttr_core::Ruleset) -> Result<(), Str
 
 pub fn parse_color(s: &str) -> Result<ttr_proto::PlayerColor, String> {
     match s {
-        "RED" => Ok(ttr_proto::PlayerColor::Red),
-        "BLUE" => Ok(ttr_proto::PlayerColor::Blue),
-        "GREEN" => Ok(ttr_proto::PlayerColor::Green),
-        "YELLOW" => Ok(ttr_proto::PlayerColor::Yellow),
-        "BLACK" => Ok(ttr_proto::PlayerColor::Black),
+        "PINK" => Ok(ttr_proto::PlayerColor::Pink),
+        "CYAN" => Ok(ttr_proto::PlayerColor::Cyan),
+        "LIME" => Ok(ttr_proto::PlayerColor::Lime),
+        "BROWN" => Ok(ttr_proto::PlayerColor::Brown),
+        "LAVENDER" => Ok(ttr_proto::PlayerColor::Lavender),
+        "INDIGO" => Ok(ttr_proto::PlayerColor::Indigo),
         _ => Err(format!("colore sconosciuto: {}", s)),
     }
 }
@@ -1269,7 +1270,7 @@ mod tests {
             players: vec![SavePlayer {
                 id: "p1".into(),
                 name: "Gino".into(),
-                color: "BLUE".into(),
+                color: "CYAN".into(),
                 token_hash: Some(hash_token("t")),
             }],
             actions: vec![],

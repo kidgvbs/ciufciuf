@@ -309,8 +309,8 @@ async fn resume_inverted_order() {
     let map = usa_map();
 
     let game = create_game_with_seed(&server.base_url, "ResumeInverted", Some(42)).await;
-    let pa = join_game(&server.base_url, &game.game_id, "Alice", Some("RED")).await;
-    let pb = join_game(&server.base_url, &game.game_id, "Bob", Some("BLUE")).await;
+    let pa = join_game(&server.base_url, &game.game_id, "Alice", Some("PINK")).await;
+    let pb = join_game(&server.base_url, &game.game_id, "Bob", Some("CYAN")).await;
     start_game(&server.base_url, &game.game_id, &game.host_token).await;
 
     let a_ws = WsClient::connect(&server, &game.game_id, &pa.player_id, &pa.token).await;
@@ -485,13 +485,13 @@ async fn resume_inverted_order() {
     );
     assert_eq!(
         snap.players_summary[0].color,
-        ttr_proto::PlayerColor::Red,
-        "Alice colore Red"
+        ttr_proto::PlayerColor::Pink,
+        "Alice colore Pink"
     );
     assert_eq!(
         snap.players_summary[1].color,
-        ttr_proto::PlayerColor::Blue,
-        "Bob colore Blue"
+        ttr_proto::PlayerColor::Cyan,
+        "Bob colore Cyan"
     );
 
     // Verifica che i biglietti siano preservati.
@@ -607,8 +607,8 @@ async fn post_start(base: &str, game_id: &str, host_token: &str) -> reqwest::Res
 async fn r1_resume_inverted_rejoin_keeps_turn_and_save() {
     let server = TestServer::start().await;
     let g = create_game_with_seed(&server.base_url, "R1", Some(42)).await;
-    let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
-    let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("PINK")).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("CYAN")).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
     let mut a = WsClient::connect(&server, &g.game_id, &pa.player_id, &pa.token).await;
     let s0 = next_snapshot(&mut a).await;
@@ -688,8 +688,8 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
     let server = TestServer::start().await;
     let map = usa_map();
     let g = create_game_with_seed(&server.base_url, "R1Routes", Some(42)).await;
-    let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
-    let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
+    let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("PINK")).await;
+    let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("CYAN")).await;
     start_game(&server.base_url, &g.game_id, &g.host_token).await;
 
     let save = server.saves_dir.join(format!("{}.json", g.game_id));
@@ -897,8 +897,8 @@ fn valid_save() -> ttr_server::save::SaveData {
         seed: 42,
         first_player: 0,
         players: vec![
-            save_player("p1", "Alice", "RED"),
-            save_player("p2", "Bob", "BLUE"),
+            save_player("p1", "Alice", "PINK"),
+            save_player("p2", "Bob", "CYAN"),
         ],
         actions: vec![],
         status: "in_progress".into(),
@@ -963,7 +963,7 @@ fn save_with_too_few_players_is_rejected() {
 fn save_with_too_many_players_is_rejected() {
     let mut save = valid_save();
     save.players = (0..6)
-        .map(|i| save_player(&format!("p{i}"), &format!("N{i}"), "RED"))
+        .map(|i| save_player(&format!("p{i}"), &format!("N{i}"), "PINK"))
         .collect();
     assert_rejected(save, "numero di giocatori");
 }
@@ -993,8 +993,8 @@ fn save_with_names_equal_ignoring_case_is_rejected() {
 #[test]
 fn save_with_duplicate_color_is_rejected() {
     let mut save = valid_save();
-    save.players[0].color = "RED".into();
-    save.players[1].color = "RED".into();
+    save.players[0].color = "PINK".into();
+    save.players[1].color = "PINK".into();
     let err = replay(&save).err().expect("colori duplicati");
     assert!(err.contains("motore non inizializzabile"), "{err}");
 }
@@ -1002,7 +1002,7 @@ fn save_with_duplicate_color_is_rejected() {
 #[test]
 fn save_with_unknown_color_is_rejected() {
     let mut save = valid_save();
-    save.players[0].color = "PINK".into();
+    save.players[0].color = "ORANGE".into();
     save.players[1].color = "PINK".into();
     assert_rejected(save, "colore sconosciuto");
 }
@@ -1037,8 +1037,8 @@ async fn server_writes_rules_version_in_save() {
     let path = server.saves_dir.join(format!("{}.json", g.game_id));
     wait_for_file(&path).await;
     let save = read_save(&path);
-    assert_eq!(ttr_core::RULES_VERSION, 2);
-    assert_eq!(save["rulesVersion"], 2);
+    assert_eq!(ttr_core::RULES_VERSION, 3);
+    assert_eq!(save["rulesVersion"], 3);
     assert_eq!(save["formatVersion"], 2);
 }
 

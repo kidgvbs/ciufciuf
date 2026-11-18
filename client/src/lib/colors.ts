@@ -29,12 +29,23 @@ export const CARD_COLOR_NAME: Record<CardColor, string> = {
   LOCOMOTIVE: 'Jolly',
 };
 
-/** Mappa PlayerColor → colore CSS per trenini/plance. */
+/** Mappa PlayerColor → colore CSS per trenini/plance (fuori dalla palette delle tratte). */
 export const PLAYER_COLOR_CSS: Record<PlayerColor, string> = {
-  RED: '#c0392b',
-  BLUE: '#2471a3',
-  GREEN: '#1e8449',
-  YELLOW: '#eab308',
-  BLACK: '#2b2620',
+  PINK: '#ff5fa2',
+  CYAN: '#22d3ee',
+  LIME: '#a3e635',
+  BROWN: '#8b5a2b',
+  LAVENDER: '#c4b5fd',
+  INDIGO: '#3f3cbb',
+};
+
+/** Nome italiano di ogni colore giocatore. */
+export const PLAYER_COLOR_NAME: Record<PlayerColor, string> = {
+  PINK: 'Rosa',
+  CYAN: 'Ciano',
+  LIME: 'Lime',
+  BROWN: 'Marrone',
+  LAVENDER: 'Lavanda',
+  INDIGO: 'Indaco',
 };
 

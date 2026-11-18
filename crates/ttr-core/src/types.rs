@@ -180,16 +180,9 @@ pub struct DeckConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InitialTickets {
-    /// Biglietti distribuiti per mazzo (forma classica); vuoto con `chooseFrom`.
+    /// Biglietti distribuiti per mazzo a ogni giocatore, da cui scegliere cosa tenere.
     #[serde(default)]
     pub dealt: Vec<TicketDealtEntry>,
-    /// Draft con scelta del mazzo: ogni giocatore pesca `count` biglietti in totale dai
-    /// mazzi indicati, con le quote che sceglie.
-    #[serde(rename = "chooseFrom", default)]
-    pub choose_from: Option<Vec<String>>,
-    /// Biglietti pescati nel draft con `chooseFrom`; 0 senza.
-    #[serde(default)]
-    pub count: u32,
     #[serde(rename = "keepMin")]
     pub keep_min: u32,
 }
@@ -198,6 +191,9 @@ pub struct InitialTickets {
 pub struct TicketDealtEntry {
     pub deck: String,
     pub count: u32,
+    /// Minimo di biglietti di questo deck da tenere nel draft iniziale (0 = nessun minimo).
+    #[serde(rename = "keepMin", default)]
+    pub keep_min: u32,
     /// Massimo di biglietti di questo deck tenibili nel draft iniziale.
     #[serde(rename = "keepMax", default)]
     pub keep_max: Option<u32>,
@@ -205,13 +201,12 @@ pub struct TicketDealtEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TicketDraw {
-    /// Mazzo di pesca (forma classica); vuoto con `chooseFrom`.
-    #[serde(default)]
+    /// Mazzo da cui si pesca a partita in corso.
     pub deck: String,
-    /// Pesca con scelta del mazzo: il giocatore annuncia quanti biglietti pescare da
-    /// ciascuno di questi mazzi (somma = `count`, o i rimasti se meno).
-    #[serde(rename = "chooseFrom", default)]
-    pub choose_from: Option<Vec<String>>,
+    /// Altri mazzi che, finito il draft iniziale, si fondono con `deck` in un'unica pila
+    /// mescolata (Germany: lunghi + corti). Gli scartati vanno in fondo a quella pila.
+    #[serde(rename = "mergeDecks", default)]
+    pub merge_decks: Vec<String>,
     pub count: u32,
     #[serde(rename = "keepMin")]
     pub keep_min: u32,
@@ -226,11 +221,13 @@ pub struct Bonus {
 }
 
 /// Regola di scelta del draft iniziale per un deck: biglietti distribuiti a ogni
-/// giocatore e massimo tenibile (`None` = nessun limite oltre a quelli distribuiti).
+/// giocatore, minimo da tenere e massimo tenibile (`None` = nessun limite oltre a quelli
+/// distribuiti).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeckKeepRule {
     pub deck: String,
     pub count: u32,
+    pub min: u32,
     pub max: Option<u32>,
 }
 
@@ -245,6 +242,7 @@ impl Ruleset {
                 rules.push(DeckKeepRule {
                     deck: entry.deck.clone(),
                     count: entry.count,
+                    min: entry.keep_min,
                     max: entry.keep_max,
                 });
                 continue;
@@ -256,6 +254,7 @@ impl Ruleset {
                 .unwrap_or(rule.count)
                 .saturating_add(entry.keep_max.unwrap_or(entry.count));
             rule.count = rule.count.saturating_add(entry.count);
+            rule.min = rule.min.saturating_add(entry.keep_min);
             rule.max = (!unlimited).then_some(kept);
         }
         rules

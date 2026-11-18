@@ -368,10 +368,7 @@ impl Engine {
                 player_index,
                 source,
             } => self.handle_draw_train_card(*player_index, *source)?,
-            Action::DrawTickets {
-                player_index,
-                counts,
-            } => self.handle_draw_tickets(*player_index, counts)?,
+            Action::DrawTickets { player_index } => self.handle_draw_tickets(*player_index)?,
             Action::ChooseTickets { player_index, keep } => {
                 self.handle_choose_tickets(*player_index, keep)?
             }
@@ -549,17 +546,39 @@ impl Engine {
     /// un solo binario per giocatore; con meno di `doubleRouteMinPlayers` giocatori, e se il
     /// gruppo non è `alwaysOpen`, una volta preso un binario gli altri sono bloccati.
     pub(crate) fn lane_block(&self, player_index: usize, info: &RouteInfo) -> Option<LaneBlock> {
-        let mut group_taken = false;
-        for lane in &info.group {
-            if let Some(claim) = self.claimed_routes.get(lane) {
-                if claim.claimed_by == player_index {
-                    return Some(LaneBlock::SamePlayer);
-                }
-                group_taken = true;
-            }
+        let same_player = info.group.iter().any(|lane| {
+            self.claimed_routes
+                .get(lane)
+                .is_some_and(|c| c.claimed_by == player_index)
+        });
+        if same_player {
+            return Some(LaneBlock::SamePlayer);
         }
+        self.group_closed(info).then_some(LaneBlock::Blocked)
+    }
+
+    /// Un altro binario del gruppo parallelo è preso e la partita ha meno di
+    /// `doubleRouteMinPlayers` giocatori (gruppo non `alwaysOpen`): nessuno può reclamare
+    /// i binari ancora liberi del gruppo.
+    fn group_closed(&self, info: &RouteInfo) -> bool {
         let few_players = self.players.len() < self.ruleset.double_route_min_players as usize;
-        (group_taken && few_players && !info.always_open).then_some(LaneBlock::Blocked)
+        few_players
+            && !info.always_open
+            && info
+                .group
+                .iter()
+                .any(|lane| self.claimed_routes.contains_key(lane))
+    }
+
+    /// Id dei binari liberi che nessun giocatore può più reclamare perché un altro binario
+    /// del loro gruppo parallelo è preso (vedi `lane_block`); in ordine di id.
+    #[must_use]
+    pub fn blocked_route_ids(&self) -> Vec<RouteId> {
+        self.route_info
+            .iter()
+            .filter(|(id, info)| !self.claimed_routes.contains_key(*id) && self.group_closed(info))
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     // ── Test helpers (modificano o espongono lo stato interno) ───────
@@ -651,8 +670,8 @@ impl Engine {
         self.current_player_index = current_player;
     }
 
-    /// Mazzo biglietti di pesca (`ticketDraw.deck`), dalla cima in fondo; vuoto con
-    /// `ticketDraw.chooseFrom` (vedi `ticket_pile_of`).
+    /// Mazzo biglietti di pesca (`ticketDraw.deck`), dalla cima in fondo; con
+    /// `ticketDraw.mergeDecks` è la pila unita solo dopo il draft iniziale.
     #[cfg(any(test, feature = "test-helpers"))]
     #[must_use]
     pub fn ticket_pile(&self) -> &[TicketId] {

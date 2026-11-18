@@ -3,7 +3,7 @@
   // selezionato appare sulla mappa con la linea tratteggiata del suo colore; deselezionato, sparisce.
 
   import type { TicketInfo } from '../proto';
-  import { canConfirmTicketChoice, ticketChoiceHint, type TicketChoiceRules } from '../ticket-offer';
+  import { canConfirmTicketChoice, ticketChoiceHint, ticketChoiceProblem, type TicketChoiceRules } from '../ticket-offer';
   import { gameMap } from '../game-map.svelte.ts';
   import { offeredTicketPins, ticketPinColor } from '../map-utils';
   import MapSvg from './MapSvg.svelte';
@@ -43,6 +43,7 @@
   }
 
   const canConfirm = $derived(canConfirmTicketChoice(selected, choice));
+  const problem = $derived(ticketChoiceProblem(selected, choice, (id) => ticketMap.get(id)?.deck));
 
   function confirm() {
     onConfirm([...selected]);
@@ -134,6 +135,9 @@
         {choice ? ticketChoiceHint(choice, (id) => ticketMap.get(id)?.deck) : 'Scegli i biglietti da tenere'}
         &mdash; selezionati: {selected.size}
       </p>
+      {#if problem}
+        <p class="problem" role="status">{problem}</p>
+      {/if}
     </div>
 
     <!-- Mappa con i soli biglietti selezionati: niente onRouteTap, solo pan/zoom. -->
@@ -222,6 +226,11 @@
     color: var(--chrome-muted);
     font-size: 0.85rem;
     margin: 0 0 1rem;
+  }
+  .problem {
+    color: #f5b041;
+    font-size: 0.85rem;
+    margin: -0.5rem 0 1rem;
   }
   /* Biglietti su due colonne anche in ritratto: tutti visibili e più spazio alla mappa */
   .ticket-list {

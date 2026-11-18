@@ -278,8 +278,8 @@ async fn lobby_players_after_join() {
     let server = TestServer::start().await;
 
     let game = create_game(&server.base_url, "F4LobbyTest").await;
-    let _pa = join_game(&server.base_url, &game.game_id, "Alice", Some("RED")).await;
-    let _pb = join_game(&server.base_url, &game.game_id, "Bob", Some("BLUE")).await;
+    let _pa = join_game(&server.base_url, &game.game_id, "Alice", Some("PINK")).await;
+    let _pb = join_game(&server.base_url, &game.game_id, "Bob", Some("CYAN")).await;
 
     // Verifica GET /api/games → players_joined == 2.
     let client = reqwest::Client::new();
@@ -351,10 +351,10 @@ async fn r4_lobby_input_validation() {
     let base = server.base_url.as_str();
     let id = g.game_id.as_str();
 
-    let ok = post_join(base, id, serde_json::json!({"name":"Alice","color":"RED"})).await;
+    let ok = post_join(base, id, serde_json::json!({"name":"Alice","color":"PINK"})).await;
     assert_eq!(ok.0, 200, "primo join valido: {}", ok.1);
 
-    let dup_color = post_join(base, id, serde_json::json!({"name":"Bob","color":"RED"})).await;
+    let dup_color = post_join(base, id, serde_json::json!({"name":"Bob","color":"PINK"})).await;
     assert_rejected(&dup_color, 409, "COLOR_TAKEN");
 
     for name in [
@@ -604,8 +604,8 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
             row("europe_1912", "1912", 55, 4, 2, 3, &[lp], 0),
             row("europe_big_cities", "Grandi Città", 45, 5, 2, 4, &[lp], 9),
             row("europe_mega", "Mega", 101, 7, 3, 3, &[lp], 0),
-            row("germany", "Deutschland", 62, 4, 2, 4, &[gt], 0),
-            row("germany_2017", "Passeggeri", 89, 4, 2, 4, &[gt], 0),
+            row("germany", "Deutschland", 62, 5, 2, 4, &[gt], 0),
+            row("germany_2017", "Passeggeri", 89, 5, 2, 4, &[gt], 0),
             row("poland", "Standard", 35, 4, 2, 3, &[], 0),
             row("usa_v2", "Standard", 33, 4, 2, 3, &[lp], 0),
             row("usa_1910", "1910", 35, 4, 2, 3, &[gt], 0),
@@ -639,7 +639,6 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
                     "tunnels": true,
                     "ferries": true,
                     "stations": true,
-                    "ticketDrawChoice": false,
                     "countryCards": false,
                     "passengers": false
             }),
@@ -665,7 +664,6 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
                     "tunnels": false,
                     "ferries": false,
                     "stations": false,
-                    "ticketDrawChoice": false,
                     "countryCards": false,
                     "passengers": false
             }),
@@ -674,11 +672,11 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     // Le regole nuove compaiono nel catalogo solo dove il ruleset le prevede.
     let flags = |id: &str| {
         let r = by_id(id);
-        [&r["ticketDrawChoice"], &r["countryCards"], &r["passengers"]].map(|v| v.as_bool())
+        [&r["countryCards"], &r["passengers"]].map(|v| v.as_bool())
     };
-    assert_eq!(flags("germany"), [Some(true), Some(false), Some(false)]);
-    assert_eq!(flags("germany_2017"), [Some(true), Some(false), Some(true)]);
-    assert_eq!(flags("poland"), [Some(false), Some(true), Some(false)]);
+    assert_eq!(flags("germany"), [Some(false), Some(false)]);
+    assert_eq!(flags("germany_2017"), [Some(false), Some(true)]);
+    assert_eq!(flags("poland"), [Some(true), Some(false)]);
 }
 
 /// GET /api/rulesets/{id}/layout serve il layout schematico della mappa del ruleset

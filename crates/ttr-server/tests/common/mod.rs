@@ -440,7 +440,6 @@ impl Default for PlayerView {
                 station_cost: 0,
                 tunnel: None,
                 ticket_choice: None,
-                ticket_draw: None,
             },
             public: None,
             last_error: None,

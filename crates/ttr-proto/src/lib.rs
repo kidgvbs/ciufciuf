@@ -40,11 +40,12 @@ pub enum CardColor {
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 #[ts(export)]
 pub enum PlayerColor {
-    Red,
-    Blue,
-    Green,
-    Yellow,
-    Black,
+    Pink,
+    Cyan,
+    Lime,
+    Brown,
+    Lavender,
+    Indigo,
 }
 
 // ── Stati di gioco ──────────────────────────────────────────────────
@@ -133,11 +134,6 @@ pub enum DrawSource {
 #[ts(export)]
 pub struct DrawTicketsPayload {
     pub player_id: String,
-    /// Ruleset con `ticketDrawChoice`: biglietti da pescare per mazzo. Assente per i ruleset
-    /// classici (un solo mazzo di pesca).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[ts(optional)]
-    pub counts: Option<Vec<TicketDeckCount>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
@@ -277,6 +273,15 @@ pub struct PublicState {
     /// passeggeri.
     #[serde(default)]
     pub passengers: Vec<CityPassengers>,
+    /// Id dei binari liberi che nessun giocatore può più reclamare: un altro binario del
+    /// loro gruppo parallelo è preso e la partita ha meno di `doubleRouteMinPlayers`
+    /// giocatori (gruppo non `alwaysOpen`). Ordinati, senza duplicati; mai binari già presi.
+    #[serde(default)]
+    pub blocked_route_ids: Vec<RouteId>,
+    /// Biglietti ancora pescabili con `DRAW_TICKETS` a partita in corso (pila di
+    /// `ticketDraw`; per Germany la pila unita di lunghi e corti).
+    #[serde(default)]
+    pub ticket_deck_size: u32,
 }
 
 /// Numero massimo di voci in `PublicState.recent_moves`.
@@ -463,33 +468,6 @@ pub struct LegalMoves {
     /// ancora scelto) e in `TICKET_CHOICE` per il giocatore di turno.
     #[serde(default)]
     pub ticket_choice: Option<TicketChoiceMoves>,
-    /// Ruleset con `ticketDrawChoice`: la pesca di biglietti va fatta con le quote per mazzo
-    /// (`DRAW_TICKETS.counts`), nel draft iniziale (a chi non ha ancora biglietti offerti) e
-    /// a inizio turno; `None` altrove. Con `Some` anche `can_draw_tickets` è `true`.
-    #[serde(default)]
-    pub ticket_draw: Option<TicketDrawMoves>,
-}
-
-/// Quanti biglietti pescare da un mazzo (`deck` = nome in `ticketDecks`, es. `"regular"`,
-/// `"long"`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct TicketDeckCount {
-    pub deck: String,
-    pub count: u32,
-}
-
-/// Pesca di biglietti con le quote per mazzo (ruleset con `ticketDrawChoice`).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
-#[ts(export)]
-pub struct TicketDrawMoves {
-    /// Biglietti da pescare in tutto: la somma delle quote di `DRAW_TICKETS.counts` deve
-    /// essere esattamente questa (meno di `count` del ruleset se i mazzi ne hanno meno).
-    pub total: u32,
-    /// Biglietti rimasti in ogni mazzo ammesso, nell'ordine del ruleset: la quota di un
-    /// mazzo non può superarli. Nel draft iniziale sono limitati a `total`, perché le
-    /// quote scelte dagli altri sono private.
-    pub available: Vec<TicketDeckCount>,
 }
 
 /// Valori delle carte Paese di un Paese (Poland), ordine dall'alto in basso per le pile,
@@ -535,11 +513,14 @@ pub struct TicketChoiceMoves {
     pub limits: Vec<TicketKeepLimit>,
 }
 
-/// Al massimo `max` biglietti tra `ticket_ids` (nell'ordine di offerta).
+/// Tra `ticket_ids` (nell'ordine di offerta) se ne tengono almeno `min` e al massimo `max`.
+/// Un gruppo compare solo se il ruleset fissa un minimo o un massimo per quel mazzo;
+/// senza massimo, `max` è il numero di biglietti del gruppo.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct TicketKeepLimit {
     pub ticket_ids: Vec<TicketId>,
+    pub min: u32,
     pub max: u32,
 }
 
@@ -637,11 +618,12 @@ mod tests {
     #[test]
     fn roundtrip_player_color() {
         let vals = [
-            PlayerColor::Red,
-            PlayerColor::Blue,
-            PlayerColor::Green,
-            PlayerColor::Yellow,
-            PlayerColor::Black,
+            PlayerColor::Pink,
+            PlayerColor::Cyan,
+            PlayerColor::Lime,
+            PlayerColor::Brown,
+            PlayerColor::Lavender,
+            PlayerColor::Indigo,
         ];
         for v in vals {
             let json = serde_json::to_string(&v).unwrap();
@@ -710,7 +692,6 @@ mod tests {
             }),
             InboundAction::DrawTickets(DrawTicketsPayload {
                 player_id: player_id.clone(),
-                counts: None,
                 client_seq: None,
             }),
             InboundAction::ChooseTickets(ChooseTicketsPayload {
@@ -768,7 +749,6 @@ mod tests {
     fn roundtrip_inbound_draw_tickets() {
         let msg = InboundAction::DrawTickets(DrawTicketsPayload {
             player_id: "p2".into(),
-            counts: None,
             client_seq: None,
         });
         let json = serde_json::to_string(&msg).unwrap();
@@ -777,42 +757,6 @@ mod tests {
         match back {
             InboundAction::DrawTickets(p) => assert_eq!(p.player_id, "p2"),
             _ => panic!("wrong variant"),
-        }
-    }
-
-    /// `DRAW_TICKETS` con le quote per mazzo; senza `counts` (client classici) resta vuoto.
-    #[test]
-    fn inbound_draw_tickets_counts_wire_shape() {
-        let with: InboundAction = serde_json::from_str(
-            r#"{"actionType":"DRAW_TICKETS","player_id":"p1","counts":[{"deck":"regular","count":3},{"deck":"long","count":1}],"client_seq":4}"#,
-        )
-        .unwrap();
-        match &with {
-            InboundAction::DrawTickets(p) => {
-                assert_eq!(
-                    p.counts.as_deref(),
-                    Some(
-                        &[
-                            TicketDeckCount {
-                                deck: "regular".into(),
-                                count: 3
-                            },
-                            TicketDeckCount {
-                                deck: "long".into(),
-                                count: 1
-                            },
-                        ][..]
-                    )
-                );
-                assert_eq!(p.client_seq, Some(4));
-            }
-            other => panic!("wrong variant {other:?}"),
-        }
-        let legacy: InboundAction =
-            serde_json::from_str(r#"{"actionType":"DRAW_TICKETS","player_id":"p1"}"#).unwrap();
-        match legacy {
-            InboundAction::DrawTickets(p) => assert_eq!(p.counts, None),
-            other => panic!("wrong variant {other:?}"),
         }
     }
 
@@ -894,6 +838,8 @@ mod tests {
             ],
             country_stacks: vec![],
             passengers: vec![],
+            blocked_route_ids: vec![],
+            ticket_deck_size: 0,
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -945,6 +891,8 @@ mod tests {
             recent_moves: vec![],
             country_stacks: vec![],
             passengers: vec![],
+            blocked_route_ids: vec![],
+            ticket_deck_size: 0,
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -978,6 +926,8 @@ mod tests {
             recent_moves: vec![],
             country_stacks: vec![],
             passengers: vec![],
+            blocked_route_ids: vec![],
+            ticket_deck_size: 0,
         };
         let json = serde_json::to_string(&state).unwrap();
         let back: PublicState = serde_json::from_str(&json).unwrap();
@@ -1013,16 +963,16 @@ mod tests {
                     keep_min: 3,
                     limits: vec![TicketKeepLimit {
                         ticket_ids: vec!["a_b".into()],
+                        min: 0,
                         max: 1,
                     }],
                 }),
-                ticket_draw: None,
             },
         };
         let json = serde_json::to_string(&state).unwrap();
         assert!(
             json.contains(
-                r#""ticket_choice":{"keep_min":3,"limits":[{"ticket_ids":["a_b"],"max":1}]}"#
+                r#""ticket_choice":{"keep_min":3,"limits":[{"ticket_ids":["a_b"],"min":0,"max":1}]}"#
             ),
             "{json}"
         );
@@ -1076,6 +1026,8 @@ mod tests {
             recent_moves: vec![],
             country_stacks: vec![],
             passengers: vec![],
+            blocked_route_ids: vec![],
+            ticket_deck_size: 0,
         });
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"PUBLIC_STATE\""));
@@ -1133,6 +1085,8 @@ mod tests {
                 recent_moves: vec![],
                 country_stacks: vec![],
                 passengers: vec![],
+                blocked_route_ids: vec![],
+                ticket_deck_size: 0,
             },
             private: Some(PrivateState {
                 seq: 5,
@@ -1148,7 +1102,6 @@ mod tests {
                     station_cost: 0,
                     tunnel: None,
                     ticket_choice: None,
-                    ticket_draw: None,
                 },
             }),
         });
@@ -1186,6 +1139,8 @@ mod tests {
                 recent_moves: vec![],
                 country_stacks: vec![],
                 passengers: vec![],
+                blocked_route_ids: vec![],
+                ticket_deck_size: 0,
             },
             private: None,
         });

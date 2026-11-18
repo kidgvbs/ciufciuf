@@ -5,6 +5,7 @@ import {
   nextDismissedKey,
   canConfirmTicketChoice,
   ticketChoiceHint,
+  ticketChoiceProblem,
   type TicketChoiceRules,
 } from '../ticket-offer';
 
@@ -98,11 +99,20 @@ describe('conferma della scelta dei biglietti', () => {
   });
 
   it('un gruppo oltre il suo massimo blocca la conferma', () => {
-    const r = rules(3, [{ ticket_ids: ['l1', 'l2'], max: 1 }]);
+    const r = rules(3, [{ ticket_ids: ['l1', 'l2'], min: 0, max: 1 }]);
     expect(canConfirmTicketChoice(sel('l1', 'a', 'b'), r)).toBe(true);
     expect(canConfirmTicketChoice(sel('l1', 'l2', 'a'), r)).toBe(false);
     expect(canConfirmTicketChoice(sel('l1', 'l2', 'a', 'b'), r)).toBe(false);
     expect(canConfirmTicketChoice(sel('a', 'b', 'c'), r)).toBe(true);
+  });
+
+  it('un gruppo sotto il suo minimo blocca la conferma (Germany: almeno 1 corto)', () => {
+    // 2 lunghi + 3 corti, tieni almeno 2 di cui almeno 1 corto.
+    const r = rules(2, [{ ticket_ids: ['r1', 'r2', 'r3'], min: 1, max: 3 }]);
+    expect(canConfirmTicketChoice(sel('l1', 'l2'), r)).toBe(false);
+    expect(canConfirmTicketChoice(sel('l1', 'r1'), r)).toBe(true);
+    expect(canConfirmTicketChoice(sel('r1', 'r2'), r)).toBe(true);
+    expect(canConfirmTicketChoice(sel('r1'), r)).toBe(false);
   });
 
   it('ticketChoiceHint: solo minimo, singolare e plurale', () => {
@@ -113,21 +123,40 @@ describe('conferma della scelta dei biglietti', () => {
 
   it('ticketChoiceHint: gruppo di biglietti lunghi', () => {
     const deck = (id: string) => (id.startsWith('l') ? 'long' : 'regular');
-    expect(ticketChoiceHint(rules(3, [{ ticket_ids: ['l1', 'l2'], max: 1 }]), deck)).toBe(
+    expect(ticketChoiceHint(rules(3, [{ ticket_ids: ['l1', 'l2'], min: 0, max: 1 }]), deck)).toBe(
       'Tieni almeno 3 biglietti, al massimo 1 biglietto lungo',
     );
-    expect(ticketChoiceHint(rules(3, [{ ticket_ids: ['l1', 'l2', 'l3'], max: 2 }]), deck)).toBe(
+    expect(ticketChoiceHint(rules(3, [{ ticket_ids: ['l1', 'l2', 'l3'], min: 0, max: 2 }]), deck)).toBe(
       'Tieni almeno 3 biglietti, al massimo 2 biglietti lunghi',
+    );
+  });
+
+  it('ticketChoiceHint: gruppo senza tetto con minimo (corti di Germany)', () => {
+    const deck = (id: string) => (id.startsWith('l') ? 'long' : 'regular');
+    expect(ticketChoiceHint(rules(2, [{ ticket_ids: ['r1', 'r2', 'r3'], min: 1, max: 3 }]), deck)).toBe(
+      'Tieni almeno 2 biglietti, almeno 1 biglietto corto',
     );
   });
 
   it('ticketChoiceHint: gruppo non lungo o deck sconosciuto', () => {
     const deck = (id: string) => (id === 'l1' ? 'long' : 'regular');
-    expect(ticketChoiceHint(rules(2, [{ ticket_ids: ['l1', 'r1'], max: 1 }]), deck)).toBe(
+    expect(ticketChoiceHint(rules(2, [{ ticket_ids: ['l1', 'r1'], min: 0, max: 1 }]), deck)).toBe(
       'Tieni almeno 2 biglietti, al massimo 1 biglietto di questo gruppo',
     );
-    expect(ticketChoiceHint(rules(2, [{ ticket_ids: ['x'], max: 2 }]), () => undefined)).toBe(
-      'Tieni almeno 2 biglietti, al massimo 2 biglietti di questo gruppo',
+    expect(ticketChoiceHint(rules(2, [{ ticket_ids: ['x', 'y'], min: 0, max: 1 }]), () => undefined)).toBe(
+      'Tieni almeno 2 biglietti, al massimo 1 biglietto di questo gruppo',
     );
+  });
+
+  it('ticketChoiceProblem: messaggio per il gruppo violato, null se tutto ok', () => {
+    const deck = (id: string) => (id.startsWith('l') ? 'long' : 'regular');
+    const r = rules(2, [
+      { ticket_ids: ['l1', 'l2'], min: 0, max: 1 },
+      { ticket_ids: ['r1', 'r2', 'r3'], min: 1, max: 3 },
+    ]);
+    expect(ticketChoiceProblem(sel('l1', 'r1'), r, deck)).toBeNull();
+    expect(ticketChoiceProblem(sel('l1'), r, deck)).toBe('Tieni almeno 1 biglietto corto');
+    expect(ticketChoiceProblem(sel('l1', 'l2', 'r1'), r, deck)).toBe('Tieni al massimo 1 biglietto lungo');
+    expect(ticketChoiceProblem(sel('r1'), null, deck)).toBeNull();
   });
 });

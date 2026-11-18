@@ -7,8 +7,8 @@ use ttr_core::{Action, ActionRecord, GameEvent};
 use ttr_proto::{
     BorrowedRoute, CardColor, CityPassengers, ClaimedRoute, CountryCards, ErrorReason,
     FinalScoreInfo, GameState, LegalMoves, PassengerCount, PlayerSummary, RECENT_MOVES_MAX,
-    RecentMove, StationPlacement, TicketChoiceMoves, TicketDeckCount, TicketDrawMoves, TicketInfo,
-    TicketKeepLimit, TunnelDecisionMoves, TunnelOutcome, TunnelReveal,
+    RecentMove, StationPlacement, TicketChoiceMoves, TicketInfo, TicketKeepLimit,
+    TunnelDecisionMoves, TunnelOutcome, TunnelReveal,
 };
 
 use crate::session::{GameSession, SessionPlayer};
@@ -62,6 +62,14 @@ pub(crate) fn build_public_state(
 
     // Numero di carte nel mazzo coperto (0 pre-start, Engine non ancora costruito).
     let deck_size = session.engine.as_ref().map(|e| e.deck_size()).unwrap_or(0);
+    let blocked_route_ids: Vec<String> = session
+        .engine
+        .as_ref()
+        .map(|e| e.blocked_route_ids())
+        .unwrap_or_default();
+    let ticket_deck_size = session.engine.as_ref().map_or(0, |e| {
+        u32::try_from(e.ticket_deck_size()).unwrap_or(u32::MAX)
+    });
 
     let claimed_routes: Vec<ClaimedRoute> = if let Some(ref engine) = session.engine {
         let mut claimed: Vec<ClaimedRoute> = Vec::new();
@@ -134,6 +142,8 @@ pub(crate) fn build_public_state(
         last_round_trigger_player_id,
         visible_deck,
         deck_size,
+        blocked_route_ids,
+        ticket_deck_size,
         claimed_routes,
         players_summary,
         tunnel_reveal,
@@ -200,7 +210,7 @@ fn recent_moves_from_log<'a>(
         start -= 1;
     }
 
-    // Il draft iniziale non compare: con `chooseFrom` comprende anche le pescate con le quote.
+    // Il draft iniziale non compare.
     // Finisce col record di `InitialDraftComplete`; senza quel record il log è ancora tutto
     // draft se contiene solo azioni sui biglietti.
     let draft_end = log
@@ -529,18 +539,8 @@ pub(crate) fn build_private_state(
                     .into_iter()
                     .map(|l| TicketKeepLimit {
                         ticket_ids: l.ticket_ids,
+                        min: l.min,
                         max: l.max,
-                    })
-                    .collect(),
-            }),
-            ticket_draw: lm.ticket_draw.map(|d| TicketDrawMoves {
-                total: d.total,
-                available: d
-                    .available
-                    .into_iter()
-                    .map(|a| TicketDeckCount {
-                        deck: a.deck,
-                        count: a.count,
                     })
                     .collect(),
             }),
@@ -1038,10 +1038,7 @@ mod tests {
             )
         };
         let draw_tickets = rec(
-            Action::DrawTickets {
-                player_index: 1,
-                counts: Default::default(),
-            },
+            Action::DrawTickets { player_index: 1 },
             vec![GameEvent::TicketsOffered {
                 player_index: 1,
                 ticket_ids: vec!["a".into(), "b".into(), "c".into()],

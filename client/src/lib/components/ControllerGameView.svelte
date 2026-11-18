@@ -9,8 +9,7 @@
   import { nextClientSeq } from '../client-seq';
   import { createDrawLatch } from '../ticket-draw';
   import { offerKey, isDialogOpen, nextDismissedKey } from '../ticket-offer';
-  import { routePoints } from '../map-utils';
-  import { mostCommonColor, paymentCards, paymentCovered, suggestLocos } from '../payment';
+  import { payableRouteIds } from '../payment';
   import { rulesetHasStations } from '../scores';
   import {
     addedColors,
@@ -20,15 +19,16 @@
     rectOf,
     type DrawSource,
   } from '../draw-animation';
-  import type { InboundAction, CardColor, TicketDeckCount, TunnelReveal } from '../proto';
-  import { passengerChoices, passengerColorCss, passengerColorName, passengerPicks } from '../passengers';
+  import type { InboundAction, CardColor, PassengerPick, TunnelReveal } from '../proto';
+  import { passengerChoices } from '../passengers';
   import TicketChoiceDialog from './TicketChoiceDialog.svelte';
-  import TicketDrawPicker from './TicketDrawPicker.svelte';
   import MapSvg from './MapSvg.svelte';
   import TrainCard from './TrainCard.svelte';
-  import TicketCard from './TicketCard.svelte';
   import PaymentPanel from './PaymentPanel.svelte';
   import TunnelCards from './TunnelCards.svelte';
+  import ClaimDialog from './ClaimDialog.svelte';
+  import TicketColumn from './TicketColumn.svelte';
+  import DrawArea from './DrawArea.svelte';
   import { gameMap } from '../game-map.svelte.ts';
 
   const mapData = $derived(gameMap.state.data);
@@ -38,25 +38,6 @@
 
   function cityName(id: string): string {
     return cityMap.get(id)?.name ?? id;
-  }
-
-  const CARD_COLORS: CardColor[] = [
-    'RED', 'ORANGE', 'YELLOW', 'GREEN', 'BLUE', 'PURPLE', 'BLACK', 'WHITE',
-  ];
-
-  /** Colore carta corrispondente al colore della rotta (null = grigia). */
-  function routeColorToCard(color: string): CardColor | null {
-    const m: Record<string, CardColor> = {
-      Red: 'RED', Orange: 'ORANGE', Yellow: 'YELLOW', Green: 'GREEN',
-      Blue: 'BLUE', Purple: 'PURPLE', Black: 'BLACK', White: 'WHITE',
-    };
-    return m[color] ?? null;
-  }
-
-  /** Nome italiano del colore di una rotta ("Grigia" se non ha un colore carta). */
-  function routeColorName(color: string): string {
-    const card = routeColorToCard(color);
-    return card ? CARD_COLOR_NAME[card] : 'Grigia';
   }
 
   /** Scroll solo se serve, senza animazione con `prefers-reduced-motion`. */
@@ -95,13 +76,11 @@
   }
 
   // Stato locale
-  let choosingRoute = $state(false);
-  // Carta della mano toccata: mostrata ingrandita in primo piano
-  let focusedColor = $state<CardColor | null>(null);
+  // Colore selezionato nella mano (tocco su una carta, secondo tocco deseleziona):
+  // la mappa evidenzia solo le rotte pagabili con quel colore più i jolly.
+  let selectedColor = $state<CardColor | null>(null);
   // Mappa sul telefono: visibile di default, collassabile
   let showMap = $state(true);
-  // Claim: percorso principale = tap sulla mappa; lista testuale = fallback
-  let claimTab = $state<'map' | 'list'>('map');
 
   // Biglietti pinnati sulla mappa: MULTI-pin — ogni
   // biglietto cliccato aggiunge/rimuove il proprio tratteggiato, senza
@@ -129,10 +108,8 @@
       : [...pinnedTicketIds, ticketId];
   }
 
-  // Stato pannello pagamento rotta (l'utente sceglie colore + locomotive)
+  // Rotta in pagamento: aperta nel popup ClaimDialog (tap su una rotta evidenziata)
   let payingRouteId = $state<string | null>(null);
-  let payColor = $state<CardColor | null>(null);
-  let payLocos = $state(0);
 
   // Stazione (Europe): modalità "costruisci", città scelta (mappa o lista)
   let buildingStation = $state(false);
@@ -249,147 +226,71 @@
     if (connectionStore.lastError) drawSource = null;
   });
 
-  // Pesca con le quote per mazzo (Germany): il bottone apre la scelta corti/lunghi.
-  const ticketDraw = $derived(legalMoves?.ticket_draw ?? null);
-  let pickingTickets = $state(false);
-  $effect(() => {
-    if (!ticketDraw || !canAct) pickingTickets = false;
-  });
-
-  function drawTickets() {
-    if (ticketDraw) {
-      pickingTickets = true;
-      return;
-    }
-    sendAction({
-      actionType: 'DRAW_TICKETS',
-      player_id: playerId,
-      client_seq: nextClientSeq(playerId),
-    });
-  }
-
-  // Anti doppio tap sul picker: il draft iniziale lo lascia visibile fino all'offerta.
+  // Pesca biglietti: la carta nella colonna dei biglietti manda DRAW_TICKETS (quanti se ne
+  // pescano e quanti se ne tengono lo decide il server).
+  // Anti doppio tap: la carta resta attiva finché non arriva l'offerta.
   let drawingTickets = $state(false);
   const drawLatch = createDrawLatch((pending) => (drawingTickets = pending));
   $effect(() => {
     // Tutte le dipendenze vanno lette prima: niente corto circuito che ne nasconda una.
     const hasOffer = offered.length > 0;
     const error = connectionStore.lastError;
-    const canDraw = !!ticketDraw && canAct;
+    const canDraw = (legalMoves?.can_draw_tickets ?? false) && canAct;
     if (hasOffer || !canDraw) drawLatch.release();
     else drawLatch.releaseOnError(error);
   });
 
-  function drawTicketsWith(counts: TicketDeckCount[]) {
-    const sent = drawLatch.submit(
+  function drawTickets() {
+    drawLatch.submit(
       () =>
         sendAction({
           actionType: 'DRAW_TICKETS',
           player_id: playerId,
-          counts,
           client_seq: nextClientSeq(playerId),
         }),
       connectionStore.lastError,
     );
-    if (sent) pickingTickets = false;
   }
 
   // ── Pagamento rotta ────────────────────────────────────────────
-  // L'utente sceglie SOLO colore e numero di locomotive (client scemo);
-  // il server valida il pagamento (errore mostrato come banner).
+  // Tap su una rotta evidenziata → popup (ClaimDialog) dove si sceglie colore, locomotive e
+  // passeggeri; il server valida il pagamento (errore mostrato come banner).
 
-  function handCount(color: CardColor): number {
-    return hand.filter((c) => c === color).length;
-  }
-
-  const locoInHand = $derived(handCount('LOCOMOTIVE'));
   const payingRoute = $derived(
     payingRouteId ? (routeMap.get(payingRouteId) ?? null) : null,
   );
-  const isGrayRoute = $derived(payingRoute !== null && routeColorToCard(payingRoute.color) === null);
-  /** Locomotive obbligatorie (traghetto); 0 sulle rotte normali. */
-  const payFerries = $derived(payingRoute?.ferries ?? 0);
-  const maxLocos = $derived(payingRoute ? Math.min(locoInHand, payingRoute.len) : 0);
-  const payColoredNeeded = $derived(payingRoute ? payingRoute.len - payLocos : 0);
-  // Guardia di UX: la mano copre la scelta (locomotive dei traghetti comprese); il server arbitra.
-  const payValid = $derived(
-    payingRoute !== null &&
-      paymentCovered(
-        {
-          total: payingRoute.len,
-          minLocos: payFerries,
-          colorCount: payColor ? handCount(payColor) : 0,
-          locoInHand,
-        },
-        payLocos,
-      ),
+  // Passeggeri (Germany 2017): negli estremi con più colori il giocatore sceglie quale prendere.
+  const passengerChoiceList = $derived(
+    payingRoute ? passengerChoices(publicStore.passengers, payingRoute) : [],
   );
-  const paySummaryText = $derived.by(() => {
-    const parts: string[] = [];
-    if (payColoredNeeded > 0 && payColor) parts.push(`${payColoredNeeded}× ${CARD_COLOR_NAME[payColor]}`);
-    if (payLocos > 0) parts.push(`${payLocos}× ${CARD_COLOR_NAME.LOCOMOTIVE}`);
-    return parts.length > 0 ? parts.join(' + ') : '—';
-  });
 
-  /** Apre il pannello pagamento per una rotta, con default sensati. */
-  function startPayment(routeId: string) {
-    const route = routeMap.get(routeId);
-    if (!route) return;
+  // Tap-to-claim dalla mappa: solo le rotte evidenziate (legali per il server e pagabili con
+  // la carta selezionata) aprono il popup. Client scemo — la verità è legalMoves.
+  function onRouteTap(routeId: string) {
+    if (!canAct || buildingStation || !claimableRouteIds.includes(routeId)) return;
     payingRouteId = routeId;
-    // Default: colore della rotta, o (grigia) il colore più presente in mano.
-    const preset = routeColorToCard(route.color) ?? mostCommonColor(hand);
-    payColor = preset;
-    // Default locomotive: quelle necessarie a coprire la rotta col colore scelto
-    // (almeno quelle obbligatorie del traghetto).
-    payLocos = suggestLocos({
-      total: route.len,
-      minLocos: route.ferries ?? 0,
-      colorCount: preset ? handCount(preset) : 0,
-      locoInHand,
-    });
   }
 
   function cancelPayment() {
     payingRouteId = null;
   }
 
-  // Tap-to-claim dalla mappa: rotta claimabile → pannello pagamento.
-  // Rotte non claimabili: niente (client scemo — la verità è legalMoves).
-  function onRouteTap(routeId: string) {
-    if (!legalMoves || buildingStation) return;
-    if (legalMoves.routes.includes(routeId)) {
-      startPayment(routeId);
-    }
-  }
-
-  // Passeggeri (Germany 2017): negli estremi con più colori il giocatore sceglie quale prendere.
-  let passengerPicked = $state<Record<string, string>>({});
-  const passengerChoiceList = $derived(
-    payingRoute ? passengerChoices(publicStore.passengers, payingRoute) : [],
-  );
-  $effect(() => {
-    void payingRouteId;
-    passengerPicked = {};
-  });
-
-  function confirmPayment() {
+  function confirmClaim(cards: CardColor[], passengers: PassengerPick[] | undefined) {
     const route = payingRoute;
-    if (!route || !payValid) return;
-    const cards = paymentCards(hand, payColor, route.len, payLocos);
-
+    if (!route) return;
     const sent = sendAction({
       actionType: 'CLAIM_ROUTE',
       player_id: playerId,
       route_id: route.id,
       cards_discarded: cards,
-      passengers: passengerPicks(passengerChoiceList, passengerPicked),
+      passengers,
       client_seq: nextClientSeq(playerId),
     });
-    // Se l'azione non è partita il pannello resta aperto per riprovare.
+    // Se l'azione non è partita il popup resta aperto per riprovare.
     if (!sent) return;
 
     payingRouteId = null;
-    choosingRoute = false;
+    selectedColor = null;
   }
 
   // ── Stazioni (Europe) ──────────────────────────────────────────
@@ -404,6 +305,8 @@
   const hasStations = $derived(
     rulesetHasStations(publicStore.playersSummary, publicStore.stations),
   );
+  // Scelta le carte per la stazione: popup come per il tunnel (niente scroll nella colonna).
+  const stationPaying = $derived(buildingStation && stationCity !== null);
 
   // La modalità si chiude da sola se non è più possibile costruire (turno passato, carte cambiate).
   $effect(() => {
@@ -415,17 +318,13 @@
     }
   });
 
-  // Scelta della città sulla mappa: la mappa (sopra il rail in portrait) torna in vista;
-  // scelta la città, torna in vista il pannello di pagamento.
+  // Scelta della città sulla mappa: la mappa (sopra in portrait) torna in vista.
   $effect(() => {
     if (buildingStation && stationCity === null && stationTab === 'map') revealEl(mapEl);
   });
-  $effect(() => {
-    if (buildingStation && stationCity !== null) revealEl(stationPayEl);
-  });
 
-  // Da tastiera il pannello di pagamento viene dopo la mappa nel DOM: scelta la città il focus
-  // lo raggiunge, senza dover scorrere con Tab tutte le città. Con il tocco basta lo scroll.
+  // Da tastiera, scelta la città il focus raggiunge il popup di pagamento (lo sfondo è inerte,
+  // ma il focus resterebbe sul pulsante della città). Con il tocco non serve.
   let lastInputWasKeyboard = false;
   $effect(() => {
     const onKey = () => { lastInputWasKeyboard = true; };
@@ -449,7 +348,6 @@
   function startStation() {
     buildingStation = true;
     stationCity = null;
-    choosingRoute = false;
     payingRouteId = null;
     showMap = true;
   }
@@ -528,8 +426,7 @@
   const statusLabel = $derived.by(() => {
     if (gameState === 'WAITING_FOR_PLAYERS') return 'In attesa di giocatori...';
     if (gameState === 'INITIAL_DRAFT') {
-      if (offered.length > 0) return 'Scegli i biglietti iniziali';
-      return ticketDraw ? 'Scegli quanti biglietti corti e lunghi pescare' : 'Attendi che tutti scelgano...';
+      return offered.length > 0 ? 'Scegli i biglietti iniziali' : 'Attendi che tutti scelgano...';
     }
     if (gameState === 'PLAYER_TURN' || gameState === 'LAST_ROUND') {
       if (isMyTurn) return gameState === 'LAST_ROUND' ? '⚠️ Ultimo giro — tocca a te!' : 'È il tuo turno!';
@@ -562,11 +459,34 @@
         gameState === 'LAST_ROUND' ||
         gameState === 'SECOND_CARD_DRAW'),
   );
+
+  // Rotte da evidenziare sulla mappa: le legali (dal server) pagabili con la carta selezionata
+  // nella mano, o tutte senza selezione. `payableRouteIds` è solo una guardia di UX.
+  const claimableRouteIds = $derived(
+    canAct && legalMoves && !buildingStation
+      ? payableRouteIds(legalMoves.routes, routeMap, hand, selectedColor)
+      : [],
+  );
+
+  // Carta selezionata non più in mano (spesa nel pagamento): la selezione cade.
+  $effect(() => {
+    if (selectedColor !== null && !hand.includes(selectedColor)) selectedColor = null;
+  });
+
+  // Il popup si chiude se la rotta non è più reclamabile (turno passato, mosse cambiate).
+  $effect(() => {
+    if (payingRouteId !== null && (!canAct || !legalMoves?.routes.includes(payingRouteId))) {
+      payingRouteId = null;
+    }
+  });
 </script>
 
 <div class="cv-game" bind:this={rootEl}>
   <!-- Sfondo inerte mentre il dialog dei biglietti è aperto. -->
-  <div class="cv-bg" inert={ticketDialogOpen || tunnelMove !== null}>
+  <div
+    class="cv-bg"
+    inert={ticketDialogOpen || tunnelMove !== null || payingRoute !== null || stationPaying}
+  >
   <!-- Header -->
   <div class="header">
     <div class="player-info">
@@ -604,18 +524,6 @@
     </button>
   {/if}
 
-  {#if gameState === 'INITIAL_DRAFT' && ticketDraw && offered.length === 0}
-    <div class="section initial-ticket-draw">
-      <TicketDrawPicker
-        draw={ticketDraw}
-        busy={drawBusy || drawingTickets}
-        showRemaining={false}
-        title="Biglietti iniziali"
-        onConfirm={drawTicketsWith}
-      />
-    </div>
-  {/if}
-
   <!-- Toggle mappa: solo portrait (in landscape la plancia è sempre visibile) -->
   <button
     class="map-toggle"
@@ -625,19 +533,31 @@
     🗺️ Mappa {showMap ? '▾' : '▸'}
   </button>
 
-  <!-- Layout principale: mappa dominante + colonna laterale (biglietti/azioni).
-       Portrait: colonna sotto la mappa via CSS; landscape: affiancata. -->
+  <!-- Layout a 3 colonne (landscape): biglietti | mappa con la mano | pesca carte + azioni.
+       Portrait: impilato (mappa, pesca carte, biglietti) via CSS. -->
   <div class="cv-main">
-    <!-- Mappa con tap-to-claim: nessun glow sulle claimabili
-         (l'utente le trova da solo; il tap alla cieca resta
-         comunque sicuro perché onRouteTap filtra su legalMoves).
-         highlightTickets: solo i biglietti pinnati, mai le claimabili. -->
+    <div class="cv-left">
+      <TicketColumn
+        {tickets}
+        pinnedIds={pinnedTicketIds}
+        onToggle={toggleTicketHighlight}
+        canDraw={canAct && (legalMoves?.can_draw_tickets ?? false)}
+        busy={drawBusy || drawingTickets}
+        onDraw={drawTickets}
+        remaining={publicStore.ticketDeckSize}
+      />
+    </div>
+
+    <!-- Mappa con tap-to-claim: evidenzia le rotte legali (pagabili con la carta
+         selezionata in mano, se c'è); il tap su una evidenziata apre il popup di reclamo.
+         highlightTickets: i biglietti pinnati. -->
     <div class="cv-map" class:map-hidden={!showMap} bind:this={mapEl}>
       {#if buildingStation && stationCity === null && stationTab === 'map'}
         <div class="map-hint" role="status">🏠 Tocca una città evidenziata per la stazione</div>
       {/if}
       <MapSvg
         compact
+        highlightRouteIds={claimableRouteIds}
         selectedRouteId={payingRouteId}
         onRouteTap={onRouteTap}
         highlightTickets={highlightTickets}
@@ -647,223 +567,32 @@
       />
     </div>
 
-    <div class="cv-rail">
-      <!-- Tickets -->
-      <div class="section">
-        <h3>Biglietti ({tickets.length})</h3>
-        {#if tickets.length > 0}
-          <div class="ticket-list">
-            {#each tickets as t (t.id)}
-              {@const desc = ticketMap.get(t.id)}
-              <TicketCard
-                from={desc ? cityName(desc.from) : t.id}
-                to={desc ? cityName(desc.to) : ''}
-                points={t.points}
-                long={desc?.deck === 'long'}
-                completed={t.completed}
-                active={pinnedTicketIds.includes(t.id) && !completedTicketIds.has(t.id)}
-                onclick={() => toggleTicketHighlight(t.id)}
-              />
-            {/each}
-          </div>
-        {:else}
-          <p class="empty">Nessun biglietto</p>
-        {/if}
-      </div>
+    <div class="cv-right">
+      <DrawArea
+        visibleDeck={publicStore.visibleDeck}
+        deckSize={publicStore.deckSize}
+        faceUpMoves={canAct && legalMoves ? legalMoves.draw_face_up : []}
+        canDrawDeck={canAct && (legalMoves?.can_draw_deck ?? false)}
+        busy={drawBusy}
+        onDrawDeck={drawDeck}
+        onDrawFaceUp={drawFaceUp}
+      />
 
   <!-- Actions -->
-  {#if canAct && legalMoves}
+  {#if canAct && legalMoves && (legalMoves.routes.length > 0 || stationCities.length > 0)}
     <div class="section actions">
       <h3>Azioni</h3>
-
-      {#if legalMoves.can_draw_deck}
-        <button onclick={(e) => drawDeck(e.currentTarget)} class="btn action-btn draw-deck" disabled={drawBusy}>
-          🃏 Pesca dal mazzo
-        </button>
-      {/if}
-
-      {#if legalMoves.draw_face_up.length > 0}
-        <div class="face-up-actions">
-          {#each legalMoves.draw_face_up as idx}
-            {@const card = publicStore.visibleDeck[idx]}
-            <button
-              onclick={(e) => drawFaceUp(idx, e.currentTarget)}
-              class="btn action-btn face-up"
-              disabled={drawBusy}
-              aria-label={card ? `Pesca carta ${CARD_COLOR_NAME[card]}` : 'Pesca carta scoperta'}
-            >
-              {#if card}
-                <TrainCard color={card} />
-              {/if}
-            </button>
-          {/each}
-        </div>
-      {/if}
-
-      {#if legalMoves.can_draw_tickets}
-        {#if ticketDraw && pickingTickets}
-          <TicketDrawPicker
-            draw={ticketDraw}
-            busy={drawBusy || drawingTickets}
-            title="Pesca biglietti"
-            onConfirm={drawTicketsWith}
-            onCancel={() => (pickingTickets = false)}
-          />
-        {:else}
-          <button onclick={drawTickets} class="btn action-btn draw-tickets">
-            🎫 Pesca biglietti
-          </button>
-        {/if}
-      {/if}
-
-      {#if legalMoves.routes.length > 0}
-        {#if !choosingRoute}
-          <button
-            onclick={() => { choosingRoute = true; cancelStation(); }}
-            class="btn action-btn claim-route"
-          >
-            🛤️ Reclama rotta ({legalMoves.routes.length})
-          </button>
-        {:else if !payingRoute}
-          <div class="route-choices">
-            <div class="claim-tabs">
-              <button
-                class="btn claim-tab"
-                class:active={claimTab === 'map'}
-                onclick={() => (claimTab = 'map')}
-              >
-                🗺️ Mappa
-              </button>
-              <button
-                class="btn claim-tab"
-                class:active={claimTab === 'list'}
-                onclick={() => (claimTab = 'list')}
-              >
-                ☰ Lista
-              </button>
-            </div>
-            {#if claimTab === 'list'}
-              <h4>Scegli la rotta</h4>
-              {#each legalMoves.routes as rid (rid)}
-                {@const r = routeMap.get(rid)}
-                {#if r}
-                  <button onclick={() => startPayment(rid)} class="btn route-option">
-                    <div class="route-name">{cityName(r.from)} → {cityName(r.to)}</div>
-                    <div class="route-meta">
-                      {routeColorName(r.color)} · {r.len} 🚂 · ⭐{routePoints(r.len)}{#if r.ferries} · ⛴ {r.ferries} loco{/if}{#if r.tunnel} · tunnel{/if}
-                    </div>
-                  </button>
-                {/if}
-              {/each}
-            {/if}
-            <button
-              onclick={() => (choosingRoute = false)}
-              class="btn cancel-route"
-            >
-              Annulla
-            </button>
-          </div>
-        {:else if payingRoute}
-          {@const r = payingRoute}
-          <div class="route-choices payment">
-            <h4>
-              Paga: {cityName(r.from)} → {cityName(r.to)}
-              ({r.len} 🚂)
-            </h4>
-            {#if payFerries > 0}
-              <p class="pay-label">⛴ Traghetto: servono almeno {payFerries} locomotive.</p>
-            {/if}
-            {#if r.tunnel}
-              <p class="pay-label">Tunnel: dopo il pagamento si rivelano alcune carte e potresti dover pagare carte extra (o rinunciare).</p>
-            {/if}
-
-            {#if isGrayRoute}
-              <p class="pay-label">Colore (rotta grigia):</p>
-              <div class="pay-colors">
-                {#each CARD_COLORS as c}
-                  <button
-                    class="pay-swatch"
-                    class:selected={payColor === c}
-                    aria-pressed={payColor === c}
-                    disabled={handCount(c) === 0}
-                    onclick={() => { payColor = c; }}
-                    aria-label="Paga con {CARD_COLOR_NAME[c]} ({handCount(c)} in mano)"
-                  >
-                    <TrainCard color={c} count={handCount(c)} small />
-                  </button>
-                {/each}
-              </div>
-            {:else if payColor}
-              <p class="pay-label">
-                Colore: <strong>{CARD_COLOR_NAME[payColor]}</strong>
-                (hai {handCount(payColor)})
-              </p>
-            {/if}
-
-            <div class="pay-locos">
-              <span class="pay-label">Locomotive (hai {locoInHand}):</span>
-              <div class="locos-stepper">
-                <button
-                  class="btn"
-                  onclick={() => (payLocos = Math.max(payFerries, payLocos - 1))}
-                  aria-label="Meno locomotive"
-                  disabled={payLocos <= payFerries}
-                >−</button>
-                <span class="locos-value">{payLocos}</span>
-                <button
-                  class="btn"
-                  onclick={() => (payLocos = Math.min(maxLocos, payLocos + 1))}
-                  aria-label="Più locomotive"
-                  disabled={payLocos >= maxLocos}
-                >+</button>
-              </div>
-            </div>
-
-            <p class="pay-summary">Paghi: {paySummaryText}</p>
-            {#each passengerChoiceList as choice (choice.cityId)}
-              <p class="pay-label">Passeggero da prendere a {cityName(choice.cityId)}:</p>
-              <div class="pay-colors" role="radiogroup" aria-label="Passeggero a {cityName(choice.cityId)}">
-                {#each choice.passengers as p (p.color)}
-                  {@const selected = (passengerPicked[choice.cityId] ?? choice.passengers[0]?.color) === p.color}
-                  <button
-                    class="passenger-swatch"
-                    class:selected
-                    role="radio"
-                    aria-checked={selected}
-                    onclick={() => (passengerPicked = { ...passengerPicked, [choice.cityId]: p.color })}
-                    aria-label="Passeggero {passengerColorName(p.color)} ({p.count})"
-                  >
-                    <span class="passenger-dot" style="background:{passengerColorCss(p.color)}"></span>
-                    ×{p.count}
-                  </button>
-                {/each}
-              </div>
-            {/each}
-            {#if !payValid}
-              <p class="pay-invalid">
-                {payFerries > locoInHand
-                  ? `Servono almeno ${payFerries} locomotive (ne hai ${locoInHand})`
-                  : 'Carte insufficienti per questa combinazione'}
-              </p>
-            {/if}
-
-            <button
-              class="btn confirm-pay"
-              onclick={confirmPayment}
-              disabled={!payValid}
-            >
-              ✅ Conferma e reclama
-            </button>
-            <button onclick={cancelPayment} class="btn cancel-route">
-              Indietro
-            </button>
-          </div>
-        {/if}
+      {#if legalMoves.routes.length > 0 && stationCities.length === 0}
+        <p class="actions-hint">Tocca una carta, poi una rotta evidenziata.</p>
       {/if}
       {#if stationCities.length > 0}
         {#if !buildingStation}
-          <button onclick={startStation} class="btn action-btn build-station">
-            🏠 Costruisci stazione ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})
+          <button
+            onclick={startStation}
+            class="btn action-btn build-station"
+            aria-label="Costruisci stazione ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})"
+          >
+            🏠 Stazione ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})
           </button>
         {:else if !stationCity}
           <div class="route-choices">
@@ -885,24 +614,10 @@
                 {/each}
               </div>
             {:else}
-              <p class="pay-label">Tocca una città evidenziata sulla mappa (in alto).</p>
+              <p class="pay-label">Tocca una città evidenziata sulla mappa.</p>
             {/if}
             <button onclick={cancelStation} class="btn cancel-route">Annulla</button>
           </div>
-        {:else}
-          <div bind:this={stationPayEl}>
-            <PaymentPanel
-              total={stationCost}
-              {hand}
-              title="Stazione a {cityName(stationCity)} ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})"
-              confirmLabel="✅ Costruisci stazione"
-              busy={drawBusy}
-              onConfirm={confirmStation}
-              backLabel="Cambia città"
-              onBack={() => (stationCity = null)}
-            />
-          </div>
-          <button onclick={cancelStation} class="btn cancel-route">Annulla</button>
         {/if}
       {/if}
     </div>
@@ -927,10 +642,11 @@
               type="button"
               class="fan-card"
               data-card-color={color}
-              class:focused={focusedColor === color}
+              class:focused={selectedColor === color}
               style="--rot:{rot}deg"
               aria-label="{CARD_COLOR_NAME[color]}: {count} in mano"
-              onclick={() => (focusedColor = focusedColor === color ? null : color)}
+              aria-pressed={selectedColor === color}
+              onclick={() => (selectedColor = selectedColor === color ? null : color)}
             >
               <TrainCard color={color as CardColor} {count} handSize={hand.length} />
             </button>
@@ -978,6 +694,44 @@
       choice={ticketChoice}
       onConfirm={confirmTicketChoice}
       onCancel={cancelTicketChoice}
+    />
+  {/if}
+  <!-- Stazione (Europe): pagamento in un popup, come il tunnel -->
+  {#if stationPaying && stationCity}
+    <div class="tunnel-overlay">
+      <div
+        class="tunnel-dialog wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Costruisci stazione"
+        tabindex="-1"
+        bind:this={stationPayEl}
+        onkeydown={(e: KeyboardEvent) => { if (e.key === 'Escape') cancelStation(); }}
+      >
+        <PaymentPanel
+          total={stationCost}
+          {hand}
+          title="Stazione a {cityName(stationCity)} ({stationCost} {stationCost === 1 ? 'carta' : 'carte'})"
+          confirmLabel="✅ Costruisci stazione"
+          busy={drawBusy}
+          onConfirm={confirmStation}
+          backLabel="Cambia città"
+          onBack={() => (stationCity = null)}
+        />
+        <button onclick={cancelStation} class="btn cancel-route">Annulla</button>
+      </div>
+    </div>
+  {/if}
+  <!-- Reclamo rotta: popup con colore, locomotive, passeggeri; ✅ invia, ❌ annulla -->
+  {#if payingRoute}
+    <ClaimDialog
+      route={payingRoute}
+      {cityName}
+      {hand}
+      {selectedColor}
+      {passengerChoiceList}
+      onConfirm={confirmClaim}
+      onCancel={cancelPayment}
     />
   {/if}
   <!-- Tunnel (Europe): decisione bloccante finché il server la richiede -->
@@ -1154,16 +908,12 @@
     z-index: 2;
     transform: rotate(0deg) translateY(-14px) scale(1.25);
   }
-
-  /* Tickets (fila di tagliandi) */
-  .ticket-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  .ticket-list > :global(.ticket) {
-    flex: 1 1 150px;
-    max-width: 220px;
+  /* Carta selezionata (filtra le rotte sulla mappa): bordo dorato, oltre al sollevamento */
+  .fan-card.focused :global(.train-card) {
+    border-color: var(--gold);
+    box-shadow:
+      0 0 0 2px var(--gold),
+      var(--card-shadow);
   }
 
   /* Actions */
@@ -1178,35 +928,14 @@
     text-align: center;
     width: 100%;
   }
-  .draw-deck {
-    background: #2471a3;
-    color: #fff;
-  }
-  .draw-tickets {
-    background: #7d3c98;
-    color: #fff;
-  }
-  .claim-route {
-    background: #c0392b;
-    color: #fff;
-  }
-  .face-up-actions {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    justify-content: center;
-  }
-  .face-up {
-    flex: 0 0 auto;
-    padding: 3px;
-    background: var(--chrome-bg-2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  .actions-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--chrome-muted);
   }
 
-  /* ── Layout principale: mappa + colonna laterale ─────────────────
-     Portrait (default): colonna — mappa (collassabile) sopra, rail sotto. */
+  /* ── Layout principale: biglietti | mappa | pesca carte + azioni ─
+     Portrait (default): colonna — mappa (collassabile), pesca carte, biglietti. */
   .cv-main {
     display: flex;
     flex-direction: column;
@@ -1238,12 +967,31 @@
     text-align: center;
     pointer-events: none;
   }
-  .cv-rail {
+  .cv-left {
+    order: 3;
     display: flex;
     flex-direction: column;
-  }
-  .cv-rail .section {
     margin: 0.75rem 1rem 0;
+  }
+  .cv-left > :global(.ticket-col) {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+  .cv-map {
+    order: 1;
+  }
+  .cv-right {
+    order: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin: 0.75rem 1rem 0;
+  }
+  .cv-right > :global(*) {
+    flex-shrink: 0;
+  }
+  .cv-right .section {
+    margin: 0;
   }
   .map-toggle {
     display: block;
@@ -1310,10 +1058,6 @@
   .route-name {
     font-weight: 600;
   }
-  .route-meta {
-    font-size: 0.8rem;
-    color: var(--chrome-muted);
-  }
   .cancel-route {
     background: #5a4a35;
     color: #fff;
@@ -1352,102 +1096,16 @@
     font-size: 1rem;
   }
 
-  /* Payment panel */
-  .route-choices.payment {
-    border: 1px solid var(--gold);
-  }
   .pay-label {
     font-size: 0.85rem;
     color: var(--chrome-muted);
     margin: 0.25rem 0;
-  }
-  .pay-colors {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .pay-swatch {
-    background: none;
-    border: 2px solid transparent;
-    border-radius: 10px;
-    padding: 2px;
-    cursor: pointer;
-    min-width: 44px;
-    min-height: 44px;
-  }
-  .pay-swatch.selected {
-    border-color: var(--gold);
-    background: rgba(232, 168, 62, 0.18);
-  }
-  .pay-swatch:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-  }
-  .passenger-swatch {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background: none;
-    color: inherit;
-    border: 2px solid transparent;
-    border-radius: 10px;
-    padding: 4px 8px;
-    cursor: pointer;
-    min-width: 44px;
-    min-height: 44px;
-  }
-  .passenger-swatch.selected {
-    border-color: var(--gold);
-    background: rgba(232, 168, 62, 0.18);
-  }
-  .passenger-dot {
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    border: 2px solid rgba(0, 0, 0, 0.45);
-  }
-  .pay-locos {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-top: 0.25rem;
-  }
-  .locos-stepper {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .locos-stepper button {
-    width: 36px;
-    height: 36px;
-    background: #5a4a35;
-    color: #fff;
-    font-size: 1.2rem;
-  }
-  .locos-value {
-    min-width: 2rem;
-    text-align: center;
-    font-weight: bold;
-    font-size: 1.1rem;
-  }
-  .pay-summary {
-    font-size: 0.85rem;
-    color: var(--gold);
-    margin: 0.25rem 0 0;
   }
   .pay-invalid {
     font-size: 0.8rem;
     color: var(--danger);
     margin: 0.25rem 0 0;
   }
-  .confirm-pay {
-    background: #1e8449;
-    color: #fff;
-    padding: 0.75rem;
-    font-size: 1rem;
-  }
-
   /* Ticket flash (§8.2) */
   .ticket-flash {
     position: fixed;
@@ -1506,10 +1164,12 @@
   }
 
   /* ── Landscape (telefono orizzontale): esperienza "tavolo da gioco" ──
-     Mappa dominante a sinistra, biglietti+azioni in colonna a destra,
-     mano a ventaglio docked in basso. Solo CSS, niente JS. */
+     3 colonne: biglietti a sinistra, mappa al centro (con la mano a ventaglio
+     docked in basso), pesca carte + azioni a destra. Solo CSS, niente JS. */
   @media (orientation: landscape) {
     .cv-game {
+      --col-l: 184px;
+      --col-r: 214px;
       height: 100dvh;
       display: flex;
       flex-direction: column;
@@ -1544,6 +1204,7 @@
       padding-right: calc(0.5rem + env(safe-area-inset-right));
     }
     .cv-map {
+      order: 0;
       flex: 1;
       min-width: 0;
       height: auto;
@@ -1557,36 +1218,44 @@
     .cv-map :global(.map-container) {
       min-height: 0;
     }
-    /* Rail compatta (~250px): resta leggibile ma discreta */
-    .cv-rail {
-      flex: 0 0 250px;
+    /* Colonna biglietti: la lista scorre dentro la colonna, la carta di pesca resta in alto */
+    .cv-left {
+      order: 0;
+      flex: 0 0 var(--col-l);
+      min-height: 0;
+      margin: 0;
+    }
+    /* Colonna destra: pesca carte in alto, azioni sotto, senza scroll finché basta lo spazio */
+    .cv-right {
+      order: 0;
+      flex: 0 0 var(--col-r);
       overflow-y: auto;
       min-height: 0;
-      padding-bottom: 0.4rem;
+      gap: 0.4rem;
+      margin: 0;
     }
-    .cv-rail .section {
-      margin: 0 0 0.4rem;
+    .cv-right .section {
       padding: 0.4rem;
     }
-    .cv-rail .section h3 {
+    .cv-right .section h3 {
       font-size: 0.8rem;
       margin-bottom: 0.35rem;
     }
-    .cv-rail .section h4 {
+    .cv-right .section h4 {
       font-size: 0.75rem;
     }
-    .cv-rail .action-btn {
-      padding: 0.5rem;
-      font-size: 0.85rem;
+    .cv-right .action-btn {
+      padding: 0.35rem 0.4rem;
+      font-size: 0.78rem;
     }
-    .cv-rail .face-up {
-      padding: 2px;
+    .cv-right .actions-hint {
+      font-size: 0.72rem;
     }
-    .cv-rail .route-choices {
+    .cv-right .route-choices {
       padding: 0.5rem;
       gap: 4px;
     }
-    .cv-rail .route-option {
+    .cv-right .route-option {
       padding: 0.45rem 0.6rem;
       font-size: 0.85rem;
     }
@@ -1597,11 +1266,11 @@
        area (fit-content + max-width per non coprire la rail a destra). */
     .hand-dock {
       position: absolute;
-      left: calc(0.5rem + env(safe-area-inset-left));
+      left: calc(0.5rem + env(safe-area-inset-left) + var(--col-l) + 0.8rem);
       bottom: calc(0.5rem + env(safe-area-inset-bottom));
       z-index: 20;
       width: fit-content;
-      max-width: min(64%, 500px);
+      max-width: calc(100% - var(--col-l) - var(--col-r) - 2.6rem - env(safe-area-inset-left) - env(safe-area-inset-right));
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -1669,11 +1338,12 @@
     inset: 0;
     background: rgba(0, 0, 0, 0.75);
     display: flex;
-    align-items: center;
-    justify-content: center;
     z-index: 100;
     overflow-y: auto;
     padding: 0.75rem;
+  }
+  .tunnel-dialog.wide {
+    max-width: 600px;
   }
   .tunnel-dialog {
     background: var(--chrome-bg-1);
@@ -1682,8 +1352,8 @@
     padding: 1rem;
     width: 100%;
     max-width: 420px;
-    max-height: 100%;
-    overflow-y: auto;
+    /* Centrato se c'è spazio; se è più alto dello schermo scorre l'overlay (margin auto non taglia in alto) */
+    margin: auto;
     box-shadow: var(--shadow-board);
     display: flex;
     flex-direction: column;

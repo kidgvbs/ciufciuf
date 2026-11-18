@@ -195,7 +195,6 @@ fn decide_europe(
             moves.can_draw_tickets.then_some(InboundAction::DrawTickets(
                 ttr_proto::DrawTicketsPayload {
                     player_id,
-                    counts: None,
                     client_seq: None,
                 },
             ))
@@ -377,8 +376,8 @@ async fn europe_save_with_pending_tunnel_resumes_and_accepts_the_decision() {
         let map = europe_map();
         let ruleset = load_europe_ruleset();
         let g = create_game_for_ruleset(&server.base_url, "europe", "EuropeSave", Some(11)).await;
-        let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("RED")).await;
-        let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("BLUE")).await;
+        let pa = join_game(&server.base_url, &g.game_id, "Alice", Some("PINK")).await;
+        let pb = join_game(&server.base_url, &g.game_id, "Bob", Some("CYAN")).await;
         start_game(&server.base_url, &g.game_id, &g.host_token).await;
 
         let save = server.saves_dir.join(format!("{}.json", g.game_id));

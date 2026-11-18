@@ -436,45 +436,45 @@ fn ttr_validate_rejects_inconsistent_new_rules() {
     type Mutation = fn(&mut Value, &mut Value);
     let germany: &[(&str, Mutation, &str)] = &[
         (
-            "choose-from-unknown-deck",
-            |_, rs| rs["ticketDraw"]["chooseFrom"] = serde_json::json!(["regular", "nessuno"]),
-            "ticketDraw.chooseFrom usa il deck 'nessuno'",
+            "merge-deck-unknown",
+            |_, rs| rs["ticketDraw"]["mergeDecks"] = serde_json::json!(["nessuno"]),
+            "ticketDraw.mergeDecks: il deck 'nessuno' non è in ticketDecks",
         ),
         (
-            "choose-from-duplicate",
-            |_, rs| rs["ticketDraw"]["chooseFrom"] = serde_json::json!(["regular", "regular"]),
-            "il deck 'regular' è ripetuto",
+            "merge-deck-duplicate",
+            |_, rs| rs["ticketDraw"]["mergeDecks"] = serde_json::json!(["long", "long"]),
+            "il deck 'long' è ripetuto o coincide con ticketDraw.deck",
         ),
         (
-            "choose-from-empty",
-            |_, rs| rs["initialTickets"]["chooseFrom"] = serde_json::json!([]),
-            "initialTickets.chooseFrom non può essere vuoto",
+            "merge-deck-is-draw-deck",
+            |_, rs| rs["ticketDraw"]["mergeDecks"] = serde_json::json!(["regular"]),
+            "il deck 'regular' è ripetuto o coincide con ticketDraw.deck",
         ),
         (
-            "choose-from-count-zero",
-            |_, rs| rs["initialTickets"]["count"] = Value::from(0),
-            "initialTickets.count deve essere almeno 1",
+            "dealt-keep-min-above-count",
+            |_, rs| rs["initialTickets"]["dealt"][1]["keepMin"] = Value::from(4),
+            "keepMin 4 maggiore di count 3 per il deck 'regular'",
         ),
         (
-            "dealt-and-choose-from",
+            "dealt-keep-min-above-keep-max",
             |_, rs| {
-                rs["initialTickets"]["dealt"] =
-                    serde_json::json!([{"deck": "regular", "count": 4}]);
+                rs["initialTickets"]["dealt"][0]["keepMin"] = Value::from(2);
+                rs["initialTickets"]["dealt"][0]["keepMax"] = Value::from(1);
             },
-            "usare `dealt` oppure `chooseFrom`",
+            "keepMin 2 maggiore di keepMax 1 per il deck 'long'",
         ),
         (
-            "deck-and-choose-from",
-            |_, rs| rs["ticketDraw"]["deck"] = Value::from("regular"),
-            "usare `deck` oppure `chooseFrom`",
-        ),
-        (
-            "choose-from-decks-too-small",
+            "dealt-keep-min-sum-above-keep-min",
             |_, rs| {
-                rs["initialTickets"]["count"] = Value::from(20);
-                rs["initialTickets"]["keepMin"] = Value::from(2);
+                rs["initialTickets"]["dealt"][0]["keepMin"] = Value::from(1);
+                rs["initialTickets"]["dealt"][1]["keepMin"] = Value::from(2);
             },
-            "hanno 62 biglietti, ne servono 100",
+            "i keepMin dei deck sommano 3, più di initialTickets.keepMin 2",
+        ),
+        (
+            "dealt-decks-too-small",
+            |_, rs| rs["initialTickets"]["dealt"][1]["count"] = Value::from(20),
+            "ne servono 100",
         ),
         (
             "draw-keep-min-above-count",
@@ -482,7 +482,7 @@ fn ttr_validate_rejects_inconsistent_new_rules() {
             "ticketDraw.keepMin 5",
         ),
         (
-            "reshuffle-bottom-with-choose-from",
+            "reshuffle-bottom-with-merge-decks",
             |_, rs| rs["setupDiscards"] = Value::from("reshuffleBottom"),
             "'reshuffleBottom' non è ammesso",
         ),

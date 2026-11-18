@@ -25,14 +25,8 @@ pub enum Action {
         player_index: usize,
         source: DrawSource,
     },
-    /// Pescare nuovi biglietti: a metà partita, o nel draft iniziale con `chooseFrom`.
-    DrawTickets {
-        player_index: usize,
-        /// Con `chooseFrom`: biglietti da pescare per mazzo (somma = totale di pesca).
-        /// Vuoto per i ruleset classici e nei save precedenti.
-        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-        counts: BTreeMap<String, u32>,
-    },
+    /// Pescare nuovi biglietti a metà partita.
+    DrawTickets { player_index: usize },
     /// Scegliere quali biglietti tenere (draft iniziale o mid-game).
     ChooseTickets {
         player_index: usize,

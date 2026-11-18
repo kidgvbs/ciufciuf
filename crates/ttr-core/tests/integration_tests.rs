@@ -50,10 +50,7 @@ fn city(id: &str) -> City {
 }
 
 fn draw_tickets(player_index: usize) -> Action {
-    Action::DrawTickets {
-        player_index,
-        counts: BTreeMap::new(),
-    }
+    Action::DrawTickets { player_index }
 }
 
 fn mini_map() -> MapData {
@@ -128,17 +125,16 @@ fn mini_ruleset() -> Ruleset {
         },
         ticket_decks: vec!["regular".into()],
         initial_tickets: InitialTickets {
-            choose_from: None,
-            count: 0,
             dealt: vec![TicketDealtEntry {
                 deck: "regular".into(),
                 count: 4,
+                keep_min: 0,
                 keep_max: None,
             }],
             keep_min: 2,
         },
         ticket_draw: TicketDraw {
-            choose_from: None,
+            merge_decks: vec![],
             deck: "regular".into(),
             count: 3,
             keep_min: 1,
@@ -173,7 +169,7 @@ fn two_players() -> (Vec<String>, Vec<String>, Vec<ttr_proto::PlayerColor>) {
     (
         vec!["p1".into(), "p2".into()],
         vec!["One".into(), "Two".into()],
-        vec![ttr_proto::PlayerColor::Red, ttr_proto::PlayerColor::Blue],
+        vec![ttr_proto::PlayerColor::Pink, ttr_proto::PlayerColor::Cyan],
     )
 }
 
@@ -184,9 +180,9 @@ fn three_players() -> (Vec<String>, Vec<String>, Vec<ttr_proto::PlayerColor>) {
         ids,
         names,
         vec![
-            ttr_proto::PlayerColor::Red,
-            ttr_proto::PlayerColor::Blue,
-            ttr_proto::PlayerColor::Green,
+            ttr_proto::PlayerColor::Pink,
+            ttr_proto::PlayerColor::Cyan,
+            ttr_proto::PlayerColor::Lime,
         ],
     )
 }
@@ -198,10 +194,10 @@ fn four_players() -> (Vec<String>, Vec<String>, Vec<ttr_proto::PlayerColor>) {
         ids,
         names,
         vec![
-            ttr_proto::PlayerColor::Red,
-            ttr_proto::PlayerColor::Blue,
-            ttr_proto::PlayerColor::Green,
-            ttr_proto::PlayerColor::Yellow,
+            ttr_proto::PlayerColor::Pink,
+            ttr_proto::PlayerColor::Cyan,
+            ttr_proto::PlayerColor::Lime,
+            ttr_proto::PlayerColor::Brown,
         ],
     )
 }
@@ -374,6 +370,66 @@ fn golden_double_route_blocked_2p() {
         passengers: Default::default(),
     });
     assert!(matches!(r, Err(EngineError::RouteBlockedDouble { .. })));
+}
+
+/// `blocked_route_ids`: i binari liberi che nessuno può più reclamare, in ordine di id.
+#[test]
+fn blocked_route_ids_lists_closed_free_lanes_only_when_few_players() {
+    let claim_a_b_1 = |eng: &mut Engine| {
+        eng.set_player_hand(0, vec![CardColor::Red, CardColor::Red]);
+        eng.apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: "A_B_1".into(),
+            cards_discarded: vec![CardColor::Red, CardColor::Red],
+            passengers: Default::default(),
+        })
+        .unwrap();
+    };
+
+    // 2 giocatori (< doubleRouteMinPlayers): preso A_B_1, l'altro binario è chiuso a tutti;
+    // non il binario preso né le rotte singole.
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(
+        48,
+        strict_double_ruleset(),
+        double_route_map(),
+        ids,
+        names,
+        colors,
+        0,
+    )
+    .unwrap();
+    complete_initial_draft(&mut eng);
+    assert!(eng.blocked_route_ids().is_empty());
+    claim_a_b_1(&mut eng);
+    assert_eq!(eng.blocked_route_ids(), ["A_B_2"]);
+
+    // 4 giocatori (= doubleRouteMinPlayers): il gruppo resta aperto.
+    let (ids, names, colors) = four_players();
+    let mut eng = Engine::new(
+        49,
+        strict_double_ruleset(),
+        double_route_map(),
+        ids,
+        names,
+        colors,
+        0,
+    )
+    .unwrap();
+    complete_initial_draft(&mut eng);
+    claim_a_b_1(&mut eng);
+    assert!(eng.blocked_route_ids().is_empty());
+
+    // Gruppo `alwaysOpen`: mai bloccato, nemmeno con 2 giocatori.
+    let mut map = double_route_map();
+    for r in map.routes.iter_mut().filter(|r| r.double) {
+        r.always_open = true;
+    }
+    let (ids, names, colors) = two_players();
+    let mut eng = Engine::new(50, strict_double_ruleset(), map, ids, names, colors, 0).unwrap();
+    complete_initial_draft(&mut eng);
+    claim_a_b_1(&mut eng);
+    assert!(eng.blocked_route_ids().is_empty());
 }
 
 #[test]
@@ -2336,11 +2392,13 @@ fn ticket_decks_are_dealt_per_ruleset_and_draw_pile_is_draw_deck_only() {
         TicketDealtEntry {
             deck: "long".into(),
             count: 1,
+            keep_min: 0,
             keep_max: None,
         },
         TicketDealtEntry {
             deck: "regular".into(),
             count: 3,
+            keep_min: 0,
             keep_max: None,
         },
     ];
@@ -2417,7 +2475,7 @@ fn init_rejects_player_count_out_of_range() {
         init_error(mini_ruleset(), mini_map(), 1, 0),
         EngineInitError::PlayerCountOutOfRange { count: 1, .. }
     ));
-    let six = vec![ttr_proto::PlayerColor::Red; 6];
+    let six = vec![ttr_proto::PlayerColor::Pink; 6];
     let err = Engine::new(
         1,
         mini_ruleset(),
@@ -2538,6 +2596,7 @@ fn init_rejects_dealt_deck_not_in_ticket_decks() {
     rs.initial_tickets.dealt = vec![TicketDealtEntry {
         deck: "long".into(),
         count: 4,
+        keep_min: 0,
         keep_max: None,
     }];
     let expected = EngineInitError::DealtTicketDeckUnknown {
@@ -2854,11 +2913,13 @@ fn two_deck_ruleset(order: [&str; 2]) -> Ruleset {
         TicketDealtEntry {
             deck: "long".into(),
             count: 1,
+            keep_min: 0,
             keep_max: None,
         },
         TicketDealtEntry {
             deck: "regular".into(),
             count: 3,
+            keep_min: 0,
             keep_max: None,
         },
     ];
@@ -3122,14 +3183,22 @@ fn engine_new_rejects_duplicate_player_ids() {
 #[test]
 fn engine_new_rejects_duplicate_player_colors() {
     let (ids, names, _) = two_players();
-    let red = ttr_proto::PlayerColor::Red;
-    let err = Engine::new(1, mini_ruleset(), mini_map(), ids, names, vec![red, red], 0)
-        .err()
-        .unwrap();
+    let pink = ttr_proto::PlayerColor::Pink;
+    let err = Engine::new(
+        1,
+        mini_ruleset(),
+        mini_map(),
+        ids,
+        names,
+        vec![pink, pink],
+        0,
+    )
+    .err()
+    .unwrap();
     assert_eq!(
         err,
         EngineInitError::DuplicatePlayerColor {
-            color: "Red".into()
+            color: "Pink".into()
         }
     );
 }
@@ -3348,17 +3417,17 @@ fn mega_like() -> (Ruleset, MapData) {
     rs.players.max = 2;
     rs.ticket_decks = vec!["long".into(), "regular".into()];
     rs.initial_tickets = InitialTickets {
-        choose_from: None,
-        count: 0,
         dealt: vec![
             TicketDealtEntry {
                 deck: "long".into(),
                 count: 2,
+                keep_min: 0,
                 keep_max: Some(1),
             },
             TicketDealtEntry {
                 deck: "regular".into(),
                 count: 5,
+                keep_min: 0,
                 keep_max: None,
             },
         ],

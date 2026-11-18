@@ -3,10 +3,10 @@
 
   import { LobbyClient, loadIdentity, loadPlayerName, type GameListItem } from '../lobby';
   import { createJoinFlow, SLOW_JOIN_MESSAGE, type JoinFlow } from '../join-flow';
-  import { PLAYER_COLOR_CSS } from '../colors';
+  import { PLAYER_COLOR_CSS, PLAYER_COLOR_NAME } from '../colors';
   import type { PlayerColor } from '../proto';
 
-  const ALL_COLORS: PlayerColor[] = ['RED', 'BLUE', 'GREEN', 'YELLOW', 'BLACK'];
+  const ALL_COLORS: PlayerColor[] = ['PINK', 'CYAN', 'LIME', 'BROWN', 'LAVENDER', 'INDIGO'];
 
   let { host, onJoin, onCancel, notice = '' }: {
     host: string;
@@ -231,8 +231,8 @@
             style="background:{PLAYER_COLOR_CSS[c]}"
             onclick={() => (color = c)}
             disabled={joining || takenColors.has(c)}
-            title={takenColors.has(c) ? 'Colore già preso' : c}
-            aria-label={takenColors.has(c) ? `Colore ${c} già preso` : `Colore ${c}`}
+            title={takenColors.has(c) ? 'Colore già preso' : PLAYER_COLOR_NAME[c]}
+            aria-label={takenColors.has(c) ? `Colore ${PLAYER_COLOR_NAME[c]} già preso` : `Colore ${PLAYER_COLOR_NAME[c]}`}
             aria-pressed={color === c}
           ></button>
         {/each}

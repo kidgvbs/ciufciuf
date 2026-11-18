@@ -107,15 +107,6 @@ const hasLongestPath = rulesetJson.bonuses.some((b) => b.type === 'longest_path'
 const mapPath = join(ROOT, 'data', 'maps', `${mapId}.json`);
 for (const r of JSON.parse(readFileSync(mapPath, 'utf8')).routes) routes.set(r.id, r);
 const toCardColor = (c) => (c === 'Gray' ? null : c.toUpperCase());
-// Germany: quote della pesca (un mazzo dopo l'altro, nell'ordine del server); undefined senza.
-const ticketQuotas = (lm) => {
-  const draw = lm?.ticket_draw;
-  if (!draw) return undefined;
-  let left = draw.total;
-  return draw.available
-    .map((a) => { const count = Math.min(left, a.count); left -= count; return { deck: a.deck, count }; })
-    .filter((q) => q.count > 0);
-};
 // Germany 2017: primo colore dei passeggeri negli estremi che ne hanno di più colori.
 const passengerPicks = (pub, route) => {
   const picks = (pub?.passengers ?? [])
@@ -228,9 +219,9 @@ async function main() {
   console.log(`   gameId=${gameId}`);
 
   // 2. Join 2 giocatori
-  console.log('2. Join P1 (RED) e P2 (BLUE)...');
-  const p1Join = await rest('POST', `/api/games/${gameId}/join`, { name: 'BotRed', color: 'RED' });
-  const p2Join = await rest('POST', `/api/games/${gameId}/join`, { name: 'BotBlue', color: 'BLUE' });
+  console.log('2. Join P1 (PINK) e P2 (CYAN)...');
+  const p1Join = await rest('POST', `/api/games/${gameId}/join`, { name: 'BotPink', color: 'PINK' });
+  const p2Join = await rest('POST', `/api/games/${gameId}/join`, { name: 'BotCyan', color: 'CYAN' });
   console.log(`   P1: ${p1Join.playerId}, P2: ${p2Join.playerId}`);
 
   // 3. Start
@@ -239,8 +230,8 @@ async function main() {
 
   // 4. Connect WS
   console.log('4. Connessione WebSocket...');
-  const p1 = makePlayer('BotRed', p1Join.playerId, p1Join.token, gameId);
-  const p2 = makePlayer('BotBlue', p2Join.playerId, p2Join.token, gameId);
+  const p1 = makePlayer('BotPink', p1Join.playerId, p1Join.token, gameId);
+  const p2 = makePlayer('BotCyan', p2Join.playerId, p2Join.token, gameId);
   const byId = { [p1Join.playerId]: p1, [p2Join.playerId]: p2 };
 
   await sleep(1000);
@@ -251,11 +242,6 @@ async function main() {
   // 5. Draft iniziale (accetta tutto)
   console.log('5. Draft iniziale...');
   for (const p of [p1, p2]) {
-    // Con `chooseFrom` (Germany) il draft parte da una pesca con le quote per mazzo.
-    await p.wait((x) => x.private?.legal_moves, 20000);
-    if (p.private.legal_moves.ticket_draw && !(p.offered?.length)) {
-      p.send({ actionType: 'DRAW_TICKETS', counts: ticketQuotas(p.private.legal_moves) });
-    }
     await p.wait((x) => x.offered && x.offered.length >= 3, 20000);
     console.log(`   ${p.name}: ${p.offered.length} biglietti → tiene tutti`);
     p.send({ actionType: 'CHOOSE_TICKETS', keep: p.offered.map((t) => t.id) });
@@ -620,7 +606,7 @@ async function main() {
 
         const errBefore = cur.errors.length;
         console.log(`   [T${turns}] ${cur.name} DRAW_TICKETS`);
-        cur.send({ actionType: 'DRAW_TICKETS', counts: ticketQuotas(lm) });
+        cur.send({ actionType: 'DRAW_TICKETS' });
         try {
           await cur.wait((x) => {
             const cp = latestPublic(cur, p1, p2);

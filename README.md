@@ -7,7 +7,7 @@ Gioco in stile *Ticket to Ride* per la **LAN di casa**: la TV mostra la mappa co
 
 ## Stato
 
-Giocabile dall'inizio alla fine sulle mappe **USA** (`usa_v2`) ed **Europe** (`europe`: tunnel, traghetti, stazioni, European Express, regolamento 2026), ciascuna con le modalità dei pacchetti biglietti (USA: 1910, Grandi Città, Mega; Europe: Estesa, 1912, Grandi Città, Mega), da 2 a 5 giocatori; **Germany** (`germany`: Zug um Zug Deutschland, 62 biglietti; `germany_2017`: Ticket to Ride Germany con 89 biglietti e passeggeri; pesca a scelta tra corti e lunghi, rotte triple, Paesi confinanti come vicoli ciechi, Globetrotter), da 2 a 5 giocatori; **Poland** (`poland`, Map Collection 6½: rotte verso i Paesi a 3–4 binari sempre aperti, carte Paese), da 2 a 4 giocatori; e la mappa di prova **Basilicata** (`basilicata`, da 2 a 4 giocatori, ricavata da un'immagine). Ci sono **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Il bot non c'è ancora.
+Giocabile dall'inizio alla fine sulle mappe **USA** (`usa_v2`) ed **Europe** (`europe`: tunnel, traghetti, stazioni, European Express, regolamento 2026), ciascuna con le modalità dei pacchetti biglietti (USA: 1910, Grandi Città, Mega; Europe: Estesa, 1912, Grandi Città, Mega), da 2 a 5 giocatori; **Germany** (`germany`: Zug um Zug Deutschland, 62 biglietti; `germany_2017`: Ticket to Ride Germany con 89 biglietti e passeggeri; regola della casa per i biglietti: 2 lunghi + 3 corti all'inizio, poi un mazzo unico; rotte triple, Paesi confinanti come vicoli ciechi, Globetrotter), da 2 a 5 giocatori; **Poland** (`poland`, Map Collection 6½: rotte verso i Paesi a 3–4 binari sempre aperti, carte Paese), da 2 a 4 giocatori; e la mappa di prova **Basilicata** (`basilicata`, da 2 a 4 giocatori, ricavata da un'immagine). Ci sono **profili giocatore** (solo il nome, creati una volta) e una **classifica generale** delle partite concluse. Il bot non c'è ancora.
 
 Per orientarsi nel dettaglio:
 
@@ -81,7 +81,7 @@ Da riga di comando, per l'operatore:
 ./target/release/ttr-server --data-dir ./data --saves-dir ./saves --client-dist ./client/dist --resume saves/<id>.json
 ```
 
-In questo caso il log stampa l'id della partita e un `hostToken` nuovo. Entrambe le strade rifiutano i save di una partita già conclusa e quelli creati con regole precedenti (`RULES_VERSION` 1 o assente: "save creato con regole precedenti: non riproducibile").
+In questo caso il log stampa l'id della partita e un `hostToken` nuovo. Entrambe le strade rifiutano i save di una partita già conclusa e quelli creati con una `RULES_VERSION` precedente o assente ("save creato con regole precedenti: non riproducibile").
 
 I giocatori rientrano con il nome **e il token originale**, che il telefono conserva: `POST /api/games/<id>/join` con `{"name","token"}` restituisce lo stesso `playerId` e lo stesso token, mentre il solo nome dà `401 RESUME_TOKEN_MISMATCH`. Finché non ci sono tutti l'avvio viene rifiutato.
 
@@ -100,7 +100,7 @@ A ogni ripresa il save originale viene copiato in `saves/<id>.resume-<timestamp>
 - **Profili:** un profilo è solo un nome, senza password: chiunque può toccare qualsiasi nome. Le partite concluse prima dell'introduzione della classifica non vi compaiono.
 - **Uscita:** "Esci" durante la partita chiede conferma, perché fa perdere il posto.
 - **Telefono in standby:** alla riattivazione il client si riconnette e riceve lo stato aggiornato. Non c'è HTTPS, quindi niente Wake Lock.
-- **Save vecchi:** `RULES_VERSION` è 2 (rispetto alla 1 cambiano D27, D28 e gli scarti delle carte realmente rimosse). I save creati con regole precedenti, o senza `rulesVersion`, non sono riproducibili e il resume li rifiuta.
+- **Save vecchi:** `RULES_VERSION` è 3 (rispetto alla 2 cambiano la pesca dei biglietti Germany e i colori dei giocatori; rispetto alla 1 cambiano D27, D28 e gli scarti delle carte realmente rimosse). I save creati con regole precedenti, o senza `rulesVersion`, non sono riproducibili e il resume li rifiuta: nell'elenco "Partite salvate" non compaiono.
 - **Partite infinite:** una partita non finisce solo se chi può ancora reclamare rotte smette di farlo.
 
 ## Regole
@@ -112,6 +112,10 @@ Le regole vincolanti sono nel piano, §3. Il motore le applica così, e tre casi
 - **D26:** con 3 o più locomotive scoperte si scartano le 5 carte e se ne scoprono altre. Se tra mazzo e scarti restano al massimo 2 carte non-locomotiva, si rimescola una volta sola e ci si ferma, anche con 3 locomotive scoperte; se però mazzo e scarti sono a quel punto vuoti, si crea il mazzo nuovo di D27 e il controllo si ripete una volta. Anche una pesca dal mazzo coperto che crea il mazzo nuovo D27 fa ricontrollare le scoperte una volta.
 - **D27:** se finiscono sia il mazzo sia gli scarti, entra in gioco un mazzo completo nuovo. Le carte in mano restano ai giocatori.
 - **D28:** se nessuno può più reclamare alcuna rotta, parte l'ultimo giro.
+- **Germany, regola della casa** (diversa dal regolamento ufficiale, vedi `docs/data-sources-germany.md`): a inizio partita ogni giocatore riceve 2 biglietti lunghi + 3 corti e ne tiene almeno 2, di cui almeno 1 corto (1 lungo + 1 corto e 2 corti vanno bene, solo lunghi no). Finito il draft, i biglietti rimasti (lunghi e corti, scarti del draft compresi) formano **un solo mazzo mescolato** dal motore: `DRAW_TICKETS` pesca 4 biglietti dalla cima, se ne tiene almeno 1 e gli scartati vanno in fondo allo stesso mazzo. Europe e gli altri ruleset non cambiano.
+- **Binari bloccati:** con meno giocatori di `doubleRouteMinPlayers`, preso un binario di una doppia l'altro non si può più reclamare (salvo gruppi `alwaysOpen`). Il server li elenca in `PublicState.blocked_route_ids`; `PublicState.ticket_deck_size` conta i biglietti ancora pescabili.
+- **Colori dei giocatori:** rosa, ciano, lime, marrone, lavanda e indaco (`PINK`, `CYAN`, `LIME`, `BROWN`, `LAVENDER`, `INDIGO`), scelti fuori dalla palette delle tratte per non confondersi con i binari.
+- **Mappa e TV:** i vagoni reclamati sono treni (carrozze nel colore del giocatore con bordo crema, tetto scuro e finestrini), non binari colorati; i binari in `blocked_route_ids` non si disegnano (il binario preso resta dov'è), su TV e telefono. Sulla TV, quando compare una nuova tratta in una `PUBLIC_STATE` dal vivo (non negli SNAPSHOT e non a fine partita) la mappa zooma sulla tratta con un alone nel colore del giocatore per ~2,5 s e torna alla vista di prima (`FocusController` in `client/src/lib/pan-zoom.ts`, salto senza animazione con `prefers-reduced-motion`). Il segnapunti mostra la carta «Biglietti» con `ticket_deck_size`; lo stesso numero è il badge sulla carta «Pesca biglietti» del controller.
 - **Pagamento:** il client indica le carte; se ne manca una del colore dichiarato il motore usa una locomotiva (sempre un pagamento legale).
 
 ## Sviluppo

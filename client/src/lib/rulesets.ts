@@ -51,8 +51,6 @@ export interface RulesetInfo {
   ferries: boolean;
   /** Il ruleset prevede le stazioni. */
   stations: boolean;
-  /** Pesca dei biglietti con la scelta tra corti e lunghi (Germany); assente su server vecchi. */
-  ticketDrawChoice?: boolean;
   /** Carte Paese (Poland); assente su server vecchi. */
   countryCards?: boolean;
   /** Passeggeri (Germany 2017); assente su server vecchi. */
@@ -119,7 +117,7 @@ export function isRulesetInfo(v: unknown): v is RulesetInfo {
     typeof v.tunnels === 'boolean' &&
     typeof v.ferries === 'boolean' &&
     typeof v.stations === 'boolean' &&
-    ['ticketDrawChoice', 'countryCards', 'passengers'].every(
+    ['countryCards', 'passengers'].every(
       (k) => v[k] === undefined || typeof v[k] === 'boolean',
     )
   );
@@ -242,11 +240,10 @@ export function groupByMap(catalog: readonly RulesetInfo[]): MapGroup[] {
 
 /** Sottotitolo della modalità derivato dai dati, es. «35 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · Globetrotter +15». */
 export function modeBlurb(r: RulesetInfo): string {
-  const choose = r.ticketDrawChoice === true ? ' tra corti e lunghi' : '';
   const parts = [
     `${r.tickets} biglietti in gioco`,
-    `ricevi ${r.initialDealt}${choose}, tieni ${r.initialKeepMin}`,
-    `pesca ${r.drawCount}${choose}, tieni ${r.drawKeepMin}`,
+    `ricevi ${r.initialDealt}, tieni ${r.initialKeepMin}`,
+    `pesca ${r.drawCount}, tieni ${r.drawKeepMin}`,
   ];
   if (r.passengers === true) parts.push('passeggeri');
   if (r.countryCards === true) parts.push('carte Paese');

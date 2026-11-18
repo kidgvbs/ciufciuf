@@ -4,8 +4,8 @@ import { describeMove, latestMoves, RECENT_MOVES_SHOWN, type MoveContext } from 
 
 const ctx: MoveContext = {
   players: [
-    { player_id: 'p1', name: 'Gino', color: 'RED' },
-    { player_id: 'p2', name: 'Pia', color: 'BLUE' },
+    { player_id: 'p1', name: 'Gino', color: 'PINK' },
+    { player_id: 'p2', name: 'Pia', color: 'CYAN' },
   ],
   map: {
     cities: [
@@ -27,7 +27,7 @@ describe('describeMove', () => {
     const l = describeMove(m, ctx);
     expect(l.text).toBe('Gino pesca 2 carte (1 coperta + Rossa)');
     expect(l.name).toBe('Gino');
-    expect(l.color).toBe('RED');
+    expect(l.color).toBe('PINK');
   });
 
   it('pesca carte: due coperte, una sola carta scoperta, jolly', () => {

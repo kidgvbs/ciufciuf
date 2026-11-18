@@ -50,32 +50,36 @@ impl Player {
     }
 }
 
-/// Quote per una pesca con scelta del mazzo (un biglietto alla volta, un mazzo dopo
-/// l'altro); `None` se la pesca non è con le quote.
-pub fn ticket_quotas(view: &PlayerView) -> Option<Vec<ttr_proto::TicketDeckCount>> {
-    let draw = view.legal_moves.ticket_draw.as_ref()?;
-    let mut quotas: Vec<ttr_proto::TicketDeckCount> = draw
-        .available
-        .iter()
-        .map(|a| ttr_proto::TicketDeckCount {
-            deck: a.deck.clone(),
-            count: 0,
-        })
-        .collect();
-    let mut left = draw.total;
-    while left > 0 {
-        let mut progressed = false;
-        for (quota, available) in quotas.iter_mut().zip(&draw.available) {
-            if left > 0 && quota.count < available.count {
-                quota.count += 1;
-                left -= 1;
-                progressed = true;
+/// Primi `want` biglietti offerti nell'ordine di offerta, ma prima quelli che servono a
+/// rispettare i minimi dei gruppi di `ticketChoice` (e mai oltre i loro massimi).
+pub fn keep_offered(view: &PlayerView, want: usize) -> Vec<String> {
+    let limits = view
+        .legal_moves
+        .ticket_choice
+        .as_ref()
+        .map(|c| c.limits.as_slice())
+        .unwrap_or_default();
+    let mut keep: Vec<String> = Vec::new();
+    for limit in limits {
+        keep.extend(limit.ticket_ids.iter().take(limit.min as usize).cloned());
+    }
+    for ticket in &view.offered_tickets {
+        if keep.len() >= want {
+            break;
+        }
+        if keep.contains(&ticket.id) {
+            continue;
+        }
+        let group = limits.iter().find(|l| l.ticket_ids.contains(&ticket.id));
+        if let Some(limit) = group {
+            let taken = keep.iter().filter(|k| limit.ticket_ids.contains(k)).count();
+            if taken >= limit.max as usize {
+                continue;
             }
         }
-        assert!(progressed, "quote impossibili da distribuire");
+        keep.push(ticket.id.clone());
     }
-    quotas.retain(|q| q.count > 0);
-    Some(quotas)
+    keep
 }
 
 /// Primo colore (alfabetico) dei passeggeri su ciascun estremo della rotta; `None` senza
@@ -117,23 +121,9 @@ pub fn decide(
             if *drafted {
                 return Ok(None);
             }
-            // Con `chooseFrom` si pesca prima con le quote, poi si sceglie.
-            if view.offered_tickets.is_empty() && view.legal_moves.ticket_draw.is_some() {
-                return Ok(Some(InboundAction::DrawTickets(
-                    ttr_proto::DrawTicketsPayload {
-                        player_id,
-                        counts: ticket_quotas(view),
-                        client_seq: None,
-                    },
-                )));
-            }
-            // keep = primi 2 biglietti offerti (l'ordine è deterministico).
-            let keep: Vec<String> = view
-                .offered_tickets
-                .iter()
-                .take(2)
-                .map(|t| t.id.clone())
-                .collect();
+            // keep = primi 2 biglietti offerti (l'ordine è deterministico), più quelli che i
+            // minimi per gruppo di `ticketChoice` richiedono.
+            let keep = keep_offered(view, 2);
             if keep.len() < 2 {
                 return Err(format!(
                     "draft: solo {} biglietti offerti per {}",
@@ -184,7 +174,6 @@ pub fn decide(
                 return Ok(Some(InboundAction::DrawTickets(
                     ttr_proto::DrawTicketsPayload {
                         player_id,
-                        counts: ticket_quotas(view),
                         client_seq: None,
                     },
                 )));

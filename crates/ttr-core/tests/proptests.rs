@@ -2,7 +2,7 @@
 //! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany e Poland reali.
 //!
 //! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel; sulla
-//! Germany pescano i biglietti con le quote per mazzo.
+//! Germany scelgono i biglietti rispettando minimi e massimi per mazzo.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
@@ -12,9 +12,7 @@ use ttr_core::error::GamePhase;
 use ttr_core::types::{
     GLOBETROTTER_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Ruleset, SetupDiscards, TRAIN_COLORS,
 };
-use ttr_core::{
-    Action, DrawSource, Engine, GameEvent, RouteColor, TicketDrawMoves, default_player_colors,
-};
+use ttr_core::{Action, DrawSource, Engine, GameEvent, RouteColor, default_player_colors};
 use ttr_proto::CardColor;
 
 /// Carte di un mazzo completo (12 × 8 colori + 14 locomotive, come USA, Europe, Germany e Poland).
@@ -178,18 +176,28 @@ fn tunnel_payment(hand: &[CardColor], color: CardColor, extra: usize) -> Option<
 }
 
 /// Fino a `want` biglietti tra gli offerti, nell'ordine di offerta, rispettando i
-/// limiti di `ticket_choice` di `legal_moves`.
+/// limiti (minimo e massimo per gruppo) di `ticket_choice` di `legal_moves`: prima si
+/// prendono i minimi dei gruppi, poi si riempie fino a `want` nell'ordine di offerta.
 fn keep_within_limits(eng: &Engine, pi: usize, offered: &[String], want: usize) -> Vec<String> {
     let limits = eng
         .legal_moves(pi)
         .ticket_choice
         .map(|c| c.limits)
         .unwrap_or_default();
+    let mut chosen: BTreeSet<&String> = BTreeSet::new();
     let mut left: Vec<u32> = limits.iter().map(|l| l.max).collect();
-    let mut keep = Vec::new();
+    for (g, limit) in limits.iter().enumerate() {
+        for id in limit.ticket_ids.iter().take(limit.min as usize) {
+            chosen.insert(id);
+            left[g] -= 1;
+        }
+    }
     for id in offered {
-        if keep.len() == want {
+        if chosen.len() >= want {
             break;
+        }
+        if chosen.contains(id) {
+            continue;
         }
         let group = limits.iter().position(|l| l.ticket_ids.contains(id));
         if let Some(g) = group {
@@ -198,71 +206,21 @@ fn keep_within_limits(eng: &Engine, pi: usize, offered: &[String], want: usize) 
             }
             left[g] -= 1;
         }
-        keep.push(id.clone());
+        chosen.insert(id);
     }
-    keep
-}
-
-/// Quote per una pesca con scelta del mazzo: riempie i mazzi nell'ordine (o al contrario).
-fn greedy_counts(draw: &TicketDrawMoves, reverse: bool) -> BTreeMap<String, u32> {
-    let mut left = draw.total;
-    let mut counts = BTreeMap::new();
-    let mut decks: Vec<_> = draw.available.iter().collect();
-    if reverse {
-        decks.reverse();
-    }
-    for deck in decks {
-        let take = deck.count.min(left);
-        if take > 0 {
-            counts.insert(deck.deck.clone(), take);
-        }
-        left -= take;
-    }
-    counts
-}
-
-/// Quote per una pesca con scelta del mazzo: un biglietto alla volta, un mazzo dopo l'altro.
-fn round_robin_counts(draw: &TicketDrawMoves) -> BTreeMap<String, u32> {
-    let mut left = draw.total;
-    let mut taken: Vec<u32> = vec![0; draw.available.len()];
-    while left > 0 {
-        let mut progressed = false;
-        for (slot, deck) in taken.iter_mut().zip(&draw.available) {
-            if left > 0 && *slot < deck.count {
-                *slot += 1;
-                left -= 1;
-                progressed = true;
-            }
-        }
-        assert!(progressed, "quote impossibili da distribuire");
-    }
-    draw.available
+    offered
         .iter()
-        .zip(taken)
-        .filter(|(_, n)| *n > 0)
-        .map(|(deck, n)| (deck.deck.clone(), n))
+        .filter(|id| chosen.contains(id))
+        .cloned()
         .collect()
 }
 
-/// Pescate di biglietti valide per il giocatore: con le quote (`chooseFrom`) tre ripartizioni
-/// diverse, altrimenti la pesca classica senza quote se è ammessa.
-fn draw_ticket_actions(
-    player_index: usize,
-    draw: Option<&TicketDrawMoves>,
-    can_draw: bool,
-) -> Vec<Action> {
-    let draw_with = |counts| Action::DrawTickets {
-        player_index,
-        counts,
-    };
-    match draw {
-        Some(moves) => vec![
-            draw_with(greedy_counts(moves, false)),
-            draw_with(greedy_counts(moves, true)),
-            draw_with(round_robin_counts(moves)),
-        ],
-        None if can_draw => vec![draw_with(BTreeMap::new())],
-        None => Vec::new(),
+/// Pescata di biglietti valida per il giocatore, se è ammessa.
+fn draw_ticket_actions(player_index: usize, can_draw: bool) -> Vec<Action> {
+    if can_draw {
+        vec![Action::DrawTickets { player_index }]
+    } else {
+        Vec::new()
     }
 }
 
@@ -275,13 +233,6 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
             for pi in 0..eng.num_players() {
                 let offered = eng.initial_tickets_for(pi).unwrap_or_default();
                 if offered.is_empty() {
-                    // Con `chooseFrom` il draft inizia pescando con le quote.
-                    let legal = eng.legal_moves(pi);
-                    actions.extend(draw_ticket_actions(
-                        pi,
-                        legal.ticket_draw.as_ref(),
-                        legal.can_draw_tickets,
-                    ));
                     continue;
                 }
                 let keep_min = ruleset.initial_tickets.keep_min as usize;
@@ -351,11 +302,7 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
                     source: DrawSource::Deck,
                 });
             }
-            actions.extend(draw_ticket_actions(
-                pi,
-                legal.ticket_draw.as_ref(),
-                legal.can_draw_tickets,
-            ));
+            actions.extend(draw_ticket_actions(pi, legal.can_draw_tickets));
             for city in &legal.station_cities {
                 let cards = station_payment(eng, pi, legal.station_cost as usize)
                     .expect("stazione elencata ma non pagabile");
@@ -404,22 +351,7 @@ fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
                 }
             },
         },
-        1 => {
-            // Quote per mazzo a caso (anche vuote, sbagliate o di un mazzo ignoto).
-            let counts: BTreeMap<String, u32> = match picks[3] % 4 {
-                0 => BTreeMap::new(),
-                1 => BTreeMap::from([("regular".to_string(), u32::from(picks[2] % 6))]),
-                2 => BTreeMap::from([("nessuno".to_string(), u32::from(picks[2] % 3))]),
-                _ => BTreeMap::from([
-                    ("regular".to_string(), u32::from(picks[2] % 5)),
-                    ("long".to_string(), u32::from(picks[2] % 3)),
-                ]),
-            };
-            Action::DrawTickets {
-                player_index,
-                counts,
-            }
-        }
+        1 => Action::DrawTickets { player_index },
         2 => {
             let mut pool: Vec<String> = eng.pending_tickets().to_vec();
             if let Some(initial) = eng.initial_tickets_for(player_index) {
@@ -728,7 +660,7 @@ fn check_legal_moves_agree_with_apply(
     players: usize,
     choices: &[u16],
 ) -> Result<(), TestCaseError> {
-    let (ruleset, map) = data(game);
+    let (_, map) = data(game);
     play(game, seed, players, choices, |eng, window| {
         let pi = eng.current_player();
         for other in (0..eng.num_players()).filter(|p| *p != pi) {
@@ -742,8 +674,8 @@ fn check_legal_moves_agree_with_apply(
                     && lm.tunnel.is_none(),
                 "mosse per il giocatore {other} non di turno"
             );
-            // Il draft iniziale è simultaneo: la scelta spetta a chi non l'ha ancora fatta,
-            // dopo aver pescato i biglietti (con `chooseFrom` la pesca con le quote viene prima).
+            // Il draft iniziale è simultaneo: la scelta spetta a chi non l'ha ancora fatta;
+            // i biglietti sono già offerti, nessuna pesca.
             let drafting = eng.phase() == GamePhase::InitialDraft
                 && !eng.player(other).unwrap().initial_draft_done;
             let has_offers = !eng.initial_tickets_for(other).unwrap().is_empty();
@@ -753,13 +685,7 @@ fn check_legal_moves_agree_with_apply(
                 "ticket_choice di {}",
                 other
             );
-            prop_assert_eq!(
-                lm.ticket_draw.is_some(),
-                drafting && !has_offers && ruleset.initial_tickets.choose_from.is_some(),
-                "ticket_draw di {}",
-                other
-            );
-            prop_assert_eq!(lm.can_draw_tickets, lm.ticket_draw.is_some());
+            prop_assert!(!lm.can_draw_tickets, "pesca biglietti di {}", other);
         }
         if eng.phase() == GamePhase::GameOver {
             return Ok(());
@@ -848,26 +774,8 @@ fn check_legal_moves_agree_with_apply(
             source: DrawSource::Deck,
         };
         check(eng, deck, lm.can_draw_deck, "pesca dal mazzo")?;
-        let ticket_counts = lm
-            .ticket_draw
-            .as_ref()
-            .map(|draw| greedy_counts(draw, false))
-            .unwrap_or_default();
-        let tickets = Action::DrawTickets {
-            player_index: pi,
-            counts: ticket_counts,
-        };
+        let tickets = Action::DrawTickets { player_index: pi };
         check(eng, tickets, lm.can_draw_tickets, "pesca biglietti")?;
-        // Quote con la somma sbagliata non sono mai valide.
-        if let Some(draw) = &lm.ticket_draw {
-            let mut counts = greedy_counts(draw, false);
-            *counts.entry(draw.available[0].deck.clone()).or_default() += 1;
-            let wrong = Action::DrawTickets {
-                player_index: pi,
-                counts,
-            };
-            check(eng, wrong, false, "quote con somma errata")?;
-        }
 
         // Stazioni: elencate solo in città libere e pagabili; il costo è quello della prossima.
         let in_turn = matches!(eng.phase(), GamePhase::PlayerTurn | GamePhase::LastRound);

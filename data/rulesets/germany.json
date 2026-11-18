@@ -18,16 +18,22 @@
     "long"
   ],
   "initialTickets": {
-    "chooseFrom": [
-      "regular",
-      "long"
+    "dealt": [
+      {
+        "deck": "long",
+        "count": 2
+      },
+      {
+        "deck": "regular",
+        "count": 3,
+        "keepMin": 1
+      }
     ],
-    "count": 4,
     "keepMin": 2
   },
   "ticketDraw": {
-    "chooseFrom": [
-      "regular",
+    "deck": "regular",
+    "mergeDecks": [
       "long"
     ],
     "count": 4,

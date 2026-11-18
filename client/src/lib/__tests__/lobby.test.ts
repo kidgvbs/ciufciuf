@@ -74,9 +74,9 @@ describe('LobbyClient', () => {
 
   it('joinGame invia il token e codifica il gameId', async () => {
     const calls = mockFetch(Response.json({ playerId: 'p', token: 't', wsUrl: '' }));
-    await new LobbyClient('http://h:1/').joinGame('a/b c', 'Ann', 'RED', 'tok');
+    await new LobbyClient('http://h:1/').joinGame('a/b c', 'Ann', 'PINK', 'tok');
     expect(calls[0]?.url).toBe('http://h:1/api/games/a%2Fb%20c/join');
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ name: 'Ann', color: 'RED', token: 'tok' });
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ name: 'Ann', color: 'PINK', token: 'tok' });
   });
 
   it('joinGame senza token non lo invia', async () => {

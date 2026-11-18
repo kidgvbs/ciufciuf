@@ -23,26 +23,6 @@ pub struct LegalMoves {
     pub tunnel: Option<TunnelMoves>,
     /// Scelta dei biglietti offerti (draft iniziale o `TicketChoice` di turno).
     pub ticket_choice: Option<TicketChoiceMoves>,
-    /// Pesca di biglietti con le quote per mazzo (`chooseFrom`): nel draft iniziale e a
-    /// inizio turno, `None` altrove.
-    pub ticket_draw: Option<TicketDrawMoves>,
-}
-
-/// Quanti biglietti si possono pescare e da quali mazzi (`chooseFrom`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TicketDrawMoves {
-    /// Biglietti da pescare in tutto: la somma delle quote deve essere questa.
-    pub total: u32,
-    /// Biglietti rimasti in ogni mazzo di `chooseFrom`, nell'ordine del ruleset: la quota
-    /// di un mazzo non può superarli. Nel draft iniziale sono limitati a `total` (D39).
-    pub available: Vec<TicketDeckAvailability>,
-}
-
-/// Biglietti rimasti in un mazzo.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TicketDeckAvailability {
-    pub deck: String,
-    pub count: u32,
 }
 
 /// Vincoli della scelta dei biglietti offerti al giocatore.
@@ -50,14 +30,16 @@ pub struct TicketDeckAvailability {
 pub struct TicketChoiceMoves {
     /// Minimo di biglietti da tenere.
     pub keep_min: u32,
-    /// Un limite per ogni gruppo di biglietti offerti con un massimo.
+    /// Un limite per ogni gruppo di biglietti offerti con un minimo o un massimo.
     pub limits: Vec<TicketKeepLimit>,
 }
 
-/// Al massimo `max` biglietti tra `ticket_ids` (nell'ordine di offerta).
+/// Tra `ticket_ids` (nell'ordine di offerta) se ne tengono almeno `min` e al massimo
+/// `max`; `max` è il numero di biglietti del gruppo se il ruleset non ne fissa uno.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TicketKeepLimit {
     pub ticket_ids: Vec<TicketId>,
+    pub min: u32,
     pub max: u32,
 }
 
@@ -85,7 +67,6 @@ impl LegalMoves {
             station_cost: 0,
             tunnel: None,
             ticket_choice: None,
-            ticket_draw: None,
         }
     }
 }
@@ -133,22 +114,13 @@ impl Engine {
         if self.players[player_index].initial_draft_done {
             return LegalMoves::empty();
         }
-        // Con `chooseFrom` il giocatore pesca prima con le quote, poi sceglie.
-        if offered.is_empty() {
-            let ticket_draw = self.initial_draw_moves();
-            return LegalMoves {
-                can_draw_tickets: ticket_draw.is_some(),
-                ticket_draw,
-                ..LegalMoves::empty()
-            };
-        }
         let limits = self
             .ruleset
             .initial_deck_rules()
             .into_iter()
-            .filter_map(|rule| {
-                let max = rule.max?;
-                let ticket_ids = offered
+            .filter(|rule| rule.min > 0 || rule.max.is_some())
+            .map(|rule| {
+                let ticket_ids: Vec<TicketId> = offered
                     .iter()
                     .filter(|tid| {
                         self.tickets_by_id
@@ -157,7 +129,14 @@ impl Engine {
                     })
                     .cloned()
                     .collect();
-                Some(TicketKeepLimit { ticket_ids, max })
+                let max = rule
+                    .max
+                    .unwrap_or_else(|| u32::try_from(ticket_ids.len()).unwrap_or(u32::MAX));
+                TicketKeepLimit {
+                    ticket_ids,
+                    min: rule.min,
+                    max,
+                }
             })
             .collect();
         LegalMoves {
@@ -190,7 +169,6 @@ impl Engine {
             station_cost: self.next_station_cost(player_index).unwrap_or(0),
             tunnel: None,
             ticket_choice: None,
-            ticket_draw: self.ticket_draw_moves(),
         }
     }
 
@@ -213,7 +191,6 @@ impl Engine {
             station_cost: 0,
             tunnel: None,
             ticket_choice: None,
-            ticket_draw: None,
         }
     }
 
@@ -353,9 +330,6 @@ impl Engine {
     }
 
     fn can_draw_tickets(&self) -> bool {
-        if self.ruleset.ticket_draw.choose_from.is_some() {
-            return self.ticket_draw_moves().is_some();
-        }
         let available = self
             .ticket_piles
             .get(&self.ruleset.ticket_draw.deck)

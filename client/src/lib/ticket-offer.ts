@@ -22,29 +22,53 @@ export function nextDismissedKey(key: string, dismissedKey: string): string {
   return key === '' ? '' : dismissedKey;
 }
 
+/** Gruppo di biglietti offerti con un vincolo (forma di `legal_moves.ticket_choice.limits`). */
+export interface TicketKeepLimit {
+  ticket_ids: ReadonlyArray<string>;
+  /** Almeno `min` biglietti del gruppo da tenere. */
+  min: number;
+  /** Al massimo `max` biglietti del gruppo da tenere (il numero del gruppo se non c'è un tetto). */
+  max: number;
+}
+
 /** Vincoli della scelta dei biglietti (forma di `legal_moves.ticket_choice`). */
 export interface TicketChoiceRules {
   keep_min: number;
-  limits: ReadonlyArray<{ ticket_ids: ReadonlyArray<string>; max: number }>;
+  limits: ReadonlyArray<TicketKeepLimit>;
 }
 
-/** Un gruppo supera il suo massimo se i biglietti scelti che gli appartengono sono più di `max`. */
-function exceedsLimit(selected: ReadonlySet<string>, limit: TicketChoiceRules['limits'][number]): boolean {
-  return limit.ticket_ids.filter((id) => selected.has(id)).length > limit.max;
-}
-
-/** Conferma abilitata solo con vincoli noti: almeno `keep_min` scelti e nessun gruppo oltre il suo massimo. */
+/** Conferma abilitata solo con vincoli noti: almeno `keep_min` scelti e ogni gruppo tra il suo minimo e il suo massimo. */
 export function canConfirmTicketChoice(
   selected: ReadonlySet<string>,
   rules: TicketChoiceRules | null,
 ): boolean {
   if (!rules) return false;
-  return selected.size >= rules.keep_min && !rules.limits.some((l) => exceedsLimit(selected, l));
+  return (
+    selected.size >= rules.keep_min &&
+    rules.limits.every((l) => {
+      const n = l.ticket_ids.filter((id) => selected.has(id)).length;
+      return n >= l.min && n <= l.max;
+    })
+  );
+}
+
+/** «biglietto lungo», «biglietti corti»…: il gruppo è lungo/corto se tutti i suoi biglietti sono del mazzo `long`/`regular`. */
+function groupNoun(
+  limit: TicketKeepLimit,
+  count: number,
+  deckOf: (ticketId: string) => string | undefined,
+): string {
+  const one = count === 1;
+  const all = (deck: string) =>
+    limit.ticket_ids.length > 0 && limit.ticket_ids.every((id) => deckOf(id) === deck);
+  if (all('long')) return one ? 'biglietto lungo' : 'biglietti lunghi';
+  if (all('regular')) return one ? 'biglietto corto' : 'biglietti corti';
+  return one ? 'biglietto di questo gruppo' : 'biglietti di questo gruppo';
 }
 
 /**
- * Testo di aiuto del dialog: «Tieni almeno N biglietti» più un «al massimo M biglietti lunghi»
- * per ogni limite (il gruppo è «lungo» se tutti i suoi biglietti sono del mazzo `long`).
+ * Testo di aiuto del dialog: «Tieni almeno N biglietti» più, per ogni gruppo, un «almeno M
+ * biglietti corti» se ha un minimo e un «al massimo M biglietti lunghi» se ha un tetto.
  */
 export function ticketChoiceHint(
   rules: TicketChoiceRules,
@@ -53,9 +77,25 @@ export function ticketChoiceHint(
   const n = rules.keep_min;
   const parts = [`Tieni almeno ${n} ${n === 1 ? 'biglietto' : 'biglietti'}`];
   for (const l of rules.limits) {
-    const long = l.ticket_ids.length > 0 && l.ticket_ids.every((id) => deckOf(id) === 'long');
-    const noun = long ? (l.max === 1 ? 'biglietto lungo' : 'biglietti lunghi') : l.max === 1 ? 'biglietto di questo gruppo' : 'biglietti di questo gruppo';
-    parts.push(`al massimo ${l.max} ${noun}`);
+    if (l.min > 0) parts.push(`almeno ${l.min} ${groupNoun(l, l.min, deckOf)}`);
+    if (l.max < l.ticket_ids.length) parts.push(`al massimo ${l.max} ${groupNoun(l, l.max, deckOf)}`);
   }
   return parts.join(', ');
+}
+
+/**
+ * Perché la selezione viola un gruppo («Tieni almeno 1 biglietto corto», «Tieni al massimo 1
+ * biglietto lungo»), o `null` se tutti i gruppi sono rispettati.
+ */
+export function ticketChoiceProblem(
+  selected: ReadonlySet<string>,
+  rules: TicketChoiceRules | null,
+  deckOf: (ticketId: string) => string | undefined,
+): string | null {
+  for (const l of rules?.limits ?? []) {
+    const n = l.ticket_ids.filter((id) => selected.has(id)).length;
+    if (n < l.min) return `Tieni almeno ${l.min} ${groupNoun(l, l.min, deckOf)}`;
+    if (n > l.max) return `Tieni al massimo ${l.max} ${groupNoun(l, l.max, deckOf)}`;
+  }
+  return null;
 }

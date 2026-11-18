@@ -14,6 +14,7 @@
     onclick,
     color,
     long = false,
+    compact = false,
   }: {
     from: string;
     to: string;
@@ -28,12 +29,15 @@
     color?: string;
     /** Biglietto lungo (mazzo `long`): badge "Lunga" e accento blu. */
     long?: boolean;
+    /** Variante a riga (colonna biglietti del controller): città impilate a sinistra, punti a destra. */
+    compact?: boolean;
   } = $props();
 </script>
 
 <svelte:element
   this={onclick ? 'button' : 'div'}
   class="ticket"
+  class:compact
   class:long
   class:completed
   class:selected
@@ -202,5 +206,52 @@
     justify-content: center;
     border: 2px solid var(--board-1);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  /* Variante compatta: città impilate a sinistra, punti a destra. */
+  .ticket.compact {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    justify-items: start;
+    column-gap: 6px;
+    row-gap: 1px;
+    min-height: 0;
+    padding: 5px 8px;
+    text-align: left;
+  }
+  .ticket.compact .t-city {
+    font-size: 0.68rem;
+  }
+  .ticket.compact .t-city.from {
+    grid-column: 1;
+    grid-row: 1;
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+  .ticket.compact .t-city.to {
+    grid-column: 1;
+    grid-row: 2;
+    font-weight: 600;
+  }
+  .ticket.compact .t-city.to::before {
+    content: '→ ';
+  }
+  .ticket.compact .t-mid {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    justify-self: end;
+  }
+  .ticket.compact .t-pts {
+    font-size: 1.25rem;
+  }
+  .ticket.compact .t-pts-label {
+    display: none;
+  }
+  .ticket.compact .t-long {
+    top: -6px;
+    bottom: auto;
+    right: auto;
+    left: 8px;
   }
 </style>

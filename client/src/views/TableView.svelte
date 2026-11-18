@@ -39,7 +39,7 @@
   import TrainIcon from '../lib/components/TrainIcon.svelte';
   import ConfirmDialog from '../lib/components/ConfirmDialog.svelte';
   import DeckCard from '../lib/components/DeckCard.svelte';
-  import type { CardColor } from '../lib/proto';
+  import TicketDeckCard from '../lib/components/TicketDeckCard.svelte';
   import TunnelCards from '../lib/components/TunnelCards.svelte';
   import RecentMoves from '../lib/components/RecentMoves.svelte';
 
@@ -363,6 +363,21 @@
     window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : ''));
   }
 
+  // Zoom della mappa sulla tratta appena occupata: solo un PUBLIC_STATE in tempo reale che aggiunge
+  // una tratta lo scatena (non gli SNAPSHOT di connessione/riconnessione, non l'ultima mossa che
+  // chiude la partita, non il primo stato di una partita).
+  let claimFocus = $state<{ seq: number; routeId: string } | null>(null);
+  let claimSeq = 0;
+  function applyLivePublicState(state: PublicState) {
+    const wasPlaying = publicStore.gameId === state.game_id && !isLobby && !isGameOver;
+    const known = wasPlaying ? new Set(publicStore.claimedRoutes.map((cr) => cr.route_id)) : null;
+    publicStore.apply(state);
+    if (!known || state.state === 'GAME_OVER') return;
+    const added = state.claimed_routes.filter((cr) => !known.has(cr.route_id));
+    const last = added[added.length - 1];
+    if (last) claimFocus = { seq: ++claimSeq, routeId: last.route_id };
+  }
+
   function connectSpectator() {
     if (!alive || !gameId) return;
     if (connection) connection.close();
@@ -372,7 +387,7 @@
         onSnapshot(snap: Snapshot) {
           applySnapshot(snap);
         },
-        onPublicState(state: PublicState) { publicStore.apply(state); },
+        onPublicState: applyLivePublicState,
         onPrivateState() {},
         onError(err: ErrorPayload) { connectionStore.lastError = err; },
         onConnectionChange(connected: boolean) { connectionStore.connected = connected; },
@@ -774,14 +789,17 @@
   {:else if isInGame}
     <div class="game-layout">
       <div class="sidebar">
-        <h2>Segnapunti</h2>
+        <div class="sidebar-head">
+          <h2>Segnapunti</h2>
+          <TicketDeckCard count={publicStore.ticketDeckSize} />
+        </div>
         {#each publicStore.playersSummary as p}
           <div class="player-card" class:current-turn={isCurrentPlayer(p.player_id)}
             class:offline={!p.connected}
             style="border-left:4px solid {PLAYER_COLOR_CSS[p.color]}">
             <div class="player-name">
               <span class="pawn" style="--pawn:{PLAYER_COLOR_CSS[p.color]}">
-                <TrainIcon color={p.color as CardColor} uid="tv-{p.player_id.slice(0, 6)}" />
+                <TrainIcon color="RED" fill={PLAYER_COLOR_CSS[p.color]} uid="tv-{p.player_id.slice(0, 6)}" />
               </span>
               <span class="chip-name">{p.name}</span>
               {#if !p.connected}<span class="offline-tag">⚡ offline</span>{/if}
@@ -861,7 +879,7 @@
           <div class="last-round-banner">⚠️ ULTIMO GIRO</div>
         {/if}
       </div>
-      <MapSvg />
+      <MapSvg focusClaim={claimFocus} />
       {#if tunnelReveal}
         <div class="tunnel-banner" role="status" aria-live="polite">
           <h2>
@@ -1054,6 +1072,8 @@
   .country-stacks { margin-top:0.5rem; font-size:0.85rem; }
   .country-stack { display:flex; justify-content:space-between; gap:0.5rem; color:var(--chrome-muted); }
   .visible-deck { margin-top:1rem; }
+  .sidebar-head { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; margin-bottom:0.5rem; }
+  .sidebar-head h2 { margin:0; }
   .cards-row { display:flex; gap:6px; flex-wrap:wrap; }
   .face-up-cell { flex:0 0 auto; }
   /* Margine per il badge conteggio del mazzo (sporge in basso a destra) */

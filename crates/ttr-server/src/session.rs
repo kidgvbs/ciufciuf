@@ -192,12 +192,13 @@ pub struct JoinResponse {
 }
 
 /// Ordine di assegnazione automatica dei colori.
-const COLOR_ORDER: [PlayerColor; 5] = [
-    PlayerColor::Red,
-    PlayerColor::Blue,
-    PlayerColor::Green,
-    PlayerColor::Yellow,
-    PlayerColor::Black,
+const COLOR_ORDER: [PlayerColor; 6] = [
+    PlayerColor::Pink,
+    PlayerColor::Cyan,
+    PlayerColor::Lime,
+    PlayerColor::Brown,
+    PlayerColor::Lavender,
+    PlayerColor::Indigo,
 ];
 
 /// Il nome ricevuto da un join senza autenticazione non va normalizzato se supera
@@ -212,7 +213,7 @@ fn first_free_color(players: &[SessionPlayer]) -> PlayerColor {
     COLOR_ORDER
         .into_iter()
         .find(|c| !players.iter().any(|p| p.color == *c))
-        .unwrap_or(PlayerColor::Red)
+        .unwrap_or(PlayerColor::Pink)
 }
 
 #[derive(Debug, Clone)]
@@ -590,7 +591,7 @@ impl GameSession {
         self.connections.insert(player_id.clone(), Vec::new());
 
         // Colore esplicito se richiesto, altrimenti primo libero in ordine
-        // RED, BLUE, GREEN, YELLOW, BLACK.
+        // PINK, CYAN, LIME, BROWN, LAVENDER, INDIGO.
         let resolved_color = color.unwrap_or_else(|| first_free_color(&self.players));
 
         self.players.push(SessionPlayer {
@@ -1514,7 +1515,7 @@ mod tests {
             SavedEntry {
                 id: "p1".into(),
                 engine_index: 0,
-                color: PlayerColor::Red,
+                color: PlayerColor::Pink,
                 name: "Anna".into(),
                 token_hash: None,
             },

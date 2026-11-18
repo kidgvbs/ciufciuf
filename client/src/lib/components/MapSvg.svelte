@@ -17,6 +17,7 @@
     selectableCityIds?: string[];
     selectedCityId?: string | null;
     onCityTap?: (cityId: string) => void;
+    focusClaim?: { seq: number; routeId: string } | null;
   } = $props();
 
   const data = $derived(gameMap.state.data);

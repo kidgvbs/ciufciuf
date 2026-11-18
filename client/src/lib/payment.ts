@@ -58,6 +58,64 @@ export function paymentCovered(spec: PaymentSpec, locos: number): boolean {
   return total - locos === 0 || colorCount >= total - locos;
 }
 
+/** Colore carta corrispondente al colore di una rotta del JSON (`null` = grigia). */
+export function routeColorToCard(color: string): CardColor | null {
+  const m: Record<string, CardColor> = {
+    Red: 'RED', Orange: 'ORANGE', Yellow: 'YELLOW', Green: 'GREEN',
+    Blue: 'BLUE', Purple: 'PURPLE', Black: 'BLACK', White: 'WHITE',
+  };
+  return m[color] ?? null;
+}
+
+/** Dati di una rotta che servono alla guardia di pagamento. */
+export interface PayableRoute {
+  len: number;
+  color: string;
+  /** Locomotive obbligatorie (traghetti); assente = 0. */
+  ferries?: number;
+}
+
+/**
+ * Guardia di UX per l'evidenziazione: `true` se la mano può pagare `route` usando il colore
+ * `selected` più le locomotive. `selected` nullo = nessun filtro; `LOCOMOTIVE` = sole locomotive;
+ * un colore = la rotta deve essere di quel colore (o grigia) e le carte del colore più le
+ * locomotive devono coprire la lunghezza, locomotive dei traghetti comprese.
+ * Non sostituisce `legalMoves.routes`: va applicata solo a rotte già legali.
+ */
+export function routePayableWith(
+  route: PayableRoute,
+  hand: readonly CardColor[],
+  selected: CardColor | null,
+): boolean {
+  if (selected === null) return true;
+  const locoInHand = countCards(hand, 'LOCOMOTIVE');
+  const minLocos = route.ferries ?? 0;
+  if (selected === 'LOCOMOTIVE') {
+    return paymentCovered({ total: route.len, minLocos, colorCount: 0, locoInHand }, route.len);
+  }
+  const routeColor = routeColorToCard(route.color);
+  if (routeColor !== null && routeColor !== selected) return false;
+  const spec = { total: route.len, minLocos, colorCount: countCards(hand, selected), locoInHand };
+  return paymentCovered(spec, suggestLocos(spec));
+}
+
+/**
+ * Delle rotte legali `routeIds`, quelle da evidenziare sulla mappa con il colore `selected`
+ * (vedi `routePayableWith`); senza selezione restano tutte. Una rotta sconosciuta non passa.
+ */
+export function payableRouteIds(
+  routeIds: readonly string[],
+  routes: ReadonlyMap<string, PayableRoute>,
+  hand: readonly CardColor[],
+  selected: CardColor | null,
+): string[] {
+  if (selected === null) return [...routeIds];
+  return routeIds.filter((id) => {
+    const route = routes.get(id);
+    return route !== undefined && routePayableWith(route, hand, selected);
+  });
+}
+
 /**
  * Carte da inviare: `total - locos` del colore `color` e `locos` locomotive, prese dalla mano.
  * Con `color` nullo (solo locomotive) non si prendono carte colorate.

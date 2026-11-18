@@ -38,7 +38,8 @@ Nomi reali in inglese (es. "New York", non "Nuova York"). I file dati hanno sia 
 - `initialTickets.keepMin` non supera il totale dei biglietti distribuiti e `ticketDraw.keepMin` non supera `ticketDraw.count`; `ticketDraw.count` è almeno 1.
 - Con `setupDiscards: "reshuffleBottom"` tornano in fondo alla pila di pesca solo gli scarti del setup appartenenti a `ticketDraw.deck`; gli scarti degli altri mazzi escono dalla partita. Con `"reshuffleBottomOwnDeck"` gli scarti di ogni mazzo sono mescolati e tornano in fondo al proprio mazzo.
 - `initialTickets.dealt[].keepMax` (opzionale) limita i biglietti di quel mazzo tenibili nel draft iniziale (Europe Mega: al massimo 1 lungo); `keepMax <= count` e `keepMin` deve restare raggiungibile.
-- **Pesca con scelta del mazzo** (Germany): `initialTickets: { "chooseFrom": ["regular", "long"], "count": 4, "keepMin": 2 }` al posto di `dealt`, e `ticketDraw: { "chooseFrom": [...], "count": 4, "keepMin": 1 }` al posto di `deck`. Il giocatore manda `DRAW_TICKETS` con le quote per mazzo (`counts`), con somma uguale al totale (`count`, o meno se i mazzi ne hanno meno); anche il draft iniziale comincia con questa pesca. I biglietti scartati tornano in fondo al proprio mazzo. In Germany `regular` sono i biglietti corti.
+- `initialTickets.dealt[].keepMin` (opzionale, default 0) è il minimo di biglietti di quel mazzo da tenere nel draft iniziale (Germany: almeno 1 corto); il server lo espone ai client in `ticket_choice.limits[].min` accanto a `max`, e `keepMin` globale resta il minimo totale. `keepMin <= count`, `keepMin <= keepMax` e la somma dei `keepMin` dei mazzi non supera `initialTickets.keepMin`.
+- **Mazzo di pesca unito** (Germany, regola della casa): `ticketDraw: { "deck": "regular", "mergeDecks": ["long"], "count": 4, "keepMin": 1 }`. Finito il draft iniziale (scarti del setup già gestiti da `setupDiscards`, con `reshuffleBottomOwnDeck`) i biglietti rimasti di `deck` e dei mazzi di `mergeDecks` formano **una sola pila**, mescolata con l'RNG del motore (prima `deck`, poi `mergeDecks` nell'ordine indicato); `DRAW_TICKETS` pesca da quella pila e gli scartati a metà partita, di qualunque mazzo originale, tornano in fondo a essa. `PublicState.ticket_deck_size` conta i biglietti pescabili. La vecchia pesca con scelta del mazzo (`chooseFrom`, quote `counts`) non esiste più.
 
 ## Modalità e set di biglietti
 
@@ -68,7 +69,7 @@ Vincoli su mappa e ruleset, ognuno con una variante dedicata di `EngineInitError
 - il ruleset ha un `name` non vuoto (nome mostrato nel selettore mappe, servito da `GET /api/rulesets`);
 - una rotta con `double: true` appartiene a un gruppo di 2–4 binari paralleli: id con suffissi `_1`…`_n` contigui, stessi estremi e stessa lunghezza, `alwaysOpen` uguale su tutti i binari;
 - `countryCards` ha come chiavi solo Paesi (`country: true`); `passengers` ha colori non vuoti e unici, `perColor ≥ 1`, `placement` su città esistenti con conteggi ≥ 1 e somma `colori × perColor`, `majorityPoints` di 2 valori;
-- `chooseFrom` non vuoto, senza duplicati, con mazzi elencati in `ticketDecks`, `count ≥ 1`, e abbastanza biglietti per `giocatori.max × count` nel draft iniziale; `tieBreakers` senza chiavi sconosciute o ripetute;
+- `ticketDraw.mergeDecks` con mazzi elencati in `ticketDecks`, senza ripetizioni e diversi da `ticketDraw.deck` (e `setupDiscards` diverso da `reshuffleBottom`); `keepMin` di ogni voce di `dealt` non oltre `count` né oltre `keepMax`, con somma non oltre `initialTickets.keepMin`; `tieBreakers` senza chiavi sconosciute o ripetute;
 - il mazzo treni ha `perColor × 8 >= 3 × locomotives`;
 - `Engine::new` richiede inoltre id e colori dei giocatori distinti.
 

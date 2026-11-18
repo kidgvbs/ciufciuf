@@ -5,6 +5,9 @@ import {
   mostCommonColor,
   paymentCards,
   paymentCovered,
+  payableRouteIds,
+  routeColorToCard,
+  routePayableWith,
   suggestLocos,
   tunnelCardRaisesCost,
   tunnelPayColor,
@@ -86,6 +89,55 @@ describe('paymentCards', () => {
 
   it('un colore LOCOMOTIVE non duplica le locomotive', () => {
     expect(paymentCards(HAND, 'LOCOMOTIVE', 2, 2)).toEqual(['LOCOMOTIVE', 'LOCOMOTIVE']);
+  });
+});
+
+describe('routeColorToCard', () => {
+  it('traduce i colori del JSON e lascia le grigie senza colore', () => {
+    expect(routeColorToCard('Red')).toBe('RED');
+    expect(routeColorToCard('White')).toBe('WHITE');
+    expect(routeColorToCard('Gray')).toBeNull();
+  });
+});
+
+describe('routePayableWith: evidenziazione per carta selezionata', () => {
+  // 3 rosse, 1 blu, 2 locomotive
+  const hand: CardColor[] = ['RED', 'RED', 'RED', 'BLUE', 'LOCOMOTIVE', 'LOCOMOTIVE'];
+
+  it('senza selezione non filtra nulla', () => {
+    expect(routePayableWith({ len: 6, color: 'Gray' }, hand, null)).toBe(true);
+  });
+
+  it('colore scelto: rotta dello stesso colore o grigia, carte + locomotive >= lunghezza', () => {
+    expect(routePayableWith({ len: 5, color: 'Red' }, hand, 'RED')).toBe(true); // 3 + 2 loco
+    expect(routePayableWith({ len: 6, color: 'Red' }, hand, 'RED')).toBe(false); // 3 + 2 < 6
+    expect(routePayableWith({ len: 3, color: 'Gray' }, hand, 'RED')).toBe(true);
+    expect(routePayableWith({ len: 3, color: 'Blue' }, hand, 'RED')).toBe(false); // colore diverso
+    expect(routePayableWith({ len: 3, color: 'Gray' }, hand, 'BLUE')).toBe(true); // 1 + 2 loco
+    expect(routePayableWith({ len: 4, color: 'Gray' }, hand, 'BLUE')).toBe(false);
+  });
+
+  it('traghetti: servono le locomotive obbligatorie anche col colore scelto', () => {
+    expect(routePayableWith({ len: 3, color: 'Red', ferries: 2 }, hand, 'RED')).toBe(true); // 1 + 2 loco
+    expect(routePayableWith({ len: 3, color: 'Red', ferries: 3 }, hand, 'RED')).toBe(false); // solo 2 loco
+    expect(routePayableWith({ len: 2, color: 'Gray', ferries: 1 }, ['RED', 'RED'], 'RED')).toBe(false);
+  });
+
+  it('locomotiva selezionata: solo le rotte pagabili con sole locomotive', () => {
+    expect(routePayableWith({ len: 2, color: 'Blue' }, hand, 'LOCOMOTIVE')).toBe(true);
+    expect(routePayableWith({ len: 2, color: 'Gray', ferries: 2 }, hand, 'LOCOMOTIVE')).toBe(true);
+    expect(routePayableWith({ len: 3, color: 'Gray' }, hand, 'LOCOMOTIVE')).toBe(false);
+  });
+
+  it('payableRouteIds filtra le legali e scarta quelle sconosciute', () => {
+    const routes = new Map([
+      ['a', { len: 3, color: 'Red' }],
+      ['b', { len: 3, color: 'Blue' }],
+      ['c', { len: 2, color: 'Gray' }],
+    ]);
+    expect(payableRouteIds(['a', 'b', 'c', 'x'], routes, hand, 'RED')).toEqual(['a', 'c']);
+    expect(payableRouteIds(['a', 'b', 'x'], routes, hand, null)).toEqual(['a', 'b', 'x']);
+    expect(payableRouteIds(['a', 'b', 'c'], routes, hand, 'LOCOMOTIVE')).toEqual(['c']);
   });
 });
 

@@ -43,6 +43,9 @@ pub enum EngineError {
     #[error("scelta biglietti: tenuti {kept} del deck '{deck}', ma il massimo è {max}")]
     TicketChoiceAboveDeckMax { deck: String, kept: usize, max: u32 },
 
+    #[error("scelta biglietti: tenuti {kept} del deck '{deck}', ma il minimo è {min}")]
+    TicketChoiceBelowDeckMin { deck: String, kept: usize, min: u32 },
+
     #[error("biglietto '{ticket_id}' non tra quelli offerti")]
     TicketNotOffered { ticket_id: String },
 
@@ -156,6 +159,29 @@ pub enum EngineInitError {
         keep_max: u32,
         count: u32,
     },
+
+    #[error(
+        "initialTickets.dealt: keepMin {keep_min} maggiore di count {count} per il deck '{deck}'"
+    )]
+    DealtKeepMinExceedsCount {
+        deck: String,
+        keep_min: u32,
+        count: u32,
+    },
+
+    #[error(
+        "initialTickets.dealt: keepMin {keep_min} maggiore di keepMax {keep_max} per il deck '{deck}'"
+    )]
+    DealtKeepMinExceedsKeepMax {
+        deck: String,
+        keep_min: u32,
+        keep_max: u32,
+    },
+
+    #[error(
+        "initialTickets.dealt: i keepMin dei deck sommano {deck_min}, più di initialTickets.keepMin {keep_min}"
+    )]
+    DealtKeepMinSumExceedsKeepMin { deck_min: u32, keep_min: u32 },
 
     #[error(
         "initialTickets.keepMin {keep_min} non raggiungibile: con i keepMax si possono tenere al massimo {max_keep} biglietti"
@@ -278,35 +304,14 @@ pub enum EngineInitError {
     )]
     DoubleGroupAlwaysOpenMismatch { route_id: String, other_id: String },
 
-    #[error("initialTickets: usare `dealt` oppure `chooseFrom`, non entrambi")]
-    InitialTicketsBothForms,
+    #[error("ticketDraw.mergeDecks: il deck '{deck}' non è in ticketDecks")]
+    MergeDeckUnknown { deck: String },
 
-    #[error("ticketDraw: usare `deck` oppure `chooseFrom`, non entrambi")]
-    TicketDrawBothForms,
-
-    #[error("{field}.chooseFrom non può essere vuoto")]
-    ChooseFromEmpty { field: String },
-
-    #[error("{field}.chooseFrom: il deck '{deck}' è ripetuto")]
-    ChooseFromDuplicate { field: String, deck: String },
-
-    #[error("{field}.chooseFrom usa il deck '{deck}' che non è in ticketDecks")]
-    ChooseFromDeckUnknown { field: String, deck: String },
-
-    #[error("{field}.count deve essere almeno 1 con chooseFrom")]
-    ChooseFromCountZero { field: String },
+    #[error("ticketDraw.mergeDecks: il deck '{deck}' è ripetuto o coincide con ticketDraw.deck")]
+    MergeDeckDuplicate { deck: String },
 
     #[error(
-        "initialTickets.chooseFrom: i mazzi '{decks}' hanno {have} biglietti, ne servono {needed}"
-    )]
-    ChooseFromDecksTooSmall {
-        decks: String,
-        have: usize,
-        needed: usize,
-    },
-
-    #[error(
-        "setupDiscards 'reshuffleBottom' non è ammesso con ticketDraw.chooseFrom: usare 'reshuffleBottomOwnDeck' o 'removed'"
+        "setupDiscards 'reshuffleBottom' non è ammesso con ticketDraw.mergeDecks: usare 'reshuffleBottomOwnDeck' o 'removed'"
     )]
     SetupDiscardsNeedOwnDeck,
 

@@ -4,14 +4,14 @@
   // - color !== LOCOMOTIVE → carro merci (tramoggia + carrello ruote)
   // - color === LOCOMOTIVE → locomotiva con arcobaleno stilizzato (jolly)
   //
-  // `color` tinge il corpo del mezzo; il carrello resta inchiostro scuro.
+  // `color` tinge il corpo del mezzo (`fill` lo sostituisce, es. colore giocatore); il carrello resta inchiostro scuro.
   import type { CardColor } from '../proto';
   import { CARD_COLOR_CSS } from '../colors';
 
-  let { color, uid }: { color: CardColor; uid: string } = $props();
+  let { color, uid, fill }: { color: CardColor; uid: string; fill?: string } = $props();
 
   const isLoco = $derived(color === 'LOCOMOTIVE');
-  const bodyFill = $derived(isLoco ? '#3f3428' : CARD_COLOR_CSS[color]);
+  const bodyFill = $derived(fill ?? (isLoco ? '#3f3428' : CARD_COLOR_CSS[color]));
   const ink = '#332a1e';
   // Strisce arcobaleno originali (6 bande) per la locomotiva-jolly.
   const RAINBOW = ['#c0392b', '#d35400', '#eab308', '#1e8449', '#2471a3', '#7d3c98'];

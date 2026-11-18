@@ -991,6 +991,8 @@ async fn deck_size_reported_and_decreases() {
     if let ServerMessage::Snapshot(ref s) = snap_spec {
         assert_eq!(s.public.state, GameState::WaitingForPlayers);
         assert_eq!(s.public.deck_size, 0, "deck_size 0 pre-start");
+        assert_eq!(s.public.ticket_deck_size, 0, "ticket_deck_size 0 pre-start");
+        assert!(s.public.blocked_route_ids.is_empty());
     }
 
     start_game(&server.base_url, &game.game_id, &game.host_token).await;
@@ -1011,6 +1013,9 @@ async fn deck_size_reported_and_decreases() {
     let d0 = public.as_ref().unwrap().deck_size;
     assert!(d0 > 0, "deck_size > 0 dopo start, trovato {}", d0);
     assert!(d0 <= 105, "deck_size <= 105 dopo start, trovato {}", d0);
+    let p0 = public.as_ref().unwrap();
+    assert!(p0.ticket_deck_size > 0, "ticket_deck_size > 0 dopo start");
+    assert!(p0.blocked_route_ids.is_empty(), "nessun binario bloccato");
 
     // SNAPSHOT B
     apply_msg(

@@ -1,11 +1,12 @@
 //! Regole di Germany e Poland: gruppi paralleli da 2–4 binari (anche sempre aperti), Paesi
-//! come vicoli ciechi, pesca dei biglietti con le quote per mazzo, carte Paese e spareggi.
+//! come vicoli ciechi, prima mano e pesca dei biglietti Germany (mazzo unito), carte Paese e
+//! spareggi.
 //!
 //! Le regole sui dati reali usano `data/{maps,rulesets}/{germany,poland}.json`; le carte
 //! Paese e gli spareggi, che richiedono partite controllate fino a `GameOver`, usano una
 //! mappa minima.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::de::DeserializeOwned;
 use serde_json::json;
@@ -34,8 +35,12 @@ fn poland() -> (Ruleset, MapData) {
 }
 
 fn engine(data: &(Ruleset, MapData), players: usize) -> Engine {
+    engine_seed(data, players, 7)
+}
+
+fn engine_seed(data: &(Ruleset, MapData), players: usize, seed: u64) -> Engine {
     Engine::new(
-        7,
+        seed,
         data.0.clone(),
         data.1.clone(),
         (0..players).map(|i| format!("p{i}")).collect(),
@@ -79,11 +84,8 @@ fn counts(pairs: &[(&str, u32)]) -> BTreeMap<String, u32> {
     pairs.iter().map(|(d, n)| (d.to_string(), *n)).collect()
 }
 
-fn draw(pi: usize, pairs: &[(&str, u32)]) -> Action {
-    Action::DrawTickets {
-        player_index: pi,
-        counts: counts(pairs),
-    }
+fn draw(pi: usize) -> Action {
+    Action::DrawTickets { player_index: pi }
 }
 
 fn choose(pi: usize, keep: &[String]) -> Action {
@@ -284,7 +286,7 @@ fn country_to_country_ticket_needs_one_network() {
     assert_eq!(is_completed(&eng, 0, "danemark_niederlande"), Some(false));
 }
 
-// ── F3: pesca con le quote per mazzo ─────────────────────────────────
+// ── F3: Germany, prima mano 2 lunghi + 3 corti e mazzo unito ─────────
 
 fn deck_counts(map: &MapData, ids: &[String]) -> BTreeMap<String, u32> {
     let mut counts = BTreeMap::new();
@@ -294,307 +296,273 @@ fn deck_counts(map: &MapData, ids: &[String]) -> BTreeMap<String, u32> {
     counts
 }
 
-/// Draft iniziale con `chooseFrom`: prima si pesca con le quote, poi si sceglie; gli scarti
-/// tornano in fondo al proprio mazzo.
-#[test]
-fn initial_draft_with_choose_from_draws_by_quota_and_returns_discards_to_the_own_deck() {
-    let data = germany();
-    let map = data.1.clone();
-    let mut eng = engine(&data, 2);
-    let total = |deck: &str| eng_total(&map, deck);
-
-    // Nessun biglietto offerto finché non si pesca; la pesca è elencata come mossa.
-    assert!(eng.initial_tickets_for(0).unwrap().is_empty());
-    let legal = eng.legal_moves(0);
-    let draw_moves = legal.ticket_draw.clone().unwrap();
-    assert_eq!(draw_moves.total, 4);
-    assert_eq!(
-        draw_moves
-            .available
-            .iter()
-            .map(|a| (a.deck.as_str(), a.count))
-            .collect::<Vec<_>>(),
-        // Limitati a `total`: le pile reali restano private (D39).
-        [("regular", 4), ("long", 4)]
-    );
-    assert!(total("regular") > 4 && total("long") > 4);
-    assert!(legal.can_draw_tickets && legal.ticket_choice.is_none());
-
-    // La scelta prima della pesca è rifiutata, anche con keepMin soddisfatto da id inventati.
-    assert!(matches!(
-        eng.apply(choose(0, &[])),
-        Err(EngineError::InvalidPayload { .. })
-    ));
-
-    // Quote non valide: somma sbagliata, mazzo ignoto, quota oltre i rimasti; stato intatto.
-    let before = eng.serialize_state();
-    for bad in [
-        draw(0, &[]),
-        draw(0, &[("regular", 3)]),
-        draw(0, &[("regular", 3), ("long", 2)]),
-        draw(0, &[("regular", 2), ("nessuno", 2)]),
-        draw(0, &[("regular", 4), ("long", 0), ("altro", 0)]),
-    ] {
-        assert!(
-            matches!(
-                eng.apply(bad.clone()),
-                Err(EngineError::InvalidPayload { .. })
-            ),
-            "{bad:?}"
-        );
-    }
-    assert_eq!(eng.serialize_state(), before);
-
-    // P0 pesca 2 + 2; P1 pesca 4 regolari.
-    let events = eng.apply(draw(0, &[("regular", 2), ("long", 2)])).unwrap();
-    let offered0 = eng.initial_tickets_for(0).unwrap().to_vec();
-    assert!(matches!(
-        &events[..],
-        [GameEvent::TicketsOffered { player_index: 0, ticket_ids }] if *ticket_ids == offered0
-    ));
-    assert_eq!(
-        deck_counts(&map, &offered0),
-        counts(&[("long", 2), ("regular", 2)])
-    );
-    // Una seconda pesca dello stesso giocatore è rifiutata; la sua scelta ora è elencata.
-    assert!(matches!(
-        eng.apply(draw(0, &[("regular", 4)])),
-        Err(EngineError::InvalidPayload { .. })
-    ));
-    let legal0 = eng.legal_moves(0);
-    assert!(legal0.ticket_draw.is_none() && !legal0.can_draw_tickets);
-    assert_eq!(legal0.ticket_choice.unwrap().keep_min, 2);
-    // La pesca di P0 non si deduce dalla vista di P1 (D39), ma toglie i biglietti dai mazzi.
-    assert_eq!(
-        eng.legal_moves(1).ticket_draw.unwrap(),
-        legal.ticket_draw.clone().unwrap()
-    );
-    assert_eq!(eng.ticket_pile_of("long").len() as u32, total("long") - 2);
-
-    // Scelte non valide: sotto il minimo, biglietto non offerto.
-    assert!(matches!(
-        eng.apply(choose(0, &offered0[..1])),
-        Err(EngineError::TicketChoiceBelowMin { .. })
-    ));
-    let foreign = map
-        .tickets
+/// Id dei biglietti in gioco in Germany (set `deutschland`).
+fn in_play(map: &MapData) -> BTreeSet<String> {
+    map.tickets
         .iter()
+        .filter(|t| t.sets.iter().any(|s| s == "deutschland"))
         .map(|t| t.id.clone())
-        .find(|id| !offered0.contains(id))
-        .unwrap();
-    assert!(matches!(
-        eng.apply(choose(0, &[offered0[0].clone(), foreign])),
-        Err(EngineError::TicketNotOffered { .. })
-    ));
+        .collect()
+}
 
-    eng.apply(draw(1, &[("regular", 4)])).unwrap();
-    let offered1 = eng.initial_tickets_for(1).unwrap().to_vec();
-    assert_eq!(deck_counts(&map, &offered1), counts(&[("regular", 4)]));
-
-    // P0 tiene un regolare e un lungo, P1 due regolari.
-    let keep0: Vec<String> = ["regular", "long"]
+/// Dei biglietti offerti a `pi` nel draft, il primo lungo e il primo corto.
+fn long_and_regular(eng: &Engine, map: &MapData, pi: usize) -> Vec<String> {
+    let offered = eng.initial_tickets_for(pi).unwrap();
+    ["long", "regular"]
         .iter()
         .map(|deck| {
-            offered0
+            offered
                 .iter()
-                .find(|id| deck_of(&map, id) == *deck)
+                .find(|id| deck_of(map, id) == *deck)
                 .unwrap()
                 .clone()
         })
-        .collect();
-    let discarded0: Vec<String> = offered0
+        .collect()
+}
+
+/// Engine Germany a 2 giocatori col draft finito (ognuno tiene un lungo e un corto) e al
+/// turno di P0.
+fn germany_after_draft(map: &MapData, seed: u64) -> Engine {
+    let data = germany();
+    let mut eng = engine_seed(&data, 2, seed);
+    for pi in 0..2 {
+        let keep = long_and_regular(&eng, map, pi);
+        eng.apply(choose(pi, &keep)).unwrap();
+    }
+    assert_eq!(eng.phase(), GamePhase::PlayerTurn);
+    eng.set_phase_for_test(GamePhase::PlayerTurn, 0);
+    eng
+}
+
+/// La prima mano è di 2 lunghi + 3 corti per giocatore, offerti subito; si tengono almeno 2
+/// biglietti e almeno 1 corto: 1 lungo + 1 corto e 2 corti vanno bene, solo lunghi no.
+#[test]
+fn initial_hand_is_two_long_and_three_regular_with_keep_rules() {
+    let data = germany();
+    let map = data.1.clone();
+    let mut eng = engine(&data, 2);
+
+    let offered0 = eng.initial_tickets_for(0).unwrap().to_vec();
+    let offered1 = eng.initial_tickets_for(1).unwrap().to_vec();
+    for offered in [&offered0, &offered1] {
+        assert_eq!(
+            deck_counts(&map, offered),
+            counts(&[("long", 2), ("regular", 3)])
+        );
+    }
+
+    // Niente pesca nel draft: i biglietti sono già offerti.
+    assert!(matches!(
+        eng.apply(draw(0)),
+        Err(EngineError::WrongState { .. })
+    ));
+    let legal = eng.legal_moves(0);
+    assert!(!legal.can_draw_tickets);
+    let choice = legal.ticket_choice.unwrap();
+    assert_eq!(choice.keep_min, 2);
+    let regular0: Vec<String> = offered0
         .iter()
-        .filter(|id| !keep0.contains(id))
+        .filter(|id| deck_of(&map, id) == "regular")
         .cloned()
         .collect();
-    let keep1 = offered1[..2].to_vec();
-    let discarded1 = offered1[2..].to_vec();
-    eng.apply(choose(0, &keep0)).unwrap();
+    // Solo il gruppo dei corti ha un minimo; i lunghi non hanno limiti.
+    assert_eq!(choice.limits.len(), 1);
+    assert_eq!(choice.limits[0].ticket_ids, regular0);
+    assert_eq!((choice.limits[0].min, choice.limits[0].max), (1, 3));
+
+    // Solo lunghi: rifiutato anche se sono 2; un solo biglietto: sotto il minimo; stato intatto.
+    let before = eng.serialize_state();
+    let longs0: Vec<String> = offered0
+        .iter()
+        .filter(|id| deck_of(&map, id) == "long")
+        .cloned()
+        .collect();
+    assert!(matches!(
+        eng.apply(choose(0, &longs0)),
+        Err(EngineError::TicketChoiceBelowDeckMin { deck, kept: 0, min: 1 }) if deck == "regular"
+    ));
+    assert!(matches!(
+        eng.apply(choose(0, &regular0[..1])),
+        Err(EngineError::TicketChoiceBelowMin { .. })
+    ));
+    assert_eq!(eng.serialize_state(), before);
+
+    // P0: 1 lungo + 1 corto; P1: 2 corti.
+    eng.apply(choose(0, &long_and_regular(&eng, &map, 0)))
+        .unwrap();
     assert_eq!(eng.phase(), GamePhase::InitialDraft);
-    let events = eng.apply(choose(1, &keep1)).unwrap();
+    let regular1: Vec<String> = offered1
+        .iter()
+        .filter(|id| deck_of(&map, id) == "regular")
+        .cloned()
+        .collect();
+    let events = eng.apply(choose(1, &regular1[..2])).unwrap();
     assert!(
         events
             .iter()
             .any(|e| matches!(e, GameEvent::InitialDraftComplete))
     );
     assert_eq!(eng.phase(), GamePhase::PlayerTurn);
+}
 
-    // Ogni scarto è tornato in fondo al proprio mazzo: nessun biglietto perso.
-    let regular = eng.ticket_pile_of("regular");
-    let long = eng.ticket_pile_of("long");
-    assert_eq!(regular.len(), total("regular") as usize - 3);
-    assert_eq!(long.len(), total("long") as usize - 1);
-    let discarded_regular0: Vec<&String> = discarded0
+/// Finito il draft, i biglietti rimasti di entrambi i mazzi formano una sola pila (nessun
+/// biglietto perso, scarti del draft compresi) e `ticket_deck_size` la conta.
+#[test]
+fn draft_ends_with_one_merged_ticket_pile() {
+    let map = germany().1;
+    let data = germany();
+    let mut eng = engine(&data, 2);
+    // Con il draft in corso i mazzi sono ancora separati e il totale li somma.
+    let all = in_play(&map);
+    assert_eq!(eng.ticket_deck_size(), all.len() - 10);
+    assert!(!eng.ticket_pile_of("long").is_empty());
+
+    let keep0 = long_and_regular(&eng, &map, 0);
+    let regular1: Vec<String> = eng
+        .initial_tickets_for(1)
+        .unwrap()
         .iter()
         .filter(|id| deck_of(&map, id) == "regular")
+        .take(2)
+        .cloned()
         .collect();
-    assert_eq!(discarded_regular0.len(), 1);
-    let bottom = &regular[regular.len() - 3..];
-    assert_eq!(&bottom[0], discarded_regular0[0]);
-    let mut p1_bottom: Vec<&String> = bottom[1..].iter().collect();
-    let mut p1_discards: Vec<&String> = discarded1.iter().collect();
-    p1_bottom.sort();
-    p1_discards.sort();
-    assert_eq!(p1_bottom, p1_discards);
-    let discarded_long0: Vec<&String> = discarded0
-        .iter()
-        .filter(|id| deck_of(&map, id) == "long")
-        .collect();
-    assert_eq!(long.last().unwrap(), discarded_long0[0]);
+    eng.apply(choose(0, &keep0)).unwrap();
+    assert_eq!(eng.ticket_deck_size(), all.len() - 10 + 3);
+    eng.apply(choose(1, &regular1)).unwrap();
 
-    // Non si può più pescare nel draft.
-    assert!(matches!(
-        eng.apply(draw(1, &[("regular", 4)])),
-        Err(EngineError::NotYourTurn { .. })
-    ));
+    let pile = eng.ticket_pile_of("regular").to_vec();
+    assert!(eng.ticket_pile_of("long").is_empty());
+    assert_eq!(pile.len(), all.len() - 4);
+    assert_eq!(eng.ticket_deck_size(), pile.len());
+    let kept: BTreeSet<String> = keep0.into_iter().chain(regular1).collect();
+    let in_pile: BTreeSet<String> = pile.iter().cloned().collect();
+    assert_eq!(in_pile.len(), pile.len(), "nessun duplicato");
+    assert!(in_pile.is_disjoint(&kept));
+    assert_eq!(in_pile.union(&kept).cloned().collect::<BTreeSet<_>>(), all);
+    // Mescolati insieme: lunghi e corti si alternano in cima.
+    let top: Vec<&String> = pile.iter().take(12).collect();
+    assert!(top.iter().any(|id| deck_of(&map, id) == "long"));
+    assert!(top.iter().any(|id| deck_of(&map, id) == "regular"));
 }
 
-fn eng_total(map: &MapData, deck: &str) -> u32 {
-    map.tickets
-        .iter()
-        .filter(|t| t.deck == deck && t.sets.iter().any(|s| s == "deutschland"))
-        .count() as u32
-}
-
-/// Pesca a inizio turno con le quote (4 biglietti, tieni almeno 1): gli scartati tornano in
-/// fondo al proprio mazzo, nell'ordine in cui erano offerti.
+/// A partita in corso DRAW_TICKETS pesca 4 biglietti dalla cima della pila unita (anche
+/// lunghi e corti insieme); gli scartati vanno in fondo alla pila unita, nell'ordine offerto.
 #[test]
-fn mid_game_draw_with_choose_from_validates_quotas_and_returns_discards() {
-    let data = germany();
-    let map = data.1.clone();
-    let mut eng = engine(&data, 2);
-    eng.set_phase_for_test(GamePhase::PlayerTurn, 0);
-    let long_before = eng.ticket_pile_of("long").len();
-    let regular_before = eng.ticket_pile_of("regular").len();
+fn mid_game_draw_takes_four_from_the_merged_pile_and_returns_discards_to_its_bottom() {
+    let map = germany().1;
+    let mut mixed_seeds = 0;
+    for seed in 1..=40 {
+        let mut eng = germany_after_draft(&map, seed);
+        let before = eng.ticket_pile_of("regular").to_vec();
+        let legal = eng.legal_moves(0);
+        assert!(legal.can_draw_tickets);
+        assert!(matches!(
+            eng.apply(draw(1)),
+            Err(EngineError::NotYourTurn { .. })
+        ));
 
-    let legal = eng.legal_moves(0);
-    assert!(legal.can_draw_tickets);
-    assert_eq!(legal.ticket_draw.unwrap().total, 4);
-    // Pesca senza quote (come un client classico) o con la somma sbagliata: rifiutata.
-    for bad in [
-        draw(0, &[]),
-        draw(0, &[("long", 3)]),
-        draw(0, &[("long", 5)]),
-    ] {
-        assert!(
-            matches!(
-                eng.apply(bad.clone()),
-                Err(EngineError::InvalidPayload { .. })
-            ),
-            "{bad:?}"
-        );
+        eng.apply(draw(0)).unwrap();
+        assert_eq!(eng.phase(), GamePhase::TicketChoice);
+        let offered = eng.pending_tickets().to_vec();
+        assert_eq!(offered, before[..4]);
+        assert_eq!(eng.ticket_deck_size(), before.len() - 4);
+        let types = deck_counts(&map, &offered);
+        if types.len() < 2 {
+            continue;
+        }
+        mixed_seeds += 1;
+
+        let legal = eng.legal_moves(0);
+        assert_eq!(legal.ticket_choice.unwrap().keep_min, 1);
+        assert!(!legal.can_draw_tickets);
+        assert!(matches!(
+            eng.apply(choose(0, &[])),
+            Err(EngineError::TicketChoiceBelowMin { .. })
+        ));
+        let kept = offered[1].clone();
+        let discarded: Vec<String> = offered.iter().filter(|id| **id != kept).cloned().collect();
+        eng.apply(choose(0, std::slice::from_ref(&kept))).unwrap();
+
+        let after = eng.ticket_pile_of("regular");
+        assert_eq!(after.len(), before.len() - 1);
+        assert_eq!(&after[after.len() - 3..], discarded.as_slice());
+        assert_eq!(&after[..after.len() - 3], &before[4..]);
+        // Anche gli scartati lunghi tornano nella pila unita, non nel loro mazzo.
+        assert!(eng.ticket_pile_of("long").is_empty());
+        assert!(eng.player(0).unwrap().tickets.contains_key(&kept));
     }
-    assert_eq!(eng.phase(), GamePhase::PlayerTurn);
-    // Non è il turno di P1.
-    assert!(matches!(
-        eng.apply(draw(1, &[("regular", 4)])),
-        Err(EngineError::NotYourTurn { .. })
-    ));
-
-    eng.apply(draw(0, &[("regular", 1), ("long", 3)])).unwrap();
-    assert_eq!(eng.phase(), GamePhase::TicketChoice);
-    let offered = eng.pending_tickets().to_vec();
-    assert_eq!(
-        deck_counts(&map, &offered),
-        counts(&[("long", 3), ("regular", 1)])
-    );
-    assert_eq!(eng.ticket_pile_of("long").len(), long_before - 3);
-    assert_eq!(eng.ticket_pile_of("regular").len(), regular_before - 1);
-    let legal = eng.legal_moves(0);
-    assert_eq!(legal.ticket_choice.unwrap().keep_min, 1);
-    assert!(legal.ticket_draw.is_none() && !legal.can_draw_tickets);
-
-    // Nessun biglietto tenuto: sotto il minimo.
-    assert!(matches!(
-        eng.apply(choose(0, &[])),
-        Err(EngineError::TicketChoiceBelowMin { .. })
-    ));
-    let kept = offered
-        .iter()
-        .find(|id| deck_of(&map, id) == "regular")
-        .unwrap()
-        .clone();
-    let discarded: Vec<String> = offered.iter().filter(|id| **id != kept).cloned().collect();
-    eng.apply(choose(0, std::slice::from_ref(&kept))).unwrap();
-
-    assert_eq!(eng.ticket_pile_of("long").len(), long_before);
-    assert_eq!(eng.ticket_pile_of("regular").len(), regular_before - 1);
-    let long = eng.ticket_pile_of("long");
-    assert_eq!(&long[long.len() - 3..], discarded.as_slice());
-    assert!(eng.player(0).unwrap().tickets.contains_key(&kept));
+    assert!(mixed_seeds > 0, "nessun seed con una pesca mista");
 }
 
-/// Con pochi biglietti rimasti il totale è il numero di quelli rimasti e ogni quota è limitata
-/// dal proprio mazzo; senza biglietti la pesca non è elencata.
+/// Con pochi biglietti rimasti si pescano quelli che restano (almeno 1); senza, la pesca non
+/// è ammessa.
 #[test]
-fn choose_from_total_is_capped_by_the_remaining_tickets() {
-    let data = germany();
-    let mut eng = engine(&data, 2);
-    eng.set_phase_for_test(GamePhase::PlayerTurn, 0);
-    let regular: Vec<String> = eng.ticket_pile_of("regular")[..2].to_vec();
-    let long: Vec<String> = eng.ticket_pile_of("long")[..1].to_vec();
-    eng.set_ticket_pile("regular", regular.clone());
-    eng.set_ticket_pile("long", long.clone());
+fn draw_is_capped_by_the_remaining_tickets() {
+    let map = germany().1;
+    let mut eng = germany_after_draft(&map, 7);
+    let two: Vec<String> = eng.ticket_pile_of("regular")[..2].to_vec();
+    eng.set_ticket_pile("regular", two.clone());
+    assert_eq!(eng.ticket_deck_size(), 2);
+    assert!(eng.legal_moves(0).can_draw_tickets);
+    eng.apply(draw(0)).unwrap();
+    assert_eq!(eng.pending_tickets(), two.as_slice());
+    assert_eq!(eng.ticket_deck_size(), 0);
+    eng.apply(choose(0, &two[..1])).unwrap();
+    assert_eq!(eng.ticket_pile_of("regular"), &two[1..]);
+    assert_eq!(eng.ticket_deck_size(), 1);
 
-    let moves = eng.legal_moves(0).ticket_draw.unwrap();
-    assert_eq!(moves.total, 3);
-    assert_eq!(
-        moves.available.iter().map(|a| a.count).collect::<Vec<_>>(),
-        [2, 1]
-    );
-    // 2 lunghi non ci sono, anche se la somma è giusta.
-    assert!(matches!(
-        eng.apply(draw(0, &[("regular", 1), ("long", 2)])),
-        Err(EngineError::InvalidPayload { .. })
-    ));
-    eng.apply(draw(0, &[("regular", 2), ("long", 1)])).unwrap();
-    let mut offered = eng.pending_tickets().to_vec();
-    offered.sort();
-    let mut expected: Vec<String> = regular.into_iter().chain(long).collect();
-    expected.sort();
-    assert_eq!(offered, expected);
-    assert!(eng.ticket_piles().values().all(Vec::is_empty));
-
-    // Mazzi vuoti: nessuna pesca.
-    let mut eng = engine(&data, 2);
-    eng.set_phase_for_test(GamePhase::PlayerTurn, 0);
+    let mut eng = germany_after_draft(&map, 7);
     eng.set_ticket_pile("regular", Vec::new());
-    eng.set_ticket_pile("long", Vec::new());
-    let legal = eng.legal_moves(0);
-    assert!(!legal.can_draw_tickets && legal.ticket_draw.is_none());
-    assert!(eng.apply(draw(0, &[])).is_err());
+    assert_eq!(eng.ticket_deck_size(), 0);
+    assert!(!eng.legal_moves(0).can_draw_tickets);
+    assert!(eng.apply(draw(0)).is_err());
 }
 
-/// Le pile per mazzo del draft classico restano utilizzabili, `counts` non è ammesso, e le
-/// azioni salvate prima di `counts` si leggono ancora.
+/// Stesso seed e stesse azioni: stesso stato, anche rigiocando il registro delle azioni.
 #[test]
-fn classic_rulesets_reject_quotas_and_old_saves_still_load() {
+fn merged_pile_is_deterministic_and_replayable() {
+    let map = germany().1;
+    let play = |seed: u64| {
+        let mut eng = germany_after_draft(&map, seed);
+        eng.apply(draw(0)).unwrap();
+        let keep = eng.pending_tickets()[..2].to_vec();
+        eng.apply(choose(0, &keep)).unwrap();
+        eng
+    };
+    let a = play(11);
+    let b = play(11);
+    assert_eq!(a.serialize_state(), b.serialize_state());
+    assert_eq!(a.ticket_pile_of("regular"), b.ticket_pile_of("regular"));
+    assert_ne!(
+        a.ticket_pile_of("regular"),
+        play(12).ticket_pile_of("regular")
+    );
+
+    let data = germany();
+    let mut replay = engine_seed(&data, 2, 11);
+    for record in a.action_log() {
+        replay.apply(record.action.clone()).unwrap();
+    }
+    assert_eq!(replay.serialize_state(), a.serialize_state());
+}
+
+/// Le regole classiche non cambiano: un solo mazzo di pesca, e le azioni salvate con i campi
+/// vecchi (`counts`) si leggono ancora.
+#[test]
+fn classic_rulesets_draw_from_one_deck_and_old_actions_still_load() {
     let data = poland();
     let mut eng = engine(&data, 2);
     eng.set_phase_for_test(GamePhase::PlayerTurn, 0);
-    assert!(eng.legal_moves(0).ticket_draw.is_none());
     assert!(eng.legal_moves(0).can_draw_tickets);
-    assert!(matches!(
-        eng.apply(draw(0, &[("regular", 3)])),
-        Err(EngineError::InvalidPayload { .. })
-    ));
-    eng.apply(draw(0, &[])).unwrap();
+    eng.apply(draw(0)).unwrap();
     assert_eq!(eng.pending_tickets().len(), 3);
 
-    let legacy: Action = serde_json::from_str(r#"{"DrawTickets":{"player_index":1}}"#).unwrap();
-    assert!(matches!(
-        &legacy,
-        Action::DrawTickets { player_index: 1, counts } if counts.is_empty()
-    ));
+    let legacy: Action =
+        serde_json::from_str(r#"{"DrawTickets":{"player_index":1,"counts":{"long":1}}}"#).unwrap();
+    assert!(matches!(&legacy, Action::DrawTickets { player_index: 1 }));
     assert_eq!(
         serde_json::to_string(&legacy).unwrap(),
         r#"{"DrawTickets":{"player_index":1}}"#
-    );
-    let with_counts = draw(0, &[("long", 1)]);
-    let json = serde_json::to_string(&with_counts).unwrap();
-    assert_eq!(
-        json,
-        r#"{"DrawTickets":{"player_index":0,"counts":{"long":1}}}"#
     );
 }
 
@@ -1033,30 +1001,26 @@ fn new_fields_are_validated() {
         assert_eq!(rs.validate(&map).unwrap_err(), expected);
     };
     check(
-        |rs| rs.ticket_draw.choose_from = Some(vec![]),
-        EngineInitError::ChooseFromEmpty {
-            field: "ticketDraw".into(),
-        },
-    );
-    check(
-        |rs| rs.initial_tickets.choose_from = Some(vec!["regular".into(), "regular".into()]),
-        EngineInitError::ChooseFromDuplicate {
-            field: "initialTickets".into(),
-            deck: "regular".into(),
-        },
-    );
-    check(
-        |rs| rs.ticket_draw.choose_from = Some(vec!["nessuno".into()]),
-        EngineInitError::ChooseFromDeckUnknown {
-            field: "ticketDraw".into(),
+        |rs| rs.ticket_draw.merge_decks = vec!["nessuno".into()],
+        EngineInitError::MergeDeckUnknown {
             deck: "nessuno".into(),
         },
     );
     check(
-        |rs| rs.initial_tickets.count = 0,
-        EngineInitError::ChooseFromCountZero {
-            field: "initialTickets".into(),
+        |rs| rs.ticket_draw.merge_decks = vec!["long".into(), "long".into()],
+        EngineInitError::MergeDeckDuplicate {
+            deck: "long".into(),
         },
+    );
+    check(
+        |rs| rs.ticket_draw.merge_decks = vec!["regular".into()],
+        EngineInitError::MergeDeckDuplicate {
+            deck: "regular".into(),
+        },
+    );
+    check(
+        |rs| rs.setup_discards = ttr_core::types::SetupDiscards::ReshuffleBottom,
+        EngineInitError::SetupDiscardsNeedOwnDeck,
     );
     check(
         |rs| rs.ticket_draw.keep_min = 9,
@@ -1066,20 +1030,47 @@ fn new_fields_are_validated() {
         },
     );
     check(
-        |rs| rs.initial_tickets.keep_min = 5,
+        |rs| rs.initial_tickets.keep_min = 6,
         EngineInitError::InitialKeepMinExceedsDealt {
-            keep_min: 5,
-            dealt: 4,
+            keep_min: 6,
+            dealt: 5,
         },
     );
     check(
-        |rs| rs.initial_tickets.count = 13,
-        EngineInitError::ChooseFromDecksTooSmall {
-            decks: "regular, long".into(),
-            have: 62,
-            needed: 65,
+        |rs| rs.initial_tickets.dealt[1].keep_min = 4,
+        EngineInitError::DealtKeepMinExceedsCount {
+            deck: "regular".into(),
+            keep_min: 4,
+            count: 3,
         },
     );
+    check(
+        |rs| {
+            rs.initial_tickets.dealt[0].keep_min = 2;
+            rs.initial_tickets.dealt[0].keep_max = Some(1);
+        },
+        EngineInitError::DealtKeepMinExceedsKeepMax {
+            deck: "long".into(),
+            keep_min: 2,
+            keep_max: 1,
+        },
+    );
+    check(
+        |rs| {
+            rs.initial_tickets.dealt[0].keep_min = 1;
+            rs.initial_tickets.dealt[1].keep_min = 2;
+        },
+        EngineInitError::DealtKeepMinSumExceedsKeepMin {
+            deck_min: 3,
+            keep_min: 2,
+        },
+    );
+    let mut rs = ruleset.clone();
+    rs.initial_tickets.dealt[1].count = 13;
+    assert!(matches!(
+        rs.validate(&map).unwrap_err(),
+        EngineInitError::TicketDeckTooSmall { deck, needed: 65, .. } if deck == "regular"
+    ));
 
     let (ruleset, map) = poland();
     let mut rs = ruleset.clone();

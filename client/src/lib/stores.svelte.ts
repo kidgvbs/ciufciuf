@@ -51,6 +51,10 @@ class PublicStore {
   countryStacks = $state<CountryCards[]>([]);
   /** Germany 2017: passeggeri ancora sulle città. */
   passengers = $state<CityPassengers[]>([]);
+  /** Binari liberi che nessuno può più reclamare (gruppo parallelo già preso con pochi giocatori). */
+  blockedRouteIds = $state<string[]>([]);
+  /** Biglietti ancora pescabili con DRAW_TICKETS. */
+  ticketDeckSize = $state<number>(0);
 
   apply(raw: PublicState): void {
     const ps = normalizePublicState(raw);
@@ -72,6 +76,8 @@ class PublicStore {
     this.recentMoves = ps.recent_moves;
     this.countryStacks = ps.country_stacks;
     this.passengers = ps.passengers;
+    this.blockedRouteIds = ps.blocked_route_ids;
+    this.ticketDeckSize = ps.ticket_deck_size;
   }
 
   reset(): void {
@@ -93,6 +99,8 @@ class PublicStore {
     this.recentMoves = [];
     this.countryStacks = [];
     this.passengers = [];
+    this.blockedRouteIds = [];
+    this.ticketDeckSize = 0;
   }
 }
 

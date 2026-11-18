@@ -36,5 +36,3 @@ export type { CityPassengers } from './CityPassengers';
 export type { CountryCards } from './CountryCards';
 export type { PassengerCount } from './PassengerCount';
 export type { PassengerPick } from './PassengerPick';
-export type { TicketDeckCount } from './TicketDeckCount';
-export type { TicketDrawMoves } from './TicketDrawMoves';

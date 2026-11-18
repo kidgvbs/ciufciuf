@@ -366,7 +366,7 @@ Nota: `tickets[].completed` live alimenta il feedback "biglietto completato" (§
 | **Table view** | TV/browser via HDMI | Landscape 16:9, min 1920×1080; pan e zoom sulla mappa; QR con IP numerico + URL `ttr.local` testuale in lobby |
 | **Controller view** | Telefono | Portrait; scala propria |
 
-Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non px assoluti): carte ~100×150, biglietti ~120×80, singolo vagone ~40×15. Colori giocatore: rosso, blu, verde, giallo, nero.
+Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non px assoluti): carte ~100×150, biglietti ~120×80, singolo vagone ~40×15. Colori giocatore: rosa, ciano, lime, marrone, lavanda, indaco (dal 18/11/2026; prima rosso, blu, verde, giallo, nero, troppo vicini ai colori delle tratte).
 
 ### 8.2 Feedback e animazioni (adottate dal GDD)
 

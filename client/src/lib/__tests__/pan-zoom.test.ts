@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   clientToViewBox, cssPerUnit, clamp, zoomAt, panBy, wheelFactor, GestureTracker, IDENTITY,
+  bboxOfPoints, fitRect, easeInOutCubic, lerpPanZoom, FocusController, MAX_ZOOM,
 } from '../pan-zoom.ts';
 
 const vb = { width: 1000, height: 500 };
@@ -102,5 +103,145 @@ describe('wheelFactor', () => {
     expect(wheelFactor(-100)).toBeGreaterThan(1);
     expect(wheelFactor(10000)).toBe(0.5);
     expect(wheelFactor(3, 1)).toBeCloseTo(Math.exp(-48 * 0.0015));
+  });
+});
+
+describe('bboxOfPoints / fitRect', () => {
+  it('bbox dei punti, null se vuota', () => {
+    expect(bboxOfPoints([])).toBeNull();
+    expect(bboxOfPoints([{ x: 10, y: 40 }, { x: 30, y: 20 }, { x: 25, y: 50 }]))
+      .toEqual({ x: 10, y: 20, width: 20, height: 30 });
+  });
+
+  it('centra il rettangolo con zoom limitato a 2.5 per le tratte corte', () => {
+    const v = fitRect({ x: 480, y: 230, width: 40, height: 40 }, vb);
+    expect(v.zoom).toBe(2.5);
+    // il centro (500, 250) cade al centro del viewBox
+    expect(500 * v.zoom + v.panX).toBeCloseTo(500);
+    expect(250 * v.zoom + v.panY).toBeCloseTo(250);
+  });
+
+  it('tratte lunghe: zoom minore (ma >= 1.6) perché stiano per intero', () => {
+    const v = fitRect({ x: 300, y: 200, width: 400, height: 100 }, vb, { margin: 50 });
+    expect(v.zoom).toBeCloseTo(1000 / 500);
+    const huge = fitRect({ x: 0, y: 0, width: 1000, height: 500 }, vb);
+    expect(huge.zoom).toBe(1.6);
+  });
+
+  it('zoom mai oltre MAX_ZOOM e vista sempre valida (clamp ai bordi)', () => {
+    const corner = fitRect({ x: 0, y: 0, width: 10, height: 10 }, vb, { maxZoom: 99, margin: 5 });
+    expect(corner.zoom).toBe(MAX_ZOOM);
+    expect(corner).toEqual(clamp(corner, vb));
+    const edge = fitRect({ x: 960, y: 470, width: 30, height: 20 }, vb);
+    expect(edge).toEqual(clamp(edge, vb));
+    // il rettangolo resta visibile: x in [0, 1000] dopo la trasformazione
+    const sx = 975 * edge.zoom + edge.panX;
+    expect(sx).toBeGreaterThan(0);
+    expect(sx).toBeLessThanOrEqual(1000);
+  });
+});
+
+describe('easeInOutCubic / lerpPanZoom', () => {
+  it('estremi e simmetria', () => {
+    expect(easeInOutCubic(0)).toBe(0);
+    expect(easeInOutCubic(1)).toBe(1);
+    expect(easeInOutCubic(0.5)).toBeCloseTo(0.5);
+    expect(easeInOutCubic(-3)).toBe(0);
+    expect(easeInOutCubic(9)).toBe(1);
+  });
+  it('interpola pan e zoom; i punti intermedi di due viste valide sono validi', () => {
+    const a = { panX: 0, panY: 0, zoom: 1 };
+    const b = { panX: -400, panY: -200, zoom: 3 };
+    expect(lerpPanZoom(a, b, 0)).toEqual(a);
+    expect(lerpPanZoom(a, b, 1)).toEqual(b);
+    expect(lerpPanZoom(a, b, 0.5)).toEqual({ panX: -200, panY: -100, zoom: 2 });
+    const edge = fitRect({ x: 900, y: 450, width: 40, height: 30 }, vb);
+    for (const t of [0.1, 0.3, 0.7, 0.9]) {
+      const m = lerpPanZoom(a, edge, t);
+      const c = clamp(m, vb);
+      expect(c.zoom).toBeCloseTo(m.zoom);
+      expect(c.panX).toBeCloseTo(m.panX);
+      expect(c.panY).toBeCloseTo(m.panY);
+    }
+  });
+});
+
+describe('FocusController', () => {
+  const timing = { inMs: 100, holdMs: 1000, outMs: 100 };
+  const target = { panX: -500, panY: -250, zoom: 2 };
+
+  it('zoom-in, pausa, ritorno alla vista precedente (non per forza l’identità)', () => {
+    const before = { panX: -100, panY: -50, zoom: 1.5 };
+    const fc = new FocusController(timing);
+    expect(fc.phase).toBe('idle');
+    fc.focus(before, target, 0);
+    expect(fc.phase).toBe('in');
+    expect(fc.tick(0)).toEqual(before);
+    const mid = fc.tick(50);
+    expect(mid.zoom).toBeGreaterThan(1.5);
+    expect(mid.zoom).toBeLessThan(2);
+    expect(fc.tick(100)).toEqual(target);
+    expect(fc.phase).toBe('hold');
+    expect(fc.tick(1000)).toEqual(target);
+    expect(fc.tick(1100)).toEqual(target); // fine pausa: inizia il ritorno
+    expect(fc.phase).toBe('out');
+    expect(fc.tick(1150).zoom).toBeLessThan(2);
+    expect(fc.tick(1200)).toEqual(before);
+    expect(fc.phase).toBe('idle');
+    expect(fc.active).toBe(false);
+  });
+
+  it('un secondo focus durante l’animazione riparte dalla vista corrente e mantiene la base', () => {
+    const fc = new FocusController(timing);
+    fc.focus(IDENTITY, target, 0);
+    fc.tick(100);
+    fc.tick(500); // in pausa sul primo bersaglio
+    const second = { panX: -200, panY: -100, zoom: 2.5 };
+    // `current` è ignorata: l'animazione è già attiva
+    fc.focus({ panX: 123, panY: 456, zoom: 4 }, second, 500);
+    expect(fc.tick(500)).toEqual(target); // nessun salto
+    expect(fc.tick(600)).toEqual(second);
+    expect(fc.phase).toBe('hold');
+    // la pausa riparte dal secondo claim
+    expect(fc.tick(1500)).toEqual(second);
+    fc.tick(1600);
+    expect(fc.tick(1700)).toEqual(IDENTITY);
+    expect(fc.active).toBe(false);
+  });
+
+  it('un focus durante il ritorno riparte dal punto raggiunto', () => {
+    const fc = new FocusController(timing);
+    fc.focus(IDENTITY, target, 0);
+    fc.tick(1100);
+    const mid = fc.tick(1150);
+    fc.focus(IDENTITY, target, 1150);
+    expect(fc.tick(1150)).toEqual(mid);
+    expect(fc.tick(1250)).toEqual(target);
+  });
+
+  it('movimento ridotto: salta senza interpolare, tiene la pausa e torna di colpo', () => {
+    const fc = new FocusController(timing);
+    fc.focus(IDENTITY, target, 0, true);
+    expect(fc.tick(0)).toEqual(target);
+    expect(fc.phase).toBe('hold');
+    expect(fc.tick(999)).toEqual(target);
+    expect(fc.tick(1000)).toEqual(IDENTITY);
+    expect(fc.phase).toBe('idle');
+  });
+
+  it('cancel lascia la vista dove sta e ferma tutto', () => {
+    const fc = new FocusController(timing);
+    fc.focus(IDENTITY, target, 0);
+    const mid = fc.tick(50);
+    fc.cancel();
+    expect(fc.active).toBe(false);
+    expect(fc.tick(5000)).toEqual(mid);
+  });
+
+  it('frame in ritardo: recupera le fasi senza scatti', () => {
+    const fc = new FocusController(timing);
+    fc.focus(IDENTITY, target, 0);
+    expect(fc.tick(10_000)).toEqual(IDENTITY);
+    expect(fc.active).toBe(false);
   });
 });

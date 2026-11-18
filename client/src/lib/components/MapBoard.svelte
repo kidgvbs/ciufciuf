@@ -12,6 +12,8 @@
   // - onRouteTap:        tap/click su una rotta (distinto dal pan via soglia)
   // - compact:           stesso viewBox del full (layout) ma font/stroke/dot adattati
   //                      al telefono (stesso componente, niente fork)
+  // - focusClaim:        solo TV: zoom animato sulla rotta appena occupata (`{seq, routeId}`;
+  //                      ogni `seq` nuovo è un nuovo evento), poi ritorno alla vista precedente.
   //
   // Revisione grafica:
   // - disegno a LAYER (ombre → letto binari → glow → tasselli/vagoni → aree
@@ -25,6 +27,7 @@
   // - font incluso (Barlow Semi Condensed 600) misurato dal generatore;
   // - pan/zoom in unità viewBox con pinch a due dita, limiti e pulsanti.
   import '@fontsource/barlow-semi-condensed/latin-600.css';
+  import { untrack } from 'svelte';
   import { publicStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS } from '../colors';
   import { passengerColorCss } from '../passengers';
@@ -44,6 +47,7 @@
     selectedCityId = null,
     onCityTap,
     bigCities = [],
+    focusClaim = null,
   }: {
     /** Mappa già caricata; il wrapper `MapSvg` rimonta il componente se cambia. */
     mapData: MapDataType;
@@ -65,6 +69,8 @@
     onCityTap?: (cityId: string) => void;
     /** Modalità «Grandi Città»: città marcate con un anello (solo visualizzazione, non interattive). */
     bigCities?: string[];
+    /** TV: tratta appena occupata su cui zoomare (non mostra nulla se `compact`). */
+    focusClaim?: { seq: number; routeId: string } | null;
   } = $props();
   // Id unici per istanza: nel dialog biglietti due mappe coesistono (quella di sfondo
   // può essere `display:none`, e i gradienti lì dentro non vengono risolti).
@@ -80,6 +86,10 @@
   const interactive = $derived(onRouteTap !== undefined);
   const highlightSet = $derived(new Set(highlightRouteIds));
   const selectableCitySet = $derived(new Set(selectableCityIds));
+  // Binari liberi che nessuno può più reclamare (gruppo parallelo già preso con pochi giocatori):
+  // non si disegnano. Il binario preso resta dov'è (offset invariato): centrarlo farebbe saltare i
+  // vagoni già posati.
+  const blockedSet = $derived(new Set(publicStore.blockedRouteIds));
   const bigCitySet = $derived(new Set(bigCities));
   const cityLabel = (city: { id: string; name: string }) =>
     bigCitySet.has(city.id) ? `${city.name}, grande città` : city.name;
@@ -285,6 +295,7 @@
   const routeGeos = $derived.by((): RouteGeo[] => {
     const out: RouteGeo[] = [];
     for (const route of mapData.routes) {
+      if (blockedSet.has(route.id) && !claimedMap.has(route.id)) continue;
       const pts = routePoints(route.id);
       if (!pts) continue;
       // Offset dei gruppi paralleli (2–4 binari, simmetrici attorno alla linea): passo =
@@ -376,7 +387,50 @@
     return svgEl ? svgEl.getBoundingClientRect() : null;
   }
 
+  // ── Zoom sulla tratta appena occupata (TV) ──
+  const focusCtl = new PZ.FocusController();
+  let focusRouteId = $state<string | null>(null);
+  let focusRaf = 0;
+  // Evento già presente al montaggio (es. rimontaggio della mappa): non si anima.
+  let lastFocusSeq: number | null = untrack(() => focusClaim?.seq ?? null);
+
+  function focusFrame(now: number) {
+    focusRaf = 0;
+    const next = focusCtl.tick(now);
+    if (next.panX !== pz.panX || next.panY !== pz.panY || next.zoom !== pz.zoom) pz = next;
+    if (focusCtl.phase === 'out' || !focusCtl.active) focusRouteId = null;
+    if (focusCtl.active) focusRaf = requestAnimationFrame(focusFrame);
+  }
+
+  function startFocus(routeId: string) {
+    if (compact) return;
+    const pts = layout.routes[routeId];
+    const box = pts ? PZ.bboxOfPoints(pts.map(([x, y]) => ({ x, y }))) : null;
+    if (!box) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    focusCtl.focus(pz, PZ.fitRect(box, vb), performance.now(), reduced);
+    focusRouteId = routeId;
+    if (!focusRaf) focusRaf = requestAnimationFrame(focusFrame);
+  }
+
+  /** L'utente prende il controllo (pan, zoom, +/−): l'animazione si ferma dove sta. */
+  function interruptFocus() {
+    if (!focusCtl.active) return;
+    focusCtl.cancel();
+    focusRouteId = null;
+    if (focusRaf) { cancelAnimationFrame(focusRaf); focusRaf = 0; }
+  }
+
+  $effect(() => {
+    const req = focusClaim;
+    if (!req || req.seq === lastFocusSeq) return;
+    lastFocusSeq = req.seq;
+    untrack(() => startFocus(req.routeId));
+  });
+  $effect(() => () => { if (focusRaf) cancelAnimationFrame(focusRaf); });
+
   function onDown(e: PointerEvent) {
+    interruptFocus();
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (gesture.active === 0) {
       const target = e.target as Element | null;
@@ -411,6 +465,7 @@
     tapRouteId = null;
   }
   function onWheel(e: WheelEvent) {
+    interruptFocus();
     e.preventDefault();
     const rect = svgRect();
     if (!rect) return;
@@ -418,9 +473,11 @@
     pz = PZ.zoomAt(pz, focus, PZ.wheelFactor(e.deltaY, e.deltaMode), vb);
   }
   function zoomButton(factor: number) {
+    interruptFocus();
     pz = PZ.zoomAt(pz, { x: mapWidth / 2, y: mapHeight / 2 }, factor, vb);
   }
   function resetView() {
+    interruptFocus();
     pz = { ...PZ.IDENTITY };
   }
 
@@ -493,6 +550,17 @@
   // Ombra proiettata (luce da nord-ovest), in unità viewBox
   const SHADOW_DX = 1.6;
   const SHADOW_DY = 2.4;
+  /** Spessore (unità viewBox, prima di `swFactor`) del bordo crema dei vagoni dei giocatori. */
+  const WAGON_BORDER = 2;
+  /** Cornice scura esterna e quanto la carrozza eccede lo spessore del tassello (idem). */
+  const WAGON_OUTLINE = 1.2;
+  const WAGON_GROW = 0.8;
+
+  // Alone della tratta appena occupata (zoom TV): geometria e colore del giocatore che l'ha presa.
+  const focusGeo = $derived(
+    focusRouteId ? routeGeos.find((g) => g.route.id === focusRouteId) : undefined,
+  );
+  const focusColor = $derived(playerColor(claimedMap.get(focusRouteId ?? '') ?? ''));
 
   // Stazioni (Europe): segnaposto a casetta nel colore del giocatore, in alto a sinistra del
   // pallino (le stelle dei biglietti stanno in alto a destra). Disegno nostro.
@@ -567,9 +635,11 @@
       <g class="layer-shadow" aria-hidden="true">
         {#each routeGeos as g (g.route.id)}
           {@const claimed = claimedMap.has(g.route.id)}
-          {@const w = claimed ? g.sw + 1.5 * swFactor : g.sw}
+          {@const bw = claimed ? WAGON_BORDER * swFactor : 0}
+          {@const w = g.sw + (claimed ? (WAGON_GROW + WAGON_OUTLINE) * swFactor + bw : 0)}
+          {@const l = claimed ? Math.max(4, g.slotL - bw) + bw + WAGON_OUTLINE * swFactor : g.slotL}
           {#each g.slots as s}
-            <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.3}
+            <rect x={-l / 2} y={-w / 2} width={l} height={w} rx={w * 0.3}
               fill="#2a1d0c" opacity={claimed ? 0.32 : 0.18}
               transform="translate({s.x + SHADOW_DX * (claimed ? 1.4 : 1)} {s.y + SHADOW_DY * (claimed ? 1.4 : 1)}) rotate({s.deg})" />
           {/each}
@@ -614,28 +684,52 @@
         {/each}
       </g>
 
+      <!-- 3c. Tratta appena occupata (TV, durante lo zoom): alone nel colore del giocatore -->
+      {#if focusGeo}
+        <g class="layer-focus" aria-hidden="true">
+          <path d={focusGeo.d} fill="none" stroke="#fff6dc" opacity="0.7"
+            stroke-width={focusGeo.sw + 26} stroke-linecap="round" stroke-linejoin="round" />
+          <path d={focusGeo.d} fill="none" stroke={focusColor} class="focus-pulse"
+            stroke-width={focusGeo.sw + 20} stroke-linecap="round" stroke-linejoin="round" />
+          <path d={focusGeo.d} fill="none" stroke={focusColor} class="focus-pulse"
+            stroke-width={focusGeo.sw + 10} stroke-linecap="round" stroke-linejoin="round" />
+        </g>
+      {/if}
+
       <!-- 4. Tasselli liberi / vagoni reclamati -->
       <g class="layer-slots">
         {#each routeGeos as g (g.route.id)}
           {@const claimedBy = claimedMap.get(g.route.id)}
           {#if claimedBy}
             {@const color = playerColor(claimedBy)}
-            {@const w = g.sw + 1.5 * swFactor}
+            <!-- Treno: carrozza nel colore del giocatore con bordo crema (cornice scura sottile),
+                 "tetto" scuro e finestrini sempre visibili — mai scambiabile con una tratta libera. -->
+            {@const bw = WAGON_BORDER * swFactor}
+            {@const wl = Math.max(4, g.slotL - bw)}
+            {@const wh = g.sw + WAGON_GROW * swFactor}
+            {@const bodyL = wl - bw}
+            {@const bodyH = wh - bw}
+            {@const roofH = bodyH * 0.52}
+            {@const roofL = Math.max(2, bodyL - 2.4 * swFactor)}
+            {@const twin = g.slotL >= 14 * swFactor}
+            {@const winH = roofH * 0.7}
+            {@const winW = Math.max(1.6, Math.min(6, roofL * (twin ? 0.24 : 0.4)))}
             {#each g.slots as s, i}
               <g transform="translate({s.x} {s.y}) rotate({s.deg})">
                 <g class="wagon" style="animation-delay:{i * 70}ms">
-                  <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.28}
-                    fill={color} stroke="#1d150c" stroke-width={1.3 * swFactor} />
-                  <rect x={-g.slotL / 2} y={-w / 2} width={g.slotL} height={w} rx={w * 0.28}
+                  <rect x={-wl / 2} y={-wh / 2} width={wl} height={wh} rx={wh * 0.28}
+                    fill="none" stroke="#1d150c" stroke-width={bw + WAGON_OUTLINE * swFactor} />
+                  <rect x={-wl / 2} y={-wh / 2} width={wl} height={wh} rx={wh * 0.28}
+                    fill={color} stroke="#fff6dc" stroke-width={bw} />
+                  <rect x={-bodyL / 2} y={-bodyH / 2} width={bodyL} height={bodyH} rx={bodyH * 0.2}
                     fill="url(#{uid}-slot-shade)" />
-                  <!-- Finestrini: distinguono il vagone da una rotta libera dello stesso colore -->
-                  {#if g.slotL >= 14 * swFactor}
-                    {@const winW = Math.min(5, g.slotL * 0.2)}
-                    {@const winH = w * 0.32}
-                    <rect x={-g.slotL / 4 - winW / 2} y={-w / 2 + w * 0.16} width={winW} height={winH} rx="1"
-                      fill="#fdf7e6" opacity="0.85" />
-                    <rect x={g.slotL / 4 - winW / 2} y={-w / 2 + w * 0.16} width={winW} height={winH} rx="1"
-                      fill="#fdf7e6" opacity="0.85" />
+                  <rect x={-roofL / 2} y={-roofH / 2} width={roofL} height={roofH} rx={roofH * 0.3}
+                    fill="#1d150c" opacity="0.4" />
+                  {#if twin}
+                    <rect x={-roofL * 0.27 - winW / 2} y={-winH / 2} width={winW} height={winH} rx="0.8" fill="#fff6dc" />
+                    <rect x={roofL * 0.27 - winW / 2} y={-winH / 2} width={winW} height={winH} rx="0.8" fill="#fff6dc" />
+                  {:else}
+                    <rect x={-winW / 2} y={-winH / 2} width={winW} height={winH} rx="0.8" fill="#fff6dc" />
                   {/if}
                 </g>
               </g>
@@ -957,8 +1051,17 @@
     from { opacity: 0.18; }
     to { opacity: 0.5; }
   }
-  .layer-shadow, .layer-bed, .layer-glow, .layer-longest, .layer-slots, .layer-cities, .layer-labels {
+  .layer-shadow, .layer-bed, .layer-glow, .layer-focus, .layer-longest, .layer-slots, .layer-cities, .layer-labels {
     pointer-events: none;
+  }
+  /* Alone della tratta appena occupata: pulsa solo senza preferenza di movimento ridotto. */
+  .focus-pulse { opacity: 0.6; }
+  @media (prefers-reduced-motion: no-preference) {
+    .focus-pulse { animation: focus-pulse 0.9s ease-in-out infinite alternate; }
+  }
+  @keyframes focus-pulse {
+    from { opacity: 0.3; }
+    to { opacity: 0.85; }
   }
   /* Percorso più lungo (fine partita): alone dorato, sempre visibile; pulsa solo senza
      preferenza di movimento ridotto. Colori dai token (--gold*). */

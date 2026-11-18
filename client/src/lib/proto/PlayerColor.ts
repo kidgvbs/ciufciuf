@@ -3,4 +3,4 @@
 /**
  * Colore giocatore (plancia + trenini).
  */
-export type PlayerColor = "RED" | "BLUE" | "GREEN" | "YELLOW" | "BLACK";
+export type PlayerColor = "PINK" | "CYAN" | "LIME" | "BROWN" | "LAVENDER" | "INDIGO";

@@ -19,6 +19,13 @@ Una mappa (`data/maps/germany.json`) e due modalità:
   - spareggio: biglietti completati, poi passeggeri.
 - **Punti per lunghezza** (1–7): 1/2/4/7/10/15/18, dalla tabella del regolamento (immagine su https://ultraboardgames.com/ticket-to-ride/gfx/germany8.jpg) e dal regolamento Märklin, che usa la stessa mappa.
 
+## Regola della casa: biglietti
+
+La pesca dei biglietti **non** segue il regolamento ufficiale (quote corti/lunghi annunciate dal giocatore): è una regola della casa scelta dall'utente (18/11/2026), perché la pesca a quote era scomoda da giocare al tavolo.
+
+- **Prima mano:** 2 biglietti lunghi + 3 corti distribuiti in automatico, senza scelta delle quote; si tengono almeno 2 biglietti, di cui almeno 1 corto (ammessi 1 lungo + 1 corto, 2 corti, …; vietato tenere solo i lunghi). Nei dati: `initialTickets.dealt` con `long` ×2 e `regular` ×3 (`keepMin` 1), `keepMin` 2.
+- **A partita in corso:** `DRAW_TICKETS` pesca 4 biglietti casuali da un **mazzo unico** di lunghi + corti rimasti (finito il draft i due mazzi sono uniti e mescolati, scarti del draft compresi), se ne tiene almeno 1, gli scartati vanno in fondo a quel mazzo. Nei dati: `ticketDraw` `{ "deck": "regular", "mergeDecks": ["long"], "count": 4, "keepMin": 1 }`.
+
 ## Mappa
 
 - **Rotte e biglietti di Deutschland:** tallguy-h/LibreLine `docs/maps/germany.md` (https://raw.githubusercontent.com/tallguy-h/LibreLine/main/docs/maps/germany.md): 40 posti (5 Paesi), 110 rotte con colori, 62 biglietti (33 corti, 29 lunghi).

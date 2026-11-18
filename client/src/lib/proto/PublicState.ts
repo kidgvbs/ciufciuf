@@ -59,4 +59,15 @@ country_stacks: Array<CountryCards>,
  * Germany 2017: passeggeri ancora sulle città, in ordine di id città; vuoto senza
  * passeggeri.
  */
-passengers: Array<CityPassengers>, };
+passengers: Array<CityPassengers>, 
+/**
+ * Id dei binari liberi che nessun giocatore può più reclamare: un altro binario del
+ * loro gruppo parallelo è preso e la partita ha meno di `doubleRouteMinPlayers`
+ * giocatori (gruppo non `alwaysOpen`). Ordinati, senza duplicati; mai binari già presi.
+ */
+blocked_route_ids: Array<string>, 
+/**
+ * Biglietti ancora pescabili con `DRAW_TICKETS` a partita in corso (pila di
+ * `ticketDraw`; per Germany la pila unita di lunghi e corti).
+ */
+ticket_deck_size: number, };

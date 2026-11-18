@@ -78,42 +78,6 @@ fn check_double_route(
     Ok(())
 }
 
-/// `chooseFrom` di `initialTickets` / `ticketDraw`: mazzi non vuoti, senza ripetizioni,
-/// presenti in `ticketDecks`, con `count` ≥ 1.
-fn check_choose_from(
-    field: &str,
-    decks: &[String],
-    count: u32,
-    listed: &BTreeSet<&str>,
-) -> Result<(), EngineInitError> {
-    if decks.is_empty() {
-        return Err(EngineInitError::ChooseFromEmpty {
-            field: field.into(),
-        });
-    }
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for deck in decks {
-        if !seen.insert(deck.as_str()) {
-            return Err(EngineInitError::ChooseFromDuplicate {
-                field: field.into(),
-                deck: deck.clone(),
-            });
-        }
-        if !listed.contains(deck.as_str()) {
-            return Err(EngineInitError::ChooseFromDeckUnknown {
-                field: field.into(),
-                deck: deck.clone(),
-            });
-        }
-    }
-    if count == 0 {
-        return Err(EngineInitError::ChooseFromCountZero {
-            field: field.into(),
-        });
-    }
-    Ok(())
-}
-
 impl Ruleset {
     /// Verifica che ruleset e mappa siano coerenti per ogni numero di giocatori
     /// ammesso (i controlli sulle dimensioni dei mazzi usano `players.max`).
@@ -419,24 +383,6 @@ impl Ruleset {
             }
         }
 
-        let initial_choose = self.initial_tickets.choose_from.as_deref();
-        let draw_choose = self.ticket_draw.choose_from.as_deref();
-        if initial_choose.is_some() && !self.initial_tickets.dealt.is_empty() {
-            return Err(EngineInitError::InitialTicketsBothForms);
-        }
-        if draw_choose.is_some() && !self.ticket_draw.deck.is_empty() {
-            return Err(EngineInitError::TicketDrawBothForms);
-        }
-        if let Some(decks) = initial_choose {
-            check_choose_from("initialTickets", decks, self.initial_tickets.count, &listed)?;
-        }
-        if let Some(decks) = draw_choose {
-            check_choose_from("ticketDraw", decks, self.ticket_draw.count, &listed)?;
-            if self.setup_discards == SetupDiscards::ReshuffleBottom {
-                return Err(EngineInitError::SetupDiscardsNeedOwnDeck);
-            }
-        }
-
         let mut dealt_per_player: BTreeMap<&str, usize> = BTreeMap::new();
         let mut dealt_total: u32 = 0;
         for entry in &self.initial_tickets.dealt {
@@ -449,10 +395,24 @@ impl Ruleset {
             *slot = slot.saturating_add(entry.count as usize);
             dealt_total = dealt_total.saturating_add(entry.count);
         }
-        if draw_choose.is_none() && !listed.contains(self.ticket_draw.deck.as_str()) {
+        if !listed.contains(self.ticket_draw.deck.as_str()) {
             return Err(EngineInitError::DrawTicketDeckUnknown {
                 deck: self.ticket_draw.deck.clone(),
             });
+        }
+        let mut merged: BTreeSet<&str> = BTreeSet::from([self.ticket_draw.deck.as_str()]);
+        for deck in &self.ticket_draw.merge_decks {
+            if !listed.contains(deck.as_str()) {
+                return Err(EngineInitError::MergeDeckUnknown { deck: deck.clone() });
+            }
+            if !merged.insert(deck.as_str()) {
+                return Err(EngineInitError::MergeDeckDuplicate { deck: deck.clone() });
+            }
+        }
+        if !self.ticket_draw.merge_decks.is_empty()
+            && self.setup_discards == SetupDiscards::ReshuffleBottom
+        {
+            return Err(EngineInitError::SetupDiscardsNeedOwnDeck);
         }
 
         let mut deck_sizes: BTreeMap<&str, usize> = BTreeMap::new();
@@ -476,30 +436,10 @@ impl Ruleset {
                 });
             }
         }
-        if let Some(decks) = initial_choose {
-            let have = decks
-                .iter()
-                .map(|d| deck_sizes.get(d.as_str()).copied().unwrap_or(0))
-                .sum();
-            let needed = (self.initial_tickets.count as usize).saturating_mul(num_players);
-            if have < needed {
-                return Err(EngineInitError::ChooseFromDecksTooSmall {
-                    decks: decks.join(", "),
-                    have,
-                    needed,
-                });
-            }
-        }
-
-        let initial_total = if initial_choose.is_some() {
-            self.initial_tickets.count
-        } else {
-            dealt_total
-        };
-        if self.initial_tickets.keep_min > initial_total {
+        if self.initial_tickets.keep_min > dealt_total {
             return Err(EngineInitError::InitialKeepMinExceedsDealt {
                 keep_min: self.initial_tickets.keep_min,
-                dealt: initial_total,
+                dealt: dealt_total,
             });
         }
         for entry in &self.initial_tickets.dealt {
@@ -512,15 +452,36 @@ impl Ruleset {
                     count: entry.count,
                 });
             }
+            if entry.keep_min > entry.count {
+                return Err(EngineInitError::DealtKeepMinExceedsCount {
+                    deck: entry.deck.clone(),
+                    keep_min: entry.keep_min,
+                    count: entry.count,
+                });
+            }
+            if let Some(keep_max) = entry.keep_max
+                && entry.keep_min > keep_max
+            {
+                return Err(EngineInitError::DealtKeepMinExceedsKeepMax {
+                    deck: entry.deck.clone(),
+                    keep_min: entry.keep_min,
+                    keep_max,
+                });
+            }
         }
-        let max_keep = self.initial_deck_rules().iter().fold(0u32, |acc, rule| {
+        let rules = self.initial_deck_rules();
+        let deck_min = rules
+            .iter()
+            .fold(0u32, |acc, rule| acc.saturating_add(rule.min));
+        if deck_min > self.initial_tickets.keep_min {
+            return Err(EngineInitError::DealtKeepMinSumExceedsKeepMin {
+                deck_min,
+                keep_min: self.initial_tickets.keep_min,
+            });
+        }
+        let max_keep = rules.iter().fold(0u32, |acc, rule| {
             acc.saturating_add(rule.max.map_or(rule.count, |max| max.min(rule.count)))
         });
-        let max_keep = if initial_choose.is_some() {
-            self.initial_tickets.count
-        } else {
-            max_keep
-        };
         if self.initial_tickets.keep_min > max_keep {
             return Err(EngineInitError::InitialKeepMinUnreachable {
                 keep_min: self.initial_tickets.keep_min,
