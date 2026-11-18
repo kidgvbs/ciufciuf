@@ -10,7 +10,8 @@ import {
   SAVES_FETCH_TIMEOUT_MS,
 } from '../lobby';
 
-// Stub minimale di localStorage (environment node).
+// Stub minimale di localStorage/sessionStorage (environment node: solo Node ≥ 25 li ha
+// globali, il runner CI no — senza stub il test dipende dalla versione di Node).
 function makeStorage() {
   const map = new Map<string, string>();
   return {
@@ -23,6 +24,7 @@ function makeStorage() {
 
 beforeEach(() => {
   (globalThis as Record<string, unknown>).localStorage = makeStorage();
+  (globalThis as Record<string, unknown>).sessionStorage = makeStorage();
 });
 
 describe('player name', () => {

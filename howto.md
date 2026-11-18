@@ -138,8 +138,8 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 
 Note:
 
-- `rulesetId`: `usa_v2` o `europe`.
-- `color` è uno tra `RED`, `BLUE`, `GREEN`, `YELLOW`, `BLACK` (maiuscolo; un valore diverso → `422` con testo semplice di axum, non JSON); se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
+- `rulesetId`: uno dei 13 ruleset di `data/rulesets/` (es. `usa_v2`, `europe`, `germany`, `poland`); elenco completo con `GET /api/rulesets`.
+- `color` è uno tra `PINK`, `CYAN`, `LIME`, `BROWN`, `LAVENDER`, `INDIGO` (maiuscolo; un valore diverso → `422` con testo semplice di axum, non JSON); se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
 - `seed` senza `--allow-client-seed` → `400 SEED_NOT_ALLOWED`. Il seed di default è a 64 bit da un CSPRNG, finisce solo nel save e mai nelle API: con il seed si ricostruiscono le mani di tutti.
 - `DELETE` senza body → `401 UNAUTHORIZED`; body malformato → `400`.
 - Un percorso `/api/*` inesistente (anche con lo slash finale) → `404 {"error":"NOT_FOUND","detail":"Endpoint inesistente."}`, mai la pagina della SPA.
@@ -169,7 +169,7 @@ Note:
 B=http://localhost:8080
 G=$(curl -s -X POST $B/api/games -H 'content-type: application/json' -d '{"rulesetId":"usa_v2","name":"Prova"}')
 ID=$(echo $G | jq -r .gameId); HOST=$(echo $G | jq -r .hostToken)
-curl -s -X POST $B/api/games/$ID/join -H 'content-type: application/json' -d '{"name":"Anna","color":"RED"}'
+curl -s -X POST $B/api/games/$ID/join -H 'content-type: application/json' -d '{"name":"Anna","color":"PINK"}'
 curl -s -X POST $B/api/games/$ID/join -H 'content-type: application/json' -d '{"name":"Bob"}'
 curl -s -X POST $B/api/games/$ID/start -H 'content-type: application/json' -d "{\"hostToken\":\"$HOST\"}"
 curl -s $B/api/games | jq

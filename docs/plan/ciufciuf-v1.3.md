@@ -1,7 +1,7 @@
 # CiufCiuf! — Piano completo — Gioco stile Ticket to Ride su LAN
 
 **Versione:** 1.3 — 3 novembre 2026 *(supera la v1.2: integra D22 Svelte + D23 repo GitHub privato/RECAP)*
-**Stato:** operativo — §14 chiuso (restano solo i ruleset futuri, rinviati per design); casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
+**Stato (aggiornato 18/11/2026):** Fasi 0–4 completate; 13 ruleset su 5 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata — §3.4, §3.5); prossima la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D42) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
 **Fonti:** ricerca web (Wikipedia, BGA, Marmalade/Steam, Days of Wonder), studio preliminare, GDD esterno revisionato dall'utente, decisioni prese in sessione, revisione esterna del piano v1.1 (verificata), risposte definitive dell'utente del 3/11/2026 (12 punti — integrate come D8/D19/D20/D21 e in §14) e conferme successive dello stesso giorno (**D22**: Svelte; **D23**: repo GitHub privato + `RECAP.md`).
 
 > Questo documento **supera** lo studio preliminare. Regola dell'ultimo giro: chi innesca la fine **gioca** l'ultimo turno
@@ -159,14 +159,30 @@ Ogni variante è un ruleset:
 | Ruleset | Biglietti iniziali | Pesca biglietti | Bonus |
 |---|---|---|---|
 | **USA base (`usa_v2`)** | **4 pescati / min 2** (V2 2025) | 3 pescati / min 1 | Longest Path +10 |
-| **USA 1910** | idem | idem | **Globetrotter +15** (sostituisce L.P.) |
-| **Mega** | **5 pescati / min 3** | **4 pescati / min 1** | Entrambi (10 + 15) |
-| **Big Cities** | 4 pescati / min 2 | 4 pescati / min 1 | Nessuno |
+| **USA 1910 (`usa_1910`)** | idem (D37) | idem | **Globetrotter +15** (sostituisce L.P.) |
+| **USA Mega (`usa_mega`)** | **5 pescati / min 3** | **4 pescati / min 1** | Entrambi (10 + 15) |
+| **USA Big Cities (`usa_big_cities`)** | 4 pescati / min 2 | 4 pescati / min 1 | Nessuno |
 | **Europe** | **1 lungo + 3 regolari / min 2** | 3 regolari / min 1 | **European Express +10**; stazioni non costruite +4 cad.; tunnel/traghetti |
+| **Europe Expanded / 1912 / Big Cities / Mega** | varianti dei pacchetti biglietti 2024 (D34; dettagli nei file `data/rulesets/europe_*.json`) | | come Europe; Mega con `keepMax` 1 sui lunghi |
+| **Germany (`germany`, `germany_2017`)** | **2 lunghi + 3 corti / min 2, di cui ≥1 corto** (regola della casa, §3.5) | 4 dalla pila unita / min 1 | Globetrotter +15; 2017 con passeggeri |
+| **Poland (`poland`)** | 4 pescati / min 2 | 3 pescati / min 1 | Nessun bonus; carte Paese (D38) |
+
+I valori esatti di ogni ruleset sono nei file `data/rulesets/*.json` (fonte di verità); questa tabella è un riassunto.
 
 Nota: tipo e valore dei bonus variano per ruleset (Longest Path 10, European Express 10, Globetrotter 15, Mega con due bonus) → i bonus *devono* essere parametrici. Anche la composizione dei mazzi di biglietti (singolo o lungo/regolare) è un parametro. Le soglie delle rotte doppie (`doubleRouteMinPlayers: 4`) e l'ultimo giro (`finalRoundIncludesTrigger: true`) sono parametri del ruleset.
 
-Altre mappe dell'app 2023 (Nordic, India, Legendary Asia, San Francisco, Switzerland, Japan, Africa, Germany) arrivano **dopo** USA+Europe: ogni mappa = dati + modulo regole, zero fork del motore.
+Altre mappe dell'app 2023 (Nordic, India, Legendary Asia, San Francisco, Switzerland, Japan, Africa) arrivano **dopo** USA+Europe: ogni mappa = dati + modulo regole, zero fork del motore. **Germany, Poland e Basilicata** (mappa di prova) sono entrate il 17/11/2026 come primo caso (§3.5).
+
+### 3.5 Altre mappe e regole della casa (dal 17/11/2026)
+
+- **Binari paralleli 2–4**: un gruppo parallelo ha 2–4 binari (`double: true`, id `_1`…`_n`). Un giocatore non ne prende mai due; con meno di `doubleRouteMinPlayers` giocatori, preso un binario gli altri sono chiusi a tutti (esposti in `PublicState.blocked_route_ids` e nascosti sulla TV). `alwaysOpen: true` (Poland, rotte verso i Paesi) tiene aperti tutti i binari.
+- **Paesi confinanti** (Germany, Poland): vicoli ciechi; due rotte verso lo stesso Paese non sono collegate tra loro. Poland: carte Paese (D38).
+- **Passeggeri** (`germany_2017`) e **spareggi configurabili** (`tieBreakers` nel ruleset).
+- **Germany, regola della casa (D40, diversa dal regolamento ufficiale)**: mano iniziale distribuita **2 lunghi + 3 corti**, si tengono almeno 2 biglietti di cui almeno 1 corto (`keepMin` per voce di `initialTickets.dealt`). Finito il draft, i mazzi di `ticketDraw.mergeDecks` confluiscono in `ticketDraw.deck` in **una sola pila** mescolata con l'RNG del motore (deterministica); `DRAW_TICKETS` pesca 4, tieni ≥1, gli scartati (anche lunghi) vanno in fondo alla pila. `PublicState.ticket_deck_size` conta i biglietti pescabili.
+- **Regole speciali come dato (D42)**: i ruleset che differiscono dal gioco base hanno `specialRules` (testi), mostrati dal client a inizio partita senza che il client conosca le regole.
+- **Edge case aggiuntivi**: unione dei mazzi una sola volta e riprodotta identica al replay/resume; pesca limitata ai biglietti rimasti; `reshuffleBottom` incompatibile con `mergeDecks` (rifiutato dalla validazione).
+
+Convenzioni dei dati: `docs/data-conventions.md`; fonti per mappa: `docs/data-sources-*.md`.
 
 ---
 
@@ -325,7 +341,7 @@ Stato completo senza nulla di privato (congiunto per i client e per la table vie
   "claimedRoutes": [{ "routeId": "den_pho_1", "claimedByPlayerId": "…" }],
   "stations": [{ "cityId": "paris", "playerId": "…" }],            // Europe
   "tunnelReveal": null,   // Europe, in TUNNEL_RESOLUTION: { "routeId", "cards": [...], "extraCost": 1 }
-  "playersSummary": [{ "playerId": "…", "name": "Gino", "color": "BLUE",
+  "playersSummary": [{ "playerId": "…", "name": "Gino", "color": "CYAN",
                        "trainsRemaining": 42, "stationsRemaining": 3, "score": 7,
                        "cardsHandCount": 5, "ticketsCount": 3 }] }
 ```
@@ -402,11 +418,13 @@ Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non 
 | **1** | `ttr-core`: regole USA complete, macchina a stati (§6), RNG seeded, CLI debug | 5–10 gg | 1000 partite fuzzing senza stati illegali; replay deterministico; test golden dal regolamento |
 | **2** | `ttr-server`: WS + protocollo §7 + lobby + QR (multi-IP) + profili (nome+colore) + reconnect + persistenza JSON | 4–7 gg | 2 browser + 2 client simulati completano una partita via LAN; un client si disconnette a metà e rientra senza perdere nulla |
 | **3** | Client **Svelte 5** (D22): table view (mappa SVG USA) + controller view + gestione standby (`visibilitychange` + wake lock/fallback) | 10–20 gg | **Partita completa 2–5 giocatori da telefoni veri via QR**; un telefono lasciato in standby rientra allineato — il primo traguardo "giocabile con amici" |
-| **4** | Europe: dati (doppio mazzo biglietti), tunnel/traghetti, stazioni come azione, TUNNEL_RESOLUTION, STATION_SCORING, European Express | 4–8 gg | Partita Europe completa su LAN, con schermata punti a fine partita |
+| **4** | Europe: dati (doppio mazzo biglietti), tunnel/traghetti, stazioni come azione, TUNNEL_RESOLUTION, STATION_SCORING, European Express | 4–8 gg | Partita Europe completa su LAN, con schermata punti a fine partita — **completata 11/11/2026**; poi modalità USA/Europe (12/11) e Germany/Poland/Basilicata (17–18/11) |
 | **5** | AI euristica + polish: **statistiche cumulative per profilo (D20: `profiles.json`, stile "stelle cumulate" Luna)**; tutorial; suoni solo se avanza voglia (D21) | 5–10 gg | Bot decente riempie i posti; serata interrotta e ripresa; statistiche per profilo persistenti |
-| aperto | Pass & Play fallback (D10), container Docker come deployment quotidiano (D8), altre mappe 2023, replay UI, audio (D21) | a piacere | Ogni mappa = dati + ruleset module, zero fork |
+| aperto | Pass & Play fallback (D10), container Docker come deployment quotidiano (D8), altre mappe 2023 (oltre a Germany/Poland già fatte), replay UI, audio (D21) | a piacere | Ogni mappa = dati + ruleset module, zero fork |
 
 **Traguardi**: giocabile con amici a fine Fase 3 (~20–35 giornate); "per intero" (USA+Europe+AI) a fine Fase 5.
+
+**Stato al 18/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`). Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
 
 Ordine deliberato: **motore prima della UI, dati prima del motore**. La Fase 3 è il rischio maggiore (rendering mappa = la voce più sottovalutata del piano); la Fase 4 è dove si smette di faticare e si gioca.
 
@@ -423,7 +441,7 @@ Ordine deliberato: **motore prima della UI, dati prima del motore**. La Fase 3 �
 | R5 | Reconnect dei telefoni (sleep, Wi-Fi instabile) | Medio | Event sourcing: snapshot + seq numbers; `REQUEST_SNAPSHOT` su `visibilitychange`; test di disconnessione in Fase 2 |
 | R6 | Wake Lock non disponibile su `http://` LAN | Medio | Il reconnect resta il meccanismo primario; HTTPS self-signed o fallback video (§14) |
 | R7 | Wi-Fi con isolamento client (rete ospiti, AP isolation) o multicast bloccato | Medio | QR con IP numerico; messaggio in lobby che chiede di usare la rete principale; mDNS solo fallback |
-| R8 | Scope creep mappe | Medio | Una mappa per volta; ruleset descriptor; nessuna mappa nuova prima della Fase 5 |
+| R8 | Scope creep mappe | Medio | Una mappa per volta; ruleset descriptor. **Materializzato** il 17/11 (Germany, Poland, Basilicata prima della Fase 5, per scelta dell'utente): contenuto da dati + `ttr-validate` + partite casuali su tutti i ruleset; i dati Germany non verificati su foto sono in `RECAP.md` §2 |
 
 ---
 
@@ -452,7 +470,7 @@ Ordine deliberato: **motore prima della UI, dati prima del motore**. La Fase 3 �
 In ordine di importanza:
 
 1. ~~Set biglietti USA~~ **CHIUSO (v1.2)**: l'utente ha scelto le regole più recenti; verificate sul PDF ufficiale V2 2025 (§13): **33 biglietti** (30 classici + Atlanta–Washington 4, Omaha–New Orleans 8, San Francisco–Washington 21 — identici a USA 1910) e **setup 4 biglietti / min 2**. Ruleset di riferimento: **`usa_v2`** (aggiornato in §3.1 e §4.1); `usa_classic` resta nel descriptor solo per compatibilità/eventuali confronti.
-2. **Composizione biglietti di 1910 / Mega / Big Cities**: rinviato **per design**, non è un punto aperto del primo traguardo (USA `usa_v2` + Europe): dati sul PDF USA 1910 al momento in cui quei ruleset entrano in roadmap. Il 1910 ristampa i 30 biglietti classici (4 con valore ridotto) + 35 nuovi + 4 Mystery Train; Big Cities = 35 biglietti "città grandi" (15 standard + 19 del 1910 + 1 Mystery); Mega = tutto + Globetrotter.
+2. ~~Composizione biglietti di 1910 / Mega / Big Cities~~ **CHIUSO (12/11/2026, D34–D37)**: ruleset `usa_1910`, `usa_big_cities`, `usa_mega` e le modalità Europe come dati; fonti in `docs/data-sources-usa.md` e `docs/data-sources-europe.md`.
 3. ~~Standby dei telefoni~~ **CHIUSO (decisione utente 3/11)**: **HTTPS con certificato self-signed** come target (Wake Lock API nativa, che richiede secure context). Server con TLS (Axum supporta `rustls` direttamente) + QR che punta a `https://<ip-lan>:<porta>`; sul telefono la prima visita mostra l'avviso di sicurezza del certificato → UI di lobby con istruzioni esplicite "accetta il certificato" (esperienza classica degli strumenti self-hosted). Il meccanismo primario resta comunque il **reconnect + snapshot** (D17): Wake Lock è best-effort per evitare che lo schermo si spenga, non è necessario alla correttezza. Implementazione in Fase 3.
 4. ~~Framework client~~ **CHIUSO (D22, decisione utente 3/11: "usiamo svelte")**: **Svelte 5** — bundle piccolo per i telefoni, reattività semplice per la mano privata, SVG inline naturale per la mappa, meno boilerplate di React per "una mappa + pannelli". Il traffico WS a turni è basso → nessun vincolo di prestazioni. Salvaguardia: contratto WS (§7) e tipi ts-rs framework-agnostic; l'unica superficie Svelte sono le due viste (§5.4) → eventualmente sostituibile senza toccare il backend.
 5. ~~Hardware host~~ **Chiuso (D8)**: Mac esistente + containerizzazione; binario statico come fallback per il gioco serale (Docker Desktop macOS non ha `network_mode: host`).

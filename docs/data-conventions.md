@@ -13,7 +13,7 @@
 ## Colori
 
 - **Carte treno**: `Red`, `Orange`, `Yellow`, `Green`, `Blue`, `Purple`, `Black`, `White`, `Locomotive`
-- **Giocatori**: `Red`, `Blue`, `Green`, `Yellow`, `Black`
+- **Giocatori**: `Pink`, `Cyan`, `Lime`, `Brown`, `Lavender`, `Indigo` (dal 18/11/2026, D41; nel protocollo maiuscoli: `PINK`, `CYAN`, …)
 - **Rotte grigie** (colore qualunque ma uniforme): `"Gray"` nei dati mappa
 
 ## Rotte parallele e Paesi
