@@ -43,8 +43,21 @@ export function addedColors(
   return [...next].filter(([color, n]) => n > (prev.get(color) ?? 0)).map(([color]) => color);
 }
 
+/** Colori il cui conteggio è diminuito da `prev` a `next` (con quante carte in meno), nell'ordine di `prev`. */
+export function removedColors(
+  prev: ReadonlyMap<CardColor, number>,
+  next: ReadonlyMap<CardColor, number>,
+): [CardColor, number][] {
+  const out: [CardColor, number][] = [];
+  for (const [color, n] of prev) {
+    const left = next.get(color) ?? 0;
+    if (n > left) out.push([color, n - left]);
+  }
+  return out;
+}
+
 /** `true` se la sorgente registrata a `source.at` è ancora valida a `now`. */
-export function isFreshDrawSource(source: DrawSource, now: number): boolean {
+export function isFreshDrawSource<T extends { at: number }>(source: T, now: number): boolean {
   const age = now - source.at;
   return age >= 0 && age <= DRAW_SOURCE_TTL_MS;
 }
@@ -84,6 +97,40 @@ export function flyCard(from: Rect, card: HTMLElement, scope: HTMLElement): void
   const startScale = Math.min(1, Math.max(0.5, from.height / h));
   const rot = Number.parseFloat(card.style.getPropertyValue('--rot')) || 0;
 
+  const { root, ghost } = buildGhost(card, scope, cx, cy, w, h);
+  document.body.appendChild(root);
+
+  const flight = ghost.animate(
+    [
+      { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${startScale})`, opacity: 0.85 },
+      { transform: `translate(0px, 0px) rotate(${rot}deg) scale(1)`, opacity: 1 },
+    ],
+    { duration: DRAW_ANIMATION_MS, easing: 'ease-out', fill: 'forwards' },
+  );
+  const hideOriginal = card.animate(
+    [{ visibility: 'hidden' }, { visibility: 'hidden' }],
+    { duration: DRAW_ANIMATION_MS },
+  );
+  const done = () => {
+    root.remove();
+    hideOriginal.cancel();
+  };
+  flight.addEventListener('finish', done, { once: true });
+  flight.addEventListener('cancel', done, { once: true });
+}
+
+/**
+ * Clone fisso di `card` centrato in (`cx`, `cy`) dentro la catena di wrapper `display: contents`
+ * (classi degli antenati di `card` fino a `scope` incluso). Non è ancora nel DOM: lo monta chi lo usa.
+ */
+function buildGhost(
+  card: HTMLElement,
+  scope: HTMLElement,
+  cx: number,
+  cy: number,
+  w: number,
+  h: number,
+): { root: HTMLElement; ghost: HTMLElement } {
   const ghost = card.cloneNode(true) as HTMLElement;
   ghost.classList.remove('focused');
   ghost.removeAttribute('aria-label');
@@ -116,23 +163,104 @@ export function flyCard(from: Rect, card: HTMLElement, scope: HTMLElement): void
   }
   for (const wrapper of chain) parent = parent.appendChild(wrapper);
   parent.appendChild(ghost);
-  document.body.appendChild(root);
+  return { root, ghost };
+}
 
-  const flight = ghost.animate(
-    [
-      { transform: `translate(${dx}px, ${dy}px) rotate(0deg) scale(${startScale})`, opacity: 0.85 },
-      { transform: `translate(0px, 0px) rotate(${rot}deg) scale(1)`, opacity: 1 },
-    ],
-    { duration: DRAW_ANIMATION_MS, easing: 'ease-out', fill: 'forwards' },
-  );
-  const hideOriginal = card.animate(
-    [{ visibility: 'hidden' }, { visibility: 'hidden' }],
-    { duration: DRAW_ANIMATION_MS },
-  );
-  const done = () => {
-    root.remove();
-    hideOriginal.cancel();
-  };
-  flight.addEventListener('finish', done, { once: true });
-  flight.addEventListener('cancel', done, { once: true });
+// ── Scarto: le carte spese per una rotta rimpiccioliscono verso il mazzo ─────────────────────
+
+/** Durata del rimpicciolimento di una carta scartata. */
+export const DISCARD_ANIMATION_MS = 400;
+
+/** Sfasamento fra una carta scartata e la successiva. */
+export const DISCARD_STAGGER_MS = 60;
+
+/** Tetto di copie animate per colore (con 6 carte uguali bastano poche per rendere l'idea). */
+const MAX_DISCARD_COPIES = 4;
+
+/** Carta del ventaglio fotografata al tap: dopo l'invio può sparire dal DOM (conteggio a 0). */
+export interface DiscardGhost {
+  color: CardColor;
+  /** Centro della carta al tap, coordinate viewport. */
+  cx: number;
+  cy: number;
+  /** Rotazione del ventaglio (gradi). */
+  rot: number;
+  /** Clone già dentro la catena di wrapper, non montato. */
+  root: HTMLElement;
+}
+
+/** Carte da scartare fotografate al tap, destinazione (mazzo) e istante. */
+export interface DiscardSource {
+  ghosts: DiscardGhost[];
+  target: Rect;
+  at: number;
+}
+
+/**
+ * Fotografa, PRIMA di inviare l'azione, la carta del ventaglio di ogni colore in `colors` e il
+ * rettangolo del mazzo. `null` se non c'è nulla da animare (reduced motion, niente `animate`,
+ * elementi mancanti).
+ */
+export function captureDiscardSource(
+  colors: readonly CardColor[],
+  fan: HTMLElement | undefined,
+  deck: Element | null | undefined,
+  scope: HTMLElement | undefined,
+  now: number,
+): DiscardSource | null {
+  if (prefersReducedMotion() || !fan || !deck || !scope) return null;
+  const ghosts: DiscardGhost[] = [];
+  for (const color of new Set(colors)) {
+    const card = fan.querySelector<HTMLElement>(`[data-card-color="${color}"]`);
+    if (!card || typeof card.animate !== 'function') continue;
+    const w = card.offsetWidth;
+    const h = card.offsetHeight;
+    if (w === 0 || h === 0) continue;
+    const r = rectOf(card);
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const rot = Number.parseFloat(card.style.getPropertyValue('--rot')) || 0;
+    ghosts.push({ color, cx, cy, rot, root: buildGhost(card, scope, cx, cy, w, h).root });
+  }
+  if (ghosts.length === 0) return null;
+  return { ghosts, target: rectOf(deck), at: now };
+}
+
+/**
+ * Anima verso il mazzo le carte dei colori in `removed` (diff della mano): ogni carta
+ * rimpicciolisce e svanisce con ease-in, a scalini. I cloni si rimuovono a fine/annullo.
+ */
+export function discardCards(
+  source: DiscardSource,
+  removed: readonly (readonly [CardColor, number])[],
+): void {
+  if (prefersReducedMotion()) return;
+  const tx = source.target.left + source.target.width / 2;
+  const ty = source.target.top + source.target.height / 2;
+  let index = 0;
+  for (const [color, count] of removed) {
+    const g = source.ghosts.find((x) => x.color === color);
+    if (!g) continue;
+    for (let i = 0; i < Math.min(count, MAX_DISCARD_COPIES); i++) {
+      const root = g.root.cloneNode(true) as HTMLElement;
+      const ghost = root.querySelector<HTMLElement>('[data-card-color]');
+      if (!ghost || typeof ghost.animate !== 'function') continue;
+      document.body.appendChild(root);
+      const done = () => root.remove();
+      const flight = ghost.animate(
+        [
+          { transform: `translate(0px, 0px) rotate(${g.rot}deg) scale(1)`, opacity: 1 },
+          { transform: `translate(${tx - g.cx}px, ${ty - g.cy}px) rotate(0deg) scale(0.2)`, opacity: 0 },
+        ],
+        {
+          duration: DISCARD_ANIMATION_MS,
+          delay: index++ * DISCARD_STAGGER_MS,
+          easing: 'ease-in',
+          fill: 'both',
+        },
+      );
+      flight.addEventListener('finish', done, { once: true });
+      flight.addEventListener('cancel', done, { once: true });
+    }
+  }
 }

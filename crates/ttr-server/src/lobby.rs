@@ -423,6 +423,8 @@ struct GameListItem {
     #[serde(rename = "maxPlayers")]
     max_players: u32,
     started: bool,
+    /// Partita conclusa (`GAME_OVER`), ancora nell'elenco finché l'attore non termina.
+    finished: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -470,6 +472,7 @@ pub async fn list_games(State(state): State<AppState>) -> impl IntoResponse {
                 .unwrap_or(h.players_joined),
             max_players: h.max_players,
             started: info.as_ref().map(|i| i.started).unwrap_or(h.started),
+            finished: h.finished.load(Ordering::Acquire),
         })
         .collect();
     Json(ListGamesResponse { games: list })

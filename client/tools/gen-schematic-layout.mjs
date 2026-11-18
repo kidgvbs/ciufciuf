@@ -155,7 +155,7 @@ const BOUNDS = MAP_BOUNDS[MAP_ID];
 //                   gate di lunghezza (ratio ≥0.8)
 //   lenOneDense:    true = anche senza cluster-escape le rotte len-1 tollerano fino a 2.5× (catene di
 //                   len-1 con gruppi da 3 binari, Ruhr: lo spazio dei binari paralleli le allarga)
-//   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (USA ≤8px,
+//   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (USA ≤10px,
 //                   Europe fino a ~18px: tetto cumulato 30px per città con il cluster-escape)
 const MAP_TUNING = {
   usa: {
@@ -173,6 +173,10 @@ const MAP_TUNING = {
     f2Shifts: [
       // saint_louis → sud: apre il gap al hub Pittsburgh (pittsburgh→StL più sud)
       ['saint_louis', 0, 5, 'Pittsburgh hub: chicago↔pittsburgh vs pittsburgh↔saint_louis'],
+      // pittsburgh → sud: allarga il cuneo nord-ovest (tra Chicago↔Toronto e Pittsburgh↔Toronto),
+      // dove l'hub polish trova la label fuori dai binari della propria città (prima restava sul
+      // binario Pittsburgh↔Toronto).
+      ['pittsburgh', 0, 10, 'label Pittsburgh fuori da pittsburgh↔toronto'],
       // chicago shift rimosso: non migliorava Saint Louis hub (0.4px invariato) e causava label regression
     ],
   },
@@ -2711,12 +2715,8 @@ for (const id of order) {
 // fisso; durante la ricottura l'ownership è una penalità, ma lo stato accettato è sempre pulito)
 // → output deterministico. Costo: ~1 min per mappa.
 //
-// Residuo noto (USA): la label di Pittsburgh resta sul doppio Pittsburgh↔Toronto (1 caso, erano
-// 8 label su binari propri). Il cuneo a nord-ovest è attraversato da Chicago↔Toronto; nelle altre
-// posizioni entro 32px la label viola l'ownership (Chicago/Toronto troppo vicini al box) o copre
-// comunque un binario incidente. Provati: candidati label/slide/nudge, bend (normale+tangente)
-// di ogni rotta dell'hub, spostamento delle città vicine ≤28px (gate ratio invariati) e
-// ricottura con ownership morbida: nessuno stato a 0 trovato (non provato che non esista).
+// Pittsburgh (USA): senza lo shift F2 `pittsburgh` (0,+10) nessuno stato a 0 trovato per la label
+// (restava sul binario Pittsburgh↔Toronto); con lo shift il polish arriva a 0 label su binari propri.
 const POLISH_TARGET = APPROACH_MIN_DIST + 0.25; // margine per l'arrotondamento dell'output
 const POLISH_CITY_CAP = 28;
 const POLISH_MAX_SWEEPS = 30;

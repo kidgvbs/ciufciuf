@@ -78,6 +78,22 @@ async fn full_game_over_ws() {
             .unwrap_or_else(|| panic!("rotta {id} non reclamata"));
         assert!(winners.contains(&claim.claimed_by_player_id));
     }
+
+    // L'elenco delle partite in LAN la marca come conclusa (non più «in corso»).
+    let list: serde_json::Value = reqwest::get(format!("{}/api/games", server.base_url))
+        .await
+        .expect("GET /api/games")
+        .json()
+        .await
+        .expect("parse list");
+    let listed = list["games"]
+        .as_array()
+        .expect("games array")
+        .iter()
+        .find(|g| g["gameId"].as_str() == Some(&game.game_id))
+        .expect("partita conclusa ancora in elenco");
+    assert_eq!(listed["started"], true);
+    assert_eq!(listed["finished"], true);
 }
 
 /// Partita completa via WS su un ruleset con regole nuove: draft e pescate con le quote,

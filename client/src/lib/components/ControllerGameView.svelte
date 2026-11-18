@@ -13,10 +13,14 @@
   import { rulesetHasStations } from '../scores';
   import {
     addedColors,
+    captureDiscardSource,
     countByColor,
+    discardCards,
     flyCard,
     isFreshDrawSource,
     rectOf,
+    removedColors,
+    type DiscardSource,
     type DrawSource,
   } from '../draw-animation';
   import type { InboundAction, CardColor, PassengerPick, TunnelReveal } from '../proto';
@@ -234,12 +238,20 @@
   let drawSource: DrawSource | null = null;
   let handFanEl = $state<HTMLDivElement>();
   let rootEl = $state<HTMLDivElement>();
+  let discardSource: DiscardSource | null = null;
   let prevHandCounts: Map<CardColor, number> | null = null;
   $effect(() => {
     const counts = countByColor(hand);
     const prev = prevHandCounts;
     prevHandCounts = counts;
     if (prev === null) return;
+    // Scarto: le carte spese per rotta/tunnel (fotografate al tap) rimpiccioliscono verso il mazzo.
+    const removed = removedColors(prev, counts);
+    const discard = discardSource;
+    if (removed.length > 0 && discard) {
+      discardSource = null;
+      if (isFreshDrawSource(discard, Date.now())) discardCards(discard, removed);
+    }
     const added = addedColors(prev, counts);
     const source = drawSource;
     if (added.length === 0 || !source) return;
@@ -253,9 +265,23 @@
     });
   });
 
-  // Pesca rifiutata dal server (errore dopo l'invio): niente animazione per una carta che non arriva.
+  /** Fotografa le carte da spendere (ventaglio + mazzo) prima dell'invio: dopo, il DOM cambia. */
+  function captureDiscard(cards: readonly CardColor[]): DiscardSource | null {
+    return captureDiscardSource(
+      cards,
+      handFanEl,
+      rootEl?.querySelector('.deck-cell'),
+      rootEl,
+      Date.now(),
+    );
+  }
+
+  // Pesca o scarto rifiutati dal server (errore dopo l'invio): niente animazione per carte che non si muovono.
   $effect(() => {
-    if (connectionStore.lastError) drawSource = null;
+    if (connectionStore.lastError) {
+      drawSource = null;
+      discardSource = null;
+    }
   });
 
   // Pesca biglietti: la carta nella colonna dei biglietti manda DRAW_TICKETS (quanti se ne
@@ -310,6 +336,9 @@
   function confirmClaim(cards: CardColor[], passengers: PassengerPick[] | undefined) {
     const route = payingRoute;
     if (!route) return;
+    // Tunnel: le carte giocate escono dalla mano già al claim ma tornano se si rinuncia, quindi
+    // qui niente animazione; a TUNNEL_DECISION con pagamento volano le carte extra.
+    const ghosts = route.tunnel === true ? null : captureDiscard(cards);
     const sent = sendAction({
       actionType: 'CLAIM_ROUTE',
       player_id: playerId,
@@ -320,6 +349,7 @@
     });
     // Se l'azione non è partita il popup resta aperto per riprovare.
     if (!sent) return;
+    discardSource = ghosts;
 
     payingRouteId = null;
     selectedColor = null;
@@ -430,13 +460,15 @@
   });
 
   function decideTunnel(pay: boolean, cards: CardColor[]) {
-    sendAction({
+    const ghosts = pay && cards.length > 0 ? captureDiscard(cards) : null;
+    const sent = sendAction({
       actionType: 'TUNNEL_DECISION',
       player_id: playerId,
       pay,
       cards_discarded: pay ? cards : [],
       client_seq: nextClientSeq(playerId),
     });
+    if (sent) discardSource = ghosts;
   }
 
   function confirmTicketChoice(keep: string[]) {

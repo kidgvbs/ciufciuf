@@ -642,7 +642,7 @@
                       <strong>{g.name}</strong>
                       <span class="game-meta">
                         {rulesetCatalog.title(g.rulesetId) ?? g.rulesetId} · {g.playersJoined}/{g.maxPlayers} giocatori
-                        · {g.started ? 'in corso' : 'in lobby'}
+                        · {g.finished ? 'conclusa' : g.started ? 'in corso' : 'in lobby'}
                       </span>
                     </div>
                     <button class="btn follow-btn" onclick={() => followGame(g)} disabled={saveBusy}>Segui</button>

@@ -36,6 +36,8 @@ export interface GameListItem {
   playersJoined: number;
   maxPlayers: number;
   started: boolean;
+  /** Partita conclusa, ancora elencata finché il server non la chiude. */
+  finished: boolean;
 }
 
 export interface GameDetailPlayer {

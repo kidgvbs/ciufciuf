@@ -505,6 +505,20 @@
     new Set(publicStore.state === 'GAME_OVER' ? (publicStore.longestPathRouteIds ?? []) : []),
   );
 
+  // Fine partita (Europe): rotte prese in prestito dalle stazioni, route_id → borrower.
+  // Se due giocatori prendono in prestito la stessa rotta vince il primo in ordine
+  // di finalScores (deterministico). Vuota fuori da GAME_OVER.
+  const borrowedByRoute = $derived.by(() => {
+    const m = new Map<string, string>();
+    if (publicStore.state !== 'GAME_OVER') return m;
+    for (const fs of publicStore.finalScores ?? []) {
+      for (const b of fs.borrowedRoutes ?? []) {
+        if (!m.has(b.routeId)) m.set(b.routeId, fs.playerId);
+      }
+    }
+    return m;
+  });
+
   // Layer multipli — un pin + una dashed line per OGNI
   // biglietto pinnato, colore per indice dalla palette (distingue i
   // tratteggiati quando più biglietti sono pinnati insieme). Decorativo:
@@ -680,6 +694,21 @@
               stroke-width={g.sw + 12 * swFactor} stroke-linecap="round" stroke-linejoin="round" />
             <path d={g.d} fill="none" class="longest-core"
               stroke-width={g.sw + 5 * swFactor} stroke-linecap="round" stroke-linejoin="round" />
+          {/if}
+        {/each}
+      </g>
+
+      <!-- 3b2. Rotte prese in prestito dalle stazioni (fine partita): contorno tratteggiato nel colore di chi le usa -->
+      <g class="layer-borrowed" aria-hidden="true">
+        {#each routeGeos as g (g.route.id)}
+          {@const borrower = borrowedByRoute.get(g.route.id)}
+          {#if borrower}
+            <path d={g.d} fill="none" class="borrowed-base"
+              stroke-width={g.sw + 18 * swFactor} stroke-linecap="round" stroke-linejoin="round" />
+            <path d={g.d} fill="none" class="borrowed-outline"
+              stroke-width={g.sw + 14 * swFactor} stroke-dasharray="10 7" stroke-linejoin="round" />
+            <path d={g.d} fill="none" class="borrowed-dash" stroke={playerColor(borrower)}
+              stroke-width={g.sw + 8 * swFactor} stroke-dasharray="10 7" stroke-linejoin="round" />
           {/if}
         {/each}
       </g>
@@ -1051,7 +1080,7 @@
     from { opacity: 0.18; }
     to { opacity: 0.5; }
   }
-  .layer-shadow, .layer-bed, .layer-glow, .layer-focus, .layer-longest, .layer-slots, .layer-cities, .layer-labels {
+  .layer-shadow, .layer-bed, .layer-glow, .layer-focus, .layer-longest, .layer-borrowed, .layer-slots, .layer-cities, .layer-labels {
     pointer-events: none;
   }
   /* Alone della tratta appena occupata: pulsa solo senza preferenza di movimento ridotto. */
@@ -1075,6 +1104,14 @@
   @keyframes longest-pulse {
     from { opacity: 0.15; }
     to { opacity: 0.6; }
+  }
+  /* Rotte in prestito (fine partita): base crema + contorno scuro + tratteggio nel colore
+     del giocatore; il tratteggio scorre solo senza preferenza di movimento ridotto. */
+  .borrowed-base { stroke: #fff6dc; opacity: 0.6; }
+  .borrowed-outline { stroke: #2b1d10; opacity: 0.85; }
+  .borrowed-dash { opacity: 0.95; }
+  @media (prefers-reduced-motion: no-preference) {
+    .borrowed-outline, .borrowed-dash { animation: dash-march 1.6s linear infinite; }
   }
   .route-tappable {
     cursor: pointer;

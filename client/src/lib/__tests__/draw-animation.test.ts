@@ -4,6 +4,7 @@ import {
   addedColors,
   countByColor,
   isFreshDrawSource,
+  removedColors,
 } from '../draw-animation';
 
 describe('countByColor', () => {
@@ -35,6 +36,28 @@ describe('addedColors', () => {
     expect(
       addedColors(countByColor([]), countByColor(['GREEN', 'RED', 'GREEN'])),
     ).toEqual(['GREEN', 'RED']);
+  });
+});
+
+describe('removedColors', () => {
+  it('colori spesi con quante carte in meno', () => {
+    expect(
+      removedColors(countByColor(['RED', 'RED', 'RED', 'BLUE']), countByColor(['RED', 'BLUE'])),
+    ).toEqual([['RED', 2]]);
+  });
+
+  it('colore finito a zero e più colori, nell ordine della vecchia mano', () => {
+    expect(
+      removedColors(countByColor(['GREEN', 'RED', 'RED']), countByColor(['RED'])),
+    ).toEqual([['GREEN', 1], ['RED', 1]]);
+    expect(
+      removedColors(countByColor(['GREEN', 'RED', 'RED']), countByColor([])),
+    ).toEqual([['GREEN', 1], ['RED', 2]]);
+  });
+
+  it('mano che cresce o invariata → niente', () => {
+    expect(removedColors(countByColor(['RED']), countByColor(['RED', 'BLUE']))).toEqual([]);
+    expect(removedColors(countByColor(['RED']), countByColor(['RED']))).toEqual([]);
   });
 });
 
