@@ -1,7 +1,7 @@
 # CiufCiuf! — Piano completo — Gioco stile Ticket to Ride su LAN
 
 **Versione:** 1.3 — 3 novembre 2026 *(supera la v1.2: integra D22 Svelte + D23 repo GitHub privato/RECAP)*
-**Stato (aggiornato 19/11/2026):** Fasi 0–4 completate; 16 ruleset su 8 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland, India — §3.4, §3.5); prossima la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D45) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
+**Stato (aggiornato 19/11/2026):** Fasi 0–4 completate; 16 ruleset su 8 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland, India — §3.4, §3.5); **prossima mappa: Legendary Asia** (§3.6), poi la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D47) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
 **Fonti:** ricerca web (Wikipedia, BGA, Marmalade/Steam, Days of Wonder), studio preliminare, GDD esterno revisionato dall'utente, decisioni prese in sessione, revisione esterna del piano v1.1 (verificata), risposte definitive dell'utente del 3/11/2026 (12 punti — integrate come D8/D19/D20/D21 e in §14) e conferme successive dello stesso giorno (**D22**: Svelte; **D23**: repo GitHub privato + `RECAP.md`).
 
 > Questo documento **supera** lo studio preliminare. Regola dell'ultimo giro: chi innesca la fine **gioca** l'ultimo turno
@@ -187,6 +187,41 @@ Altre mappe dell'app 2023 (Legendary Asia, San Francisco, Japan, Africa) arrivan
 - **Pagamento delle rotte**: valido solo se tutte le carte dichiarate si assegnano esattamente agli spazi (`ttr-core/src/payment.rs`); senza sostituzioni né restrizioni resta il controllo storico (carte = lunghezza).
 
 Convenzioni dei dati: `docs/data-conventions.md`; fonti per mappa: `docs/data-sources-*.md`.
+
+### 3.6 Prossima mappa: Legendary Asia (piano del 19/11/2026)
+
+**Scelta.** Tra le mappe ufficiali non ancora fatte è quella che costa meno: due meccaniche nuove, entrambe piccole e confinate al motore (rotte di montagna, bonus Asian Explorer), il resto c'è già (traghetti, doppie con soglia, mazzo lungo + regolare come Europe). Confronto sui regolamenti ufficiali letti il 19/11:
+
+| Mappa | Novità rispetto al motore attuale | Costo | Ordine |
+|---|---|---|---|
+| **Legendary Asia** (Map Collection 1, regolamento 2019) | rotte di montagna (treni scartati, +2 ciascuno), bonus «città nella rete più grande», spareggio per rotte di montagna | basso | **1ª** |
+| Italy (Map Collection 7, 2019) | carte Traghetto (nuovo mazzo, nuova azione, massimo 2 in mano, valgono 2 spazi onda), bonus per Regioni collegate (17 regioni, 3 che valgono doppio, tabella), doppie/triple, Paesi; niente percorso più lungo | medio | 2ª |
+| Japan (Map Collection 7, 2019) | rotte Treno Proiettile **condivise** da tutti per i biglietti, tracciato di contributo con bonus/malus per posizione, fine partita legata anche ai vagoni proiettile, inserti Tokyo/Kyushu fusi con la mappa, 20 treni | medio-alto | 3ª |
+| Heart of Africa, Nederland | carte Terreno legate ai colori delle rotte; pedaggi dei ponti con gettoni (regolamenti scaricati, non ancora letti nel dettaglio) | medio | dopo |
+| Pennsylvania, UK, France, Old West | azioni delle compagnie; carte tecnologia; posa dei binari; città conquistate (da memoria, regolamenti non ancora letti) | alto | dopo |
+
+**Fonti.** Regolamento EN 2019 (`705123-T2RMC1-Rules-LegendaryAsia-EN-2019.pdf`, CDN Asmodee/DoW) e multilingue 2011 (stesso testo per le regole); dati: wiki di fan (`Legendary Asia`, `Mountain routes`) e implementazione BGA `thoun/tickettoride` (`modules/maps/legendaryasia`, con `mountain: n` per rotta e `pointsForMostConnectedCities = 10`), da riconciliare per script e controllare su una foto del tabellone come per India e Switzerland.
+
+**Regole (vincolanti dopo conferma dei punti aperti).**
+- 2–5 giocatori, 45 treni, mazzo standard 12×8 + 14 locomotive; doppie con entrambi i binari solo in 4–5 giocatori (`doubleRouteMinPlayers: 4`), mai due binari allo stesso giocatore. Alcune doppie sono grigia + colorata: la grigia si paga con qualsiasi colore, anche quello della parallela (già così nel motore).
+- Biglietti: 36 (6 lunghi viola + 30 regolari); mano iniziale 1 lungo + 3 regolari, tieni ≥2; i lunghi non distribuiti escono dal gioco; pesca 3 tieni ≥1, scarti di metà partita in fondo al mazzo. Come `europe.json` (`initialTickets.dealt` lungo+regolari, `undealtLong: "removed"`).
+- Traghetti come Europe.
+- **Rotte di montagna**: una rotta con k simboli X (`mountains: k` sulla rotta, k ≥ 1) si paga con le carte normali e si posa come sempre (punti della tabella per la lunghezza); in più il giocatore scarta k treni dalla riserva, ognuno vale **+2 punti subito**. Non si può reclamare se i treni in riserva sono meno di lunghezza + k. In una doppia montagna colorata + grigia normale, solo la colorata ha le X.
+- **Asian Explorer +10**: a chi ha più città in un'unica rete continua delle proprie rotte (rami e anelli ammessi, ogni città contata una volta); parità → a tutti. Niente percorso più lungo.
+- **Spareggio**: punti → biglietti completati → numero di rotte di montagna prese.
+
+**Modello e implementazione (dati prima del motore).**
+- Dati: `Route.mountains: u32` (default 0, serializzazione saltata a 0 così le mappe esistenti restano byte-identiche); ruleset `mountains: { "pointsPerTrain": 2 }` obbligatorio se la mappa ha montagne (validazione in `setup.rs` e `ttr-validate`: niente `mountains` su tunnel, k ≤ lunghezza).
+- Motore: il costo in treni di una rotta diventa `len + mountains` ovunque si contano i treni (mosse legali, claim, D28 «nessuna rotta reclamabile», innesco dell'ultimo giro ≤2 treni dopo lo scarto). Punti: `routePoints[len]` + `pointsPerTrain × mountains` al claim, tenuti separati in `PlayerState`/`FinalScore` come `mountain_points` (fuori dall'hash golden come `globetrotter_bonus` e `mandala_bonus`).
+- Bonus `{ "type": "largest_network", "label": "Asian Explorer", "points": 10 }`: dimensione della componente più grande dell'Union-Find delle rotte proprie (§9.1), contando le città (i Paesi, se una mappa futura li avesse, come nodi privati per rotta, quindi senza unire reti). Nuovo `TieBreaker::MountainRoutes` (`"mountainRoutes"`).
+- Proto/client: `FinalScoreInfo.mountain_points`, `largest_network_bonus` (+ dimensione della rete per la riga riassuntiva); X disegnate sugli spazi delle rotte di montagna sulla TV; `ClaimDialog` mostra «−k treni, +2k punti»; `specialRules` in italiano.
+- `RULES_VERSION` resta 3 se tutti i campi sono opzionali e i golden restano uguali (da provare come per India).
+
+**Punti aperti da decidere prima del giro.**
+1. **Scarti della mano iniziale**: il regolamento 2011 (tutte le lingue) e la prima frase del 2019 EN dicono «nella scatola senza guardarli»; la frase successiva del 2019 EN dice «in fondo al mazzo, anche a inizio partita»; BGA usa «scartati». Proposta: **fuori dal gioco** (`setupDiscards: "removed"`, come Europe), da confermare.
+2. **Treni scartati e bonus**: i treni scartati per le montagne non sono rotte: non contano nella rete dell'Asian Explorer né nei biglietti (lettura letterale del regolamento).
+
+**Criterio di accettazione.** `ttr-validate` verde sui dati riconciliati (rotte, X, biglietti, lunghezze → punti dalla legenda del tabellone); test del motore su montagne (costo in treni, rifiuto con riserva insufficiente, +2 per treno, ultimo giro), Asian Explorer (rami, anelli, parità) e spareggio; `Game::LegendaryAsia` nei proptest; golden invariati; layout con tutti i gate del generatore a 0 e le altre mappe byte-identiche; TV e punteggi finali verificati a vista.
 
 ---
 
@@ -410,7 +445,8 @@ Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non 
 3. **Longest path / European Express: DFS con backtracking** (dal GDD ✓): cammino semplice sul multigrafo delle **sole rotte proprie** (≤45 archi, grado basso) — calcolato a fine partita per il bonus e per l'highlight. Nessuna memoizzazione necessaria.
 4. **Mosse legali lato server**: il private channel include ciò che il giocatore può fare ora; il client valida zero regole.
 5. **Determinismo** (Rust-specifico): RNG seeded + `BTreeMap`/ordinamenti espliciti, anche nell'ordine di enumerazione delle assegnazioni stazione (v. §3.3, §11).
-6. **Nota per il futuro (India)**: il bonus Mandala richiede due percorsi *distinti* verificati tra A e B — Union-Find non basta, servirà ricerca di percorso. Voce di debito tecnico, non di Fase 4.
+6. **Mandala (India, D47)**: due percorsi senza rotte in comune tra gli estremi del biglietto = max-flow a capacità unitaria ≥ 2 sul multigrafo non orientato delle rotte proprie (due archi residui per rotta, due aumenti BFS). Fatto il 19/11/2026.
+7. **Asian Explorer (Legendary Asia, §3.6)**: dimensione della componente più grande dell'Union-Find delle rotte proprie; nessuna ricerca di percorso.
 
 ---
 
@@ -428,7 +464,7 @@ Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non 
 
 **Traguardi**: giocabile con amici a fine Fase 3 (~20–35 giornate); "per intero" (USA+Europe+AI) a fine Fase 5.
 
-**Stato al 18/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`). Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
+**Stato al 19/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`); mappe oltre USA/Europe: Germany, Poland, Basilicata, Nordic, Switzerland, India. **Prossimo giro: Legendary Asia (§3.6)**. Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
 
 Ordine deliberato: **motore prima della UI, dati prima del motore**. La Fase 3 è il rischio maggiore (rendering mappa = la voce più sottovalutata del piano); la Fase 4 è dove si smette di faticare e si gioca.
 
