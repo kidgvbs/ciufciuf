@@ -18,6 +18,18 @@ export function winnerNames(scores: FinalScoreInfo[], players: PlayerSummary[]):
     .join(' e ');
 }
 
+/**
+ * Riga riassuntiva del bonus della rete più grande (Asian Explorer): «Anna, Luca (9 città)», cioè chi
+ * ha preso il bonus e la dimensione della rete (uguale per tutti i pari merito); `null` se nessuno l'ha preso.
+ */
+export function largestNetworkWinners(scores: FinalScoreInfo[], players: PlayerSummary[]): string | null {
+  const winners = scores.filter((fs) => fs.largestNetworkBonus > 0);
+  const [first] = winners;
+  if (first === undefined) return null;
+  const names = winners.map((fs) => players.find((p) => p.player_id === fs.playerId)?.name ?? fs.playerId);
+  return `${names.join(', ')} (${first.largestNetwork} città)`;
+}
+
 /** `true` se la partita ha le stazioni (Europe): qualcuno ne ha ancora o ne è già stata costruita una. */
 export function rulesetHasStations(players: PlayerSummary[], stations: StationPlacement[]): boolean {
   return stations.length > 0 || players.some((p) => p.stations_remaining > 0);

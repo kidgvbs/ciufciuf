@@ -86,6 +86,12 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
             total, groups, single_pairs
         );
     });
+    r.check(
+        "Rotte di montagna: niente tunnel, X ≤ lunghezza, mountains nel ruleset",
+        |r| {
+            check_mountains(r, map, ruleset);
+        },
+    );
     r.check("Paesi: flag ISO alpha-2", |r| {
         check_flags(r, map);
     });
@@ -96,6 +102,44 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
     });
 
     r
+}
+
+/// Rotte di montagna: nessuna su un tunnel, simboli X (`mountains`) tra 1 e la lunghezza, e il
+/// ruleset con `mountains.pointsPerTrain` ≥ 1 se e solo se la mappa ha montagne. Segnala ogni
+/// rotta fuori regola, non solo la prima come `Ruleset::validate`.
+fn check_mountains(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
+    let mountain_routes: Vec<&Route> = map.routes.iter().filter(|rt| rt.mountains > 0).collect();
+    for rt in &mountain_routes {
+        if rt.tunnel {
+            r.err(format!("Rotta {}: montagna e tunnel insieme", rt.id));
+        }
+        if rt.mountains > rt.len {
+            r.err(format!(
+                "Rotta {}: {} X su una rotta lunga {}",
+                rt.id, rt.mountains, rt.len
+            ));
+        }
+    }
+    match (&ruleset.mountains, mountain_routes.is_empty()) {
+        (None, false) => {
+            r.err("La mappa ha rotte di montagna ma il ruleset non ha mountains".into())
+        }
+        (Some(_), true) => {
+            r.err("Il ruleset ha mountains ma la mappa non ha rotte di montagna".into())
+        }
+        (Some(config), false) if config.points_per_train == 0 => {
+            r.err("mountains.pointsPerTrain deve essere almeno 1".into());
+        }
+        _ => {}
+    }
+    if !mountain_routes.is_empty() {
+        let symbols: u32 = mountain_routes.iter().map(|rt| rt.mountains).sum();
+        println!(
+            "  Montagne: {} rotte, {} simboli X",
+            mountain_routes.len(),
+            symbols
+        );
+    }
 }
 
 /// Avvisa delle lunghezze di `routePoints` che nessuna rotta usa.

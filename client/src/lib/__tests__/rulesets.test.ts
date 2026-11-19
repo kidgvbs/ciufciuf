@@ -3,6 +3,7 @@ import realCatalog from './rulesets-catalog.fixture.json';
 import {
   DEFAULT_RULESET_ID,
   FALLBACK_GLOBETROTTER_LABEL,
+  FALLBACK_LARGEST_NETWORK_LABEL,
   FALLBACK_LONGEST_PATH_LABEL,
   FALLBACK_MANDALA_LABEL,
   bigCities,
@@ -10,13 +11,16 @@ import {
   globetrotterLabel,
   groupByMap,
   hasGlobetrotter,
+  hasLargestNetwork,
   hasLongestPath,
   hasMandala,
   isRulesetInfo,
+  largestNetworkLabel,
   loadRulesets,
   longestPathLabel,
   mandalaLabel,
   modeBlurb,
+  mountainPointsPerTrain,
   parseRulesetCatalog,
   rulesetBlurb,
   rulesetTitle,
@@ -364,6 +368,47 @@ describe('bonus Mandala', () => {
   it('modeBlurb mostra il massimo del bonus', () => {
     expect(modeBlurb(india)).toBe(
       '33 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · Indian Express +10 · Grand Tour fino a +40',
+    );
+  });
+});
+
+const explorerBonus = { type: 'largest_network', label: 'Asian Explorer', points: 10 };
+const asia: RulesetInfo = {
+  ...usa,
+  id: 'legendary_asia',
+  mapId: 'legendary_asia',
+  bonuses: [explorerBonus],
+  mountainPointsPerTrain: 2,
+};
+
+describe('rotte di montagna e Asian Explorer', () => {
+  it('accetta mountainPointsPerTrain intero ≥ 1 e rifiuta il resto', () => {
+    expect(isRulesetInfo(asia)).toBe(true);
+    expect(isRulesetInfo(usa)).toBe(true);
+    for (const mountainPointsPerTrain of [0, -2, 1.5, '2', null]) {
+      expect(isRulesetInfo({ ...asia, mountainPointsPerTrain }), `ppt=${String(mountainPointsPerTrain)}`).toBe(false);
+    }
+  });
+
+  it('largestNetworkLabel con fallback, hasLargestNetwork segue i bonus (ignoto → false)', () => {
+    expect(largestNetworkLabel([asia], 'legendary_asia')).toBe('Asian Explorer');
+    expect(largestNetworkLabel([usa], 'usa_v2')).toBe(FALLBACK_LARGEST_NETWORK_LABEL);
+    expect(largestNetworkLabel([], null)).toBe(FALLBACK_LARGEST_NETWORK_LABEL);
+    expect(hasLargestNetwork([asia, usa], 'legendary_asia')).toBe(true);
+    expect(hasLargestNetwork([asia, usa], 'usa_v2')).toBe(false);
+    expect(hasLargestNetwork([], 'legendary_asia')).toBe(false);
+  });
+
+  it('mountainPointsPerTrain dal catalogo (assente → null)', () => {
+    expect(mountainPointsPerTrain([asia, usa], 'legendary_asia')).toBe(2);
+    expect(mountainPointsPerTrain([asia, usa], 'usa_v2')).toBeNull();
+    expect(mountainPointsPerTrain([], undefined)).toBeNull();
+  });
+
+  it('il sottotitolo cita le montagne e la modalità il bonus', () => {
+    expect(rulesetBlurb({ ...asia, ferries: true })).toBe('36 città, 100 rotte, con traghetti e montagne');
+    expect(modeBlurb(asia)).toBe(
+      '33 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · Asian Explorer +10',
     );
   });
 });

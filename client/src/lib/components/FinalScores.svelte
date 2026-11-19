@@ -4,11 +4,11 @@
   // prestito) e chi ha il bonus del percorso più lungo. Solo dati del server.
   import type { Snippet } from 'svelte';
   import { PLAYER_COLOR_CSS } from '../colors';
-  import { rankedScores, winnerNames, borrowedRouteLabel, ticketResultLabel } from '../scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel, ticketResultLabel, largestNetworkWinners } from '../scores';
   import type { MapData } from '../map-utils';
   import type { FinalScoreInfo, PlayerSummary } from '../proto';
 
-  let { scores, players, playerId, longestPathPlayerIds, longestPathName, globetrotterName, mandalaName, mapData, children }: {
+  let { scores, players, playerId, longestPathPlayerIds, longestPathName, globetrotterName, mandalaName, largestNetworkName, mapData, children }: {
     scores: FinalScoreInfo[];
     players: PlayerSummary[];
     /** Giocatore del telefono: la sua scheda è evidenziata. */
@@ -21,6 +21,8 @@
     globetrotterName: string | null;
     /** Nome del bonus Mandala (Grand Tour); `null` se il ruleset non lo prevede. */
     mandalaName: string | null;
+    /** Nome del bonus della rete più grande (Asian Explorer); `null` se il ruleset non lo prevede. */
+    largestNetworkName: string | null;
     /** Mappa della partita (nomi delle città); `null` finché non è caricata. */
     mapData: MapData | null;
     /** Contenuto mostrato fra la riga del vincitore e la classifica (es. la mappa). */
@@ -31,6 +33,7 @@
   const globetrotterIds = $derived(scores.filter((fs) => fs.globetrotterBonus > 0).map((fs) => fs.playerId));
 
   const mandalaIds = $derived(scores.filter((fs) => fs.mandalaBonus > 0).map((fs) => fs.playerId));
+  const networkWinners = $derived(largestNetworkWinners(scores, players));
 
   function namesOf(ids: string[]): string {
     return ids.map((pid) => players.find((ps) => ps.player_id === pid)?.name ?? pid).join(', ');
@@ -55,6 +58,8 @@
         {#if longestPathName !== null && fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
         {#if fs.globetrotterBonus > 0} · 🌍 +{fs.globetrotterBonus}{/if}
         {#if (fs.mandalaBonus ?? 0) > 0} · 🪷 +{fs.mandalaBonus}{/if}
+        {#if (fs.mountainPoints ?? 0) > 0} · ⛰ +{fs.mountainPoints}{/if}
+        {#if (fs.largestNetworkBonus ?? 0) > 0} · 🧭 +{fs.largestNetworkBonus}{/if}
         {#if (fs.stationPoints ?? 0) > 0} · 🏠 +{fs.stationPoints}{/if}
         {#if (fs.countryPoints ?? 0) > 0} · Carte Paese +{fs.countryPoints}{/if}
         {#if (fs.passengerPoints ?? 0) > 0} · Passeggeri +{fs.passengerPoints}{/if}
@@ -91,6 +96,11 @@
 {#if mandalaName !== null && mandalaIds.length > 0}
   <div class="longest-banner">
     🪷 {mandalaName}: {namesOf(mandalaIds)}
+  </div>
+{/if}
+{#if largestNetworkName !== null && networkWinners !== null}
+  <div class="longest-banner">
+    🧭 {largestNetworkName}: {networkWinners}
   </div>
 {/if}
 

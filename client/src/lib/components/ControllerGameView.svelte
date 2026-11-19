@@ -133,6 +133,7 @@
   const specialRules = $derived(rulesetCatalog.specialRules(gameMap.rulesetId));
   // Regole di pagamento delle rotte (locomotive ammesse, carte qualsiasi): solo guardie di UX.
   const paymentRules = $derived(rulesetCatalog.payment(gameMap.rulesetId));
+  const mountainPoints = $derived(rulesetCatalog.mountainPointsPerTrain(gameMap.rulesetId));
   const rulesTitle = $derived(rulesetCatalog.title(gameMap.rulesetId));
   let rulesSeen = $state(hasSeenRules(publicStore.gameId));
   let rulesManual = $state(false);
@@ -809,6 +810,7 @@
       {hand}
       {selectedColor}
       ruleset={paymentRules}
+      mountainPointsPerTrain={mountainPoints}
       {passengerChoiceList}
       onConfirm={confirmClaim}
       onCancel={cancelPayment}

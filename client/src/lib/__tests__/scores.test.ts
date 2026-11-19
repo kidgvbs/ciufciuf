@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { ticketResultLabel } from '../scores';
+import { largestNetworkWinners, ticketResultLabel } from '../scores';
+import type { FinalScoreInfo, PlayerSummary } from '../proto';
 import type { MapData } from '../map-utils';
 
 const MAP: MapData = {
@@ -48,5 +49,30 @@ describe('ticketResultLabel', () => {
   it('senza mappa restano gli id', () => {
     const r = { ticketId: 'zh_fr', completed: false, cityId: null, points: -6, mandala: false };
     expect(ticketResultLabel(r, null)).toBe('✗ zh_fr -6');
+  });
+});
+
+describe('largestNetworkWinners', () => {
+  const players = [
+    { player_id: 'a', name: 'Anna' },
+    { player_id: 'b', name: 'Luca' },
+    { player_id: 'c', name: 'Mara' },
+  ] as unknown as PlayerSummary[];
+  const score = (playerId: string, largestNetworkBonus: number, largestNetwork: number) =>
+    ({ playerId, largestNetworkBonus, largestNetwork }) as unknown as FinalScoreInfo;
+
+  it('nome del vincitore e dimensione della rete', () => {
+    const scores = [score('a', 10, 9), score('b', 0, 7), score('c', 0, 0)];
+    expect(largestNetworkWinners(scores, players)).toBe('Anna (9 città)');
+  });
+
+  it('pari merito: tutti i nomi, una sola dimensione', () => {
+    const scores = [score('a', 10, 8), score('b', 10, 8), score('c', 0, 3)];
+    expect(largestNetworkWinners(scores, players)).toBe('Anna, Luca (8 città)');
+  });
+
+  it('nessun bonus assegnato: nessuna riga; giocatore ignoto: resta l\'id', () => {
+    expect(largestNetworkWinners([score('a', 0, 0), score('b', 0, 0)], players)).toBeNull();
+    expect(largestNetworkWinners([score('z', 10, 4)], players)).toBe('z (4 città)');
   });
 });

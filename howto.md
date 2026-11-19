@@ -138,7 +138,7 @@ Errore standard: `{"error": "<CODICE>", "detail": "<messaggio in italiano>"}`.
 
 Note:
 
-- `rulesetId`: uno dei 16 ruleset di `data/rulesets/` (es. `usa_v2`, `europe`, `germany`, `poland`, `nordic`, `india`); elenco completo con `GET /api/rulesets`.
+- `rulesetId`: uno dei 17 ruleset di `data/rulesets/` (es. `usa_v2`, `europe`, `germany`, `poland`, `nordic`, `india`, `legendary_asia`); elenco completo con `GET /api/rulesets`.
 - `color` è uno tra `PINK`, `CYAN`, `LIME`, `BROWN`, `LAVENDER`, `INDIGO` (maiuscolo; un valore diverso → `422` con testo semplice di axum, non JSON); se manca il server assegna il primo libero; se è esplicito e già preso → `409 COLOR_TAKEN`.
 - `seed` senza `--allow-client-seed` → `400 SEED_NOT_ALLOWED`. Il seed di default è a 64 bit da un CSPRNG, finisce solo nel save e mai nelle API: con il seed si ricostruiscono le mani di tutti.
 - `DELETE` senza body → `401 UNAUTHORIZED`; body malformato → `400`.

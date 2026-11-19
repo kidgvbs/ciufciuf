@@ -27,7 +27,7 @@ function isTicketData(t: Record<string, unknown>): boolean {
   );
 }
 
-/** `true` se `v` ha la forma minima di `MapData`: città con `name` (`country` booleano e `flag` testuale opzionali), rotte con `len` 1–12 (e `tunnel`/`ferries`/`alwaysOpen` opzionali coerenti), biglietti con `id` testuale e destinazioni coerenti. */
+/** `true` se `v` ha la forma minima di `MapData`: città con `name` (`country` booleano e `flag` testuale opzionali), rotte con `len` 1–12 (e `tunnel`/`ferries`/`alwaysOpen`/`mountains` opzionali coerenti), biglietti con `id` testuale e destinazioni coerenti. */
 export function isMapData(v: unknown): v is MapData {
   if (!isRecord(v)) return false;
   const { cities, routes, tickets } = v;
@@ -62,6 +62,11 @@ export function isMapData(v: unknown): v is MapData {
           (typeof r.anyCardsPerSpace === 'number' &&
             Number.isInteger(r.anyCardsPerSpace) &&
             r.anyCardsPerSpace >= 2)) &&
+        (r.mountains === undefined ||
+          (typeof r.mountains === 'number' &&
+            Number.isInteger(r.mountains) &&
+            r.mountains >= 1 &&
+            r.mountains <= r.len)) &&
         typeof r.color === 'string',
     ) &&
     tickets.every(isTicketData)

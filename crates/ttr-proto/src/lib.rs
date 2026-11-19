@@ -403,6 +403,16 @@ pub struct FinalScoreInfo {
     /// Modalità con `mandala`: bonus dei biglietti con due percorsi distinti (Grand Tour).
     #[serde(default)]
     pub mandala_bonus: i32,
+    /// Modalità con `mountains`: punti dei treni scartati sulle rotte di montagna (già in
+    /// `total`, non in `route_points`).
+    #[serde(default)]
+    pub mountain_points: i32,
+    /// Modalità con `largest_network`: bonus della rete di città più grande (Asian Explorer).
+    #[serde(default)]
+    pub largest_network_bonus: i32,
+    /// Modalità con `largest_network`: città della rete più grande del giocatore.
+    #[serde(default)]
+    pub largest_network: u32,
     /// Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
     #[serde(default)]
     pub station_points: i32,
@@ -914,6 +924,9 @@ mod tests {
                 longest_path_bonus: 10,
                 globetrotter_bonus: 15,
                 mandala_bonus: 20,
+                mountain_points: 12,
+                largest_network_bonus: 10,
+                largest_network: 9,
                 station_points: 4,
                 country_points: 7,
                 passenger_points: 0,
@@ -945,6 +958,9 @@ mod tests {
         assert_eq!(scores[0].total, 91);
         assert_eq!(scores[0].globetrotter_bonus, 15);
         assert_eq!(scores[0].mandala_bonus, 20);
+        assert_eq!(scores[0].mountain_points, 12);
+        assert_eq!(scores[0].largest_network_bonus, 10);
+        assert_eq!(scores[0].largest_network, 9);
         assert!(scores[0].tickets[0].mandala);
         assert_eq!(scores[0].station_points, 4);
         assert_eq!(scores[0].borrowed_routes[0].route_id, "dieppe_paris_1");

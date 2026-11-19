@@ -321,6 +321,24 @@ pub enum EngineInitError {
     #[error("rotta tunnel '{route_id}': il ruleset non ha tunnels.revealed >= 1")]
     TunnelsConfigMissing { route_id: String },
 
+    #[error("rotta '{route_id}': una rotta di montagna non può essere un tunnel")]
+    RouteMountainsOnTunnel { route_id: String },
+
+    #[error(
+        "rotta '{route_id}': i simboli di montagna ({mountains}) superano la lunghezza ({len})"
+    )]
+    RouteMountainsExceedLength {
+        route_id: String,
+        mountains: u32,
+        len: u32,
+    },
+
+    #[error("rotta di montagna '{route_id}': il ruleset non ha mountains.pointsPerTrain >= 1")]
+    MountainsConfigMissing { route_id: String },
+
+    #[error("il ruleset ha mountains ma la mappa non ha rotte di montagna")]
+    MountainsConfigUnused,
+
     #[error("stations.costs ha {costs} voci ma stations.count è {count}")]
     StationCostsMismatch { count: u32, costs: usize },
 

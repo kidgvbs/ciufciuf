@@ -1,7 +1,7 @@
 # CiufCiuf! — Piano completo — Gioco stile Ticket to Ride su LAN
 
 **Versione:** 1.3 — 3 novembre 2026 *(supera la v1.2: integra D22 Svelte + D23 repo GitHub privato/RECAP)*
-**Stato (aggiornato 19/11/2026):** Fasi 0–4 completate; 16 ruleset su 8 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland, India — §3.4, §3.5); **prossima mappa: Legendary Asia** (§3.6), poi la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D47) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
+**Stato (aggiornato 19/11/2026):** Fasi 0–4 completate; 17 ruleset su 9 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland, India, Legendary Asia — §3.4, §3.5, §3.6); prossime mappe in ordine: Italy, Japan (§3.6), poi la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D48) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
 **Fonti:** ricerca web (Wikipedia, BGA, Marmalade/Steam, Days of Wonder), studio preliminare, GDD esterno revisionato dall'utente, decisioni prese in sessione, revisione esterna del piano v1.1 (verificata), risposte definitive dell'utente del 3/11/2026 (12 punti — integrate come D8/D19/D20/D21 e in §14) e conferme successive dello stesso giorno (**D22**: Svelte; **D23**: repo GitHub privato + `RECAP.md`).
 
 > Questo documento **supera** lo studio preliminare. Regola dell'ultimo giro: chi innesca la fine **gioca** l'ultimo turno
@@ -184,11 +184,12 @@ Altre mappe dell'app 2023 (Legendary Asia, San Francisco, Japan, Africa) arrivan
 - **Nordic Countries (D43, D45)**: 2–3 giocatori, 40 treni; locomotive solo su tunnel e traghetti (`locomotives.usableOn`), pescabili come carte normali (`freeDraw`), niente reset con 3 scoperte (`faceUpReset: false`); sui traghetti 3 carte qualsiasi valgono una locomotiva (`ferries.anyCardsPerLocomotive`); Murmansk–Lieksa (9) con 4 carte qualsiasi per spazio (`anyCardsPerSpace`); biglietti scartati rimossi anche a metà partita (`ticketDraw.discards: "removed"`); Globetrotter +10, nessun percorso più lungo, spareggio `completedTickets` poi `longestPath`. Gruppi paralleli con binari di lunghezza diversa ammessi.
 - **Switzerland (D43, D44)**: 2–3 giocatori, 40 treni; locomotive solo sui tunnel, pescabili come carte normali (il reset con 3 scoperte resta); 4 Paesi confinanti; 12 biglietti con più destinazioni (`destinations`): vale la destinazione collegata di valore più alto, nessuna collegata = −valore più basso; scarti rimossi al setup e a metà partita; percorso più lungo +10.
 - **India (Map Collection 2, 2017)**: 2–4 giocatori, 45 treni, mazzo 12×8 + 14 locomotive come la base; 39 città, 80 rotte / 108 binari; rotte doppie utilizzabili da entrambi i binari solo in 4 giocatori (`doubleRouteMinPlayers: 4`); traghetti come Europe (locomotive per ogni simbolo, nessuna configurazione nel ruleset); 58 biglietti in un solo mazzo (4 iniziali tieni ≥2, pesca 3 tieni ≥1, scarti in fondo al mazzo come USA, `setupDiscards: "reshuffleBottom"`); niente tunnel né stazioni; punti rotta 1/2/4/7/13/21 (6 carte = 13, dalla tabella sul tabellone); percorso più lungo +10 (Indian Express) e nuovo bonus **mandala** (Grand Tour): ogni biglietto le cui due città sono collegate da almeno 2 percorsi continui senza rotte in comune dei treni del giocatore qualifica (flusso massimo unitario ≥ 2), bonus cumulativo per numero di biglietti qualificanti `table` `[5, 10, 20, 30, 40]` (oltre il quinto nessun punto), in aggiunta ai punti dei biglietti. Fonti e riconciliazione: `docs/data-sources-india.md`.
+- **Legendary Asia (Map Collection 1, 2011/2019) — fatto, 19/11/2026 (dati; meccaniche §3.6)**: 2–5 giocatori, 45 treni, mazzo 12×8 + 14 locomotive; 39 città, 70 rotte / 100 binari (268 spazi; 30 gruppi doppi, solo in 4–5 giocatori), 15 binari traghetto (un simbolo locomotiva ciascuno), 31 binari di montagna con 39 X in totale (`mountains: k` sulla rotta); 36 biglietti (6 lunghi + 30 regolari, tutti pari al percorso minimo contando i treni, X comprese); punti rotta 1/2/4/7/10/15 dalla legenda del tabellone; mano iniziale 1 lungo + 3 regolari tieni ≥2, lunghi non distribuiti e scarti iniziali fuori dal gioco (`setupDiscards: "removed"`, come `europe`), pesca 3 tieni ≥1 con scarti in fondo al mazzo; niente tunnel, stazioni, percorso più lungo. Fonti (BGA + implementazione Java `Regan831/TicketToRide` + foto del tabellone) e riconciliazione: `docs/data-sources-legendary-asia.md`.
 - **Pagamento delle rotte**: valido solo se tutte le carte dichiarate si assegnano esattamente agli spazi (`ttr-core/src/payment.rs`); senza sostituzioni né restrizioni resta il controllo storico (carte = lunghezza).
 
 Convenzioni dei dati: `docs/data-conventions.md`; fonti per mappa: `docs/data-sources-*.md`.
 
-### 3.6 Prossima mappa: Legendary Asia (piano del 19/11/2026)
+### 3.6 Legendary Asia (piano e giro del 19/11/2026 — fatto) e ordine delle prossime mappe
 
 **Scelta.** Tra le mappe ufficiali non ancora fatte è quella che costa meno: due meccaniche nuove, entrambe piccole e confinate al motore (rotte di montagna, bonus Asian Explorer), il resto c'è già (traghetti, doppie con soglia, mazzo lungo + regolare come Europe). Confronto sui regolamenti ufficiali letti il 19/11:
 
@@ -217,8 +218,8 @@ Convenzioni dei dati: `docs/data-conventions.md`; fonti per mappa: `docs/data-so
 - Proto/client: `FinalScoreInfo.mountain_points`, `largest_network_bonus` (+ dimensione della rete per la riga riassuntiva); X disegnate sugli spazi delle rotte di montagna sulla TV; `ClaimDialog` mostra «−k treni, +2k punti»; `specialRules` in italiano.
 - `RULES_VERSION` resta 3 se tutti i campi sono opzionali e i golden restano uguali (da provare come per India).
 
-**Punti aperti da decidere prima del giro.**
-1. **Scarti della mano iniziale**: il regolamento 2011 (tutte le lingue) e la prima frase del 2019 EN dicono «nella scatola senza guardarli»; la frase successiva del 2019 EN dice «in fondo al mazzo, anche a inizio partita»; BGA usa «scartati». Proposta: **fuori dal gioco** (`setupDiscards: "removed"`, come Europe), da confermare.
+**Decisioni.**
+1. **Scarti della mano iniziale** (D48, decisione utente 19/11): il regolamento 2011 (tutte le lingue) e la prima frase del 2019 EN dicono «nella scatola senza guardarli», la frase successiva del 2019 EN dice «in fondo al mazzo, anche a inizio partita»; BGA li scarta. Vale **fuori dal gioco** (`setupDiscards: "removed"`, come Europe).
 2. **Treni scartati e bonus**: i treni scartati per le montagne non sono rotte: non contano nella rete dell'Asian Explorer né nei biglietti (lettura letterale del regolamento).
 
 **Criterio di accettazione.** `ttr-validate` verde sui dati riconciliati (rotte, X, biglietti, lunghezze → punti dalla legenda del tabellone); test del motore su montagne (costo in treni, rifiuto con riserva insufficiente, +2 per treno, ultimo giro), Asian Explorer (rami, anelli, parità) e spareggio; `Game::LegendaryAsia` nei proptest; golden invariati; layout con tutti i gate del generatore a 0 e le altre mappe byte-identiche; TV e punteggi finali verificati a vista.
@@ -464,7 +465,7 @@ Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non 
 
 **Traguardi**: giocabile con amici a fine Fase 3 (~20–35 giornate); "per intero" (USA+Europe+AI) a fine Fase 5.
 
-**Stato al 19/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`); mappe oltre USA/Europe: Germany, Poland, Basilicata, Nordic, Switzerland, India. **Prossimo giro: Legendary Asia (§3.6)**. Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
+**Stato al 19/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`); mappe oltre USA/Europe: Germany, Poland, Basilicata, Nordic, Switzerland, India, Legendary Asia. **Prossime mappe: Italy, poi Japan (§3.6)**. Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
 
 Ordine deliberato: **motore prima della UI, dati prima del motore**. La Fase 3 è il rischio maggiore (rendering mappa = la voce più sottovalutata del piano); la Fase 4 è dove si smette di faticare e si gioca.
 

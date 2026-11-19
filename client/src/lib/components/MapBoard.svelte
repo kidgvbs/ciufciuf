@@ -762,6 +762,7 @@
             {@const fill = slotFill(g.route)}
             {@const tunnel = g.route.tunnel === true}
             {@const ferries = g.route.ferries ?? 0}
+            {@const mountains = g.route.mountains ?? 0}
             {#each g.slots as s, i}
               <g transform="translate({s.x} {s.y}) rotate({s.deg})">
                 <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
@@ -789,6 +790,16 @@
                     <circle cx="19" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
                     <circle cx="29" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
                     <circle cx="39" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                  </g>
+                {/if}
+                {#if i >= g.slots.length - mountains}
+                  <!-- Montagna: X (disegno nostro) sugli ultimi slot, alone chiaro + tratto scuro per leggersi su ogni colore -->
+                  {@const h = Math.min(g.slotL, g.sw) * 0.3}
+                  <g class="mountain-glyph" pointer-events="none">
+                    <path d="M {-h} {-h} L {h} {h} M {-h} {h} L {h} {-h}" fill="none"
+                      stroke="#fdf7e6" stroke-width={5.4 * swFactor} stroke-linecap="round" />
+                    <path d="M {-h} {-h} L {h} {h} M {-h} {h} L {h} {-h}" fill="none"
+                      stroke="#1d150c" stroke-width={2.8 * swFactor} stroke-linecap="round" />
                   </g>
                 {/if}
               </g>

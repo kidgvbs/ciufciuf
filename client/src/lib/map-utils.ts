@@ -33,6 +33,8 @@ export interface RouteData {
   alwaysOpen?: boolean;
   /** Nordic: ogni spazio si paga anche con questo numero di carte qualsiasi (locomotive comprese). Assente = no. */
   anyCardsPerSpace?: number;
+  /** Legendary Asia: simboli X della rotta di montagna (treni scartati dopo il pagamento). Assente = 0. */
+  mountains?: number;
 }
 
 export interface MapData {

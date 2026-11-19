@@ -273,6 +273,7 @@ impl Engine {
                 trains_remaining: trains_per_player,
                 claimed_routes: BTreeMap::new(),
                 score: 0,
+                mountain_points: 0,
                 initial_draft_done: false,
                 stations: Vec::new(),
                 country_cards: BTreeMap::new(),

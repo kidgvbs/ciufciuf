@@ -1081,6 +1081,53 @@ pub fn mandala_points(table: &[u32], count: usize) -> u32 {
     }
 }
 
+// ── Bonus rete più grande (Asian Explorer, Legendary Asia) ───────────
+
+/// Numero di città della componente più grande della rete delle rotte `claimed` del
+/// giocatore (0 senza rotte). Conta solo le sue rotte, non quelle prese in prestito dalle
+/// stazioni; rami e anelli sono ammessi e ogni città vale una volta. Gli estremi Paese sono
+/// nodi privati (`route_node`): non uniscono due rotte, e un Paese conta una sola volta
+/// per componente.
+#[must_use]
+pub fn largest_network_size(
+    claimed: &[ClaimedRouteInfo],
+    routes_map: &BTreeMap<RouteId, Route>,
+    countries: &BTreeSet<CityId>,
+) -> u32 {
+    let mut uf = UnionFind::new();
+    // Nodo → città che rappresenta.
+    let mut nodes: BTreeMap<String, &str> = BTreeMap::new();
+    for route in claimed.iter().filter_map(|c| routes_map.get(&c.route_id)) {
+        let from = route_node(countries, &route.id, &route.from);
+        let to = route_node(countries, &route.id, &route.to);
+        uf.union(&from, &to);
+        nodes.insert(from, &route.from);
+        nodes.insert(to, &route.to);
+    }
+    let mut components: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+    for (node, city) in &nodes {
+        components.entry(uf.find(node)).or_default().insert(city);
+    }
+    let largest = components.values().map(BTreeSet::len).max().unwrap_or(0);
+    u32::try_from(largest).unwrap_or(u32::MAX)
+}
+
+/// Indici dei giocatori con la rete più grande (parità → tutti i pari merito); nessuno se
+/// il massimo è 0.
+#[must_use]
+pub fn largest_network_winners(sizes: &[u32]) -> Vec<usize> {
+    let max = sizes.iter().copied().max().unwrap_or(0);
+    if max == 0 {
+        return Vec::new();
+    }
+    sizes
+        .iter()
+        .enumerate()
+        .filter(|&(_, &size)| size == max)
+        .map(|(i, _)| i)
+        .collect()
+}
+
 // ── Final scoring ────────────────────────────────────────────────────
 
 /// Risultato dello scoring finale per un giocatore.
@@ -1275,6 +1322,7 @@ mod tests {
             tunnel: false,
             ferries: 0,
             any_cards_per_space: None,
+            mountains: 0,
         }
     }
 

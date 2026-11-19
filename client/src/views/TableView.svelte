@@ -28,7 +28,7 @@
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import { passengerColorCss } from '../lib/passengers';
-  import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations } from '../lib/scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations, largestNetworkWinners } from '../lib/scores';
   import { formatSavedAt } from '../lib/saves';
   import { rulesetCatalog } from '../lib/rulesets.svelte.ts';
   import { defaultRulesetId, groupByMap } from '../lib/rulesets';
@@ -484,6 +484,9 @@
   const showLongestPath = $derived(rulesetCatalog.hasLongestPath(gameMap.rulesetId));
   const showGlobetrotter = $derived(rulesetCatalog.hasGlobetrotter(gameMap.rulesetId));
   const showMandala = $derived(rulesetCatalog.hasMandala(gameMap.rulesetId));
+  const showMountains = $derived(rulesetCatalog.mountainPointsPerTrain(gameMap.rulesetId) !== null);
+  const showLargestNetwork = $derived(rulesetCatalog.hasLargestNetwork(gameMap.rulesetId));
+  const networkWinners = $derived(largestNetworkWinners(publicStore.finalScores ?? [], publicStore.playersSummary));
   const globetrotterIds = $derived(
     (publicStore.finalScores ?? []).filter((fs) => fs.globetrotterBonus > 0).map((fs) => fs.playerId),
   );
@@ -759,17 +762,20 @@
         {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
         {#if winners}<div class="winner-line">🥇 Vince {winners}!</div>{/if}
         <table>
-          <thead><tr><th>Giocatore</th><th>Rotte</th><th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if showMandala}<th>🪷 {rulesetCatalog.mandalaLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}{#if hasCountryCards}<th>Carte Paese</th>{/if}{#if hasPassengers}<th>Passeggeri</th>{/if}<th>Totale</th></tr></thead>
+          <thead><tr><th>Giocatore</th><th>Rotte</th>{#if showMountains}<th>⛰ Montagne</th>{/if}<th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if showMandala}<th>🪷 {rulesetCatalog.mandalaLabel(gameMap.rulesetId)}</th>{/if}{#if showLargestNetwork}<th>🧭 {rulesetCatalog.largestNetworkLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}{#if hasCountryCards}<th>Carte Paese</th>{/if}{#if hasPassengers}<th>Passeggeri</th>{/if}<th>Totale</th></tr></thead>
           <tbody>
             {#each rankedScores(publicStore.finalScores) as fs}
               {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
               <tr class:winner={fs.winner}>
                 <td><span class="chip-dot" style="background:{p ? PLAYER_COLOR_CSS[p.color] : '#666'}"></span> {fs.winner ? '🥇 ' : ''}{p?.name ?? fs.playerId}</td>
-                <td>{fs.routePoints}</td><td>+{fs.ticketCompleted}</td>
+                <td>{fs.routePoints}</td>
+                {#if showMountains}<td>{fs.mountainPoints > 0 ? `⛰ +${fs.mountainPoints}` : '0'}</td>{/if}
+                <td>+{fs.ticketCompleted}</td>
                 <td>{fs.ticketFailed < 0 ? fs.ticketFailed : '0'}</td>
                 {#if showLongestPath}<td>{fs.longestPathBonus > 0 ? `+${fs.longestPathBonus}` : '0'}</td>{/if}
                 {#if showGlobetrotter}<td>{fs.globetrotterBonus > 0 ? `🌍 +${fs.globetrotterBonus}` : '0'}</td>{/if}
                 {#if showMandala}<td>{fs.mandalaBonus > 0 ? `🪷 +${fs.mandalaBonus}` : '0'}</td>{/if}
+                {#if showLargestNetwork}<td>{fs.largestNetworkBonus > 0 ? `🧭 +${fs.largestNetworkBonus}` : '0'}</td>{/if}
                 {#if hasStations}<td>{fs.stationPoints > 0 ? `+${fs.stationPoints}` : '0'}</td>{/if}
                 {#if hasCountryCards}<td>{fs.countryPoints > 0 ? `+${fs.countryPoints}` : '0'}</td>{/if}
                 {#if hasPassengers}<td>{fs.passengerPoints > 0 ? `+${fs.passengerPoints}` : '0'}</td>{/if}
@@ -801,6 +807,9 @@
         {/if}
         {#if showMandala && mandalaIds.length > 0}
           <div class="longest-path">🪷 {rulesetCatalog.mandalaLabel(gameMap.rulesetId)}: {namesOf(mandalaIds)}</div>
+        {/if}
+        {#if showLargestNetwork && networkWinners !== null}
+          <div class="longest-path">🧭 {rulesetCatalog.largestNetworkLabel(gameMap.rulesetId)}: {networkWinners}</div>
         {/if}
       {/if}
       <!-- Mappa a fine partita: il percorso più lungo è evidenziato (glow dorato). -->

@@ -11,7 +11,7 @@ import type { RulesetPayment } from './payment';
 
 /** Bonus di fine partita del ruleset (tipi sconosciuti ammessi: i consumatori li ignorano). */
 export interface RulesetBonus {
-  /** `longest_path`, `globetrotter` o `mandala` (altri tipi futuri sono ignorati). */
+  /** `longest_path`, `globetrotter`, `mandala` o `largest_network` (altri tipi futuri sono ignorati). */
   type: string;
   label: string;
   points: number;
@@ -64,6 +64,8 @@ export interface RulesetInfo {
   locomotivesUsableOn?: string[];
   /** Sui traghetti questo numero di carte qualsiasi vale una locomotiva; assente = nessuna sostituzione. */
   ferryAnyCards?: number;
+  /** Rotte di montagna: punti per ogni treno scartato sulle rotte con X; assente = nessuna montagna. */
+  mountainPointsPerTrain?: number;
 }
 
 /** Mappa con le sue modalità (ruleset) ordinate per `modeOrder`. */
@@ -78,6 +80,7 @@ export const DEFAULT_RULESET_ID = 'usa_v2';
 const LONGEST_PATH = 'longest_path';
 const GLOBETROTTER = 'globetrotter';
 const MANDALA = 'mandala';
+const LARGEST_NETWORK = 'largest_network';
 const STANDARD_MODE = 'Standard';
 
 /** Nome del bonus percorso più lungo quando il catalogo non lo conosce. */
@@ -88,6 +91,9 @@ export const FALLBACK_GLOBETROTTER_LABEL = 'Globetrotter';
 
 /** Nome del bonus Mandala quando il catalogo non lo conosce. */
 export const FALLBACK_MANDALA_LABEL = 'Grand Tour';
+
+/** Nome del bonus della rete più grande (Asian Explorer) quando il catalogo non lo conosce. */
+export const FALLBACK_LARGEST_NETWORK_LABEL = 'Rete più grande';
 
 const UNEXPECTED_RESPONSE = 'Risposta inattesa dal server';
 
@@ -146,7 +152,9 @@ export function isRulesetInfo(v: unknown): v is RulesetInfo {
       (Array.isArray(v.locomotivesUsableOn) &&
         v.locomotivesUsableOn.length > 0 &&
         v.locomotivesUsableOn.every(isNonEmptyString))) &&
-    (v.ferryAnyCards === undefined || (isCount(v.ferryAnyCards) && v.ferryAnyCards >= 2))
+    (v.ferryAnyCards === undefined || (isCount(v.ferryAnyCards) && v.ferryAnyCards >= 2)) &&
+    (v.mountainPointsPerTrain === undefined ||
+      (isCount(v.mountainPointsPerTrain) && v.mountainPointsPerTrain >= 1))
   );
 }
 
@@ -172,6 +180,7 @@ export function rulesetBlurb(r: RulesetInfo): string {
   const features: string[] = [];
   if (r.tunnels) features.push('tunnel');
   if (r.ferries) features.push('traghetti');
+  if (r.mountainPointsPerTrain !== undefined) features.push('montagne');
   if (r.stations) features.push('stazioni');
   const base = `${r.cities} città, ${r.routes} rotte`;
   if (features.length === 0) return base;
@@ -220,6 +229,14 @@ export function mandalaLabel(
   return bonusOf(catalog, rulesetId, MANDALA)?.label ?? FALLBACK_MANDALA_LABEL;
 }
 
+/** Nome del bonus della rete più grande per `rulesetId`; 'Rete più grande' se assente dal catalogo o non previsto. */
+export function largestNetworkLabel(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): string {
+  return bonusOf(catalog, rulesetId, LARGEST_NETWORK)?.label ?? FALLBACK_LARGEST_NETWORK_LABEL;
+}
+
 /** `true` se il ruleset prevede il bonus percorso più lungo. Catalogo non pronto o ruleset ignoto → `true` (comportamento storico). */
 export function hasLongestPath(
   catalog: readonly RulesetInfo[],
@@ -242,6 +259,22 @@ export function hasMandala(
   rulesetId: string | null | undefined,
 ): boolean {
   return bonusOf(catalog, rulesetId, MANDALA) !== null;
+}
+
+/** `true` se il ruleset prevede il bonus della rete più grande (ruleset ignoto → `false`). */
+export function hasLargestNetwork(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): boolean {
+  return bonusOf(catalog, rulesetId, LARGEST_NETWORK) !== null;
+}
+
+/** Punti per treno scartato sulle rotte di montagna di `rulesetId`; `null` se non previste, ruleset ignoto o server vecchio. */
+export function mountainPointsPerTrain(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): number | null {
+  return catalog.find((r) => r.id === rulesetId)?.mountainPointsPerTrain ?? null;
 }
 
 /** Ids delle grandi città da marcare sulla mappa di `rulesetId` (vuoto se assente o senza). */
@@ -311,7 +344,11 @@ export function modeBlurb(r: RulesetInfo): string {
   if (r.passengers === true) parts.push('passeggeri');
   if (r.countryCards === true) parts.push('carte Paese');
   const known = r.bonuses.filter(
-    (b) => b.type === LONGEST_PATH || b.type === GLOBETROTTER || b.type === MANDALA,
+    (b) =>
+      b.type === LONGEST_PATH ||
+      b.type === GLOBETROTTER ||
+      b.type === MANDALA ||
+      b.type === LARGEST_NETWORK,
   );
   if (known.length === 0) parts.push('nessun bonus');
   else for (const b of known) parts.push(b.type === MANDALA ? `${b.label} fino a +${b.points}` : `${b.label} +${b.points}`);

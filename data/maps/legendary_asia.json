@@ -1,0 +1,1633 @@
+{
+  "cities": [
+    {
+      "id": "agra",
+      "name": "Agra",
+      "lat": 27.18,
+      "lon": 78.02
+    },
+    {
+      "id": "ankara",
+      "name": "Ankara",
+      "lat": 39.93,
+      "lon": 32.86
+    },
+    {
+      "id": "astrakhan",
+      "name": "Astrakhan",
+      "lat": 46.35,
+      "lon": 48.04
+    },
+    {
+      "id": "baghdad",
+      "name": "Baghdad",
+      "lat": 33.31,
+      "lon": 44.36
+    },
+    {
+      "id": "bangkok",
+      "name": "Bangkok",
+      "lat": 13.76,
+      "lon": 100.5
+    },
+    {
+      "id": "bombay",
+      "name": "Bombay",
+      "lat": 19.08,
+      "lon": 72.88
+    },
+    {
+      "id": "calcutta",
+      "name": "Calcutta",
+      "lat": 22.57,
+      "lon": 88.36
+    },
+    {
+      "id": "chita",
+      "name": "Chita",
+      "lat": 52.03,
+      "lon": 113.5
+    },
+    {
+      "id": "colombo",
+      "name": "Colombo",
+      "lat": 6.93,
+      "lon": 79.86
+    },
+    {
+      "id": "dihua",
+      "name": "Dihua",
+      "lat": 43.83,
+      "lon": 87.62
+    },
+    {
+      "id": "hanoi",
+      "name": "Hanoi",
+      "lat": 21.03,
+      "lon": 105.85
+    },
+    {
+      "id": "irkutsk",
+      "name": "Irkutsk",
+      "lat": 52.29,
+      "lon": 104.3
+    },
+    {
+      "id": "karachi",
+      "name": "Karachi",
+      "lat": 24.86,
+      "lon": 67.01
+    },
+    {
+      "id": "kathmandu",
+      "name": "Kathmandu",
+      "lat": 27.72,
+      "lon": 85.32
+    },
+    {
+      "id": "khabarovsk",
+      "name": "Khabarovsk",
+      "lat": 48.48,
+      "lon": 135.08
+    },
+    {
+      "id": "kobe",
+      "name": "Kobe",
+      "lat": 34.69,
+      "lon": 135.2
+    },
+    {
+      "id": "krasnoyarsk",
+      "name": "Krasnoyarsk",
+      "lat": 56.01,
+      "lon": 92.85
+    },
+    {
+      "id": "lhasa",
+      "name": "Lhasa",
+      "lat": 29.65,
+      "lon": 91.12
+    },
+    {
+      "id": "macau",
+      "name": "Macau",
+      "lat": 22.2,
+      "lon": 113.54
+    },
+    {
+      "id": "mandalay",
+      "name": "Mandalay",
+      "lat": 21.97,
+      "lon": 96.08
+    },
+    {
+      "id": "mecca",
+      "name": "Mecca",
+      "lat": 21.42,
+      "lon": 39.83
+    },
+    {
+      "id": "moscow",
+      "name": "Moscow",
+      "lat": 55.76,
+      "lon": 37.62
+    },
+    {
+      "id": "omsk",
+      "name": "Omsk",
+      "lat": 54.99,
+      "lon": 73.37
+    },
+    {
+      "id": "peking",
+      "name": "Peking",
+      "lat": 39.9,
+      "lon": 116.41
+    },
+    {
+      "id": "perm",
+      "name": "Perm",
+      "lat": 58.01,
+      "lon": 56.23
+    },
+    {
+      "id": "rangoon",
+      "name": "Rangoon",
+      "lat": 16.84,
+      "lon": 96.17
+    },
+    {
+      "id": "rawalpindi",
+      "name": "Rawalpindi",
+      "lat": 33.6,
+      "lon": 73.05
+    },
+    {
+      "id": "saigon",
+      "name": "Saigon",
+      "lat": 10.82,
+      "lon": 106.63
+    },
+    {
+      "id": "samarkand",
+      "name": "Samarkand",
+      "lat": 39.65,
+      "lon": 66.96
+    },
+    {
+      "id": "seoul",
+      "name": "Seoul",
+      "lat": 37.57,
+      "lon": 126.98
+    },
+    {
+      "id": "shanghai",
+      "name": "Shanghai",
+      "lat": 31.23,
+      "lon": 121.47
+    },
+    {
+      "id": "shiraz",
+      "name": "Shiraz",
+      "lat": 29.59,
+      "lon": 52.58
+    },
+    {
+      "id": "singapore",
+      "name": "Singapore",
+      "lat": 1.35,
+      "lon": 103.82
+    },
+    {
+      "id": "taipei",
+      "name": "Taipei",
+      "lat": 25.03,
+      "lon": 121.57
+    },
+    {
+      "id": "tbilisi",
+      "name": "Tbilisi",
+      "lat": 41.72,
+      "lon": 44.79
+    },
+    {
+      "id": "tehran",
+      "name": "Tehran",
+      "lat": 35.69,
+      "lon": 51.39
+    },
+    {
+      "id": "ulan_bator",
+      "name": "Ulan Bator",
+      "lat": 47.89,
+      "lon": 106.91
+    },
+    {
+      "id": "vladivostok",
+      "name": "Vladivostok",
+      "lat": 43.12,
+      "lon": 131.89
+    },
+    {
+      "id": "xian",
+      "name": "Xi'an",
+      "lat": 34.34,
+      "lon": 108.94
+    }
+  ],
+  "routes": [
+    {
+      "id": "agra_bombay_1",
+      "from": "agra",
+      "to": "bombay",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_calcutta_1",
+      "from": "agra",
+      "to": "calcutta",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_karachi_1",
+      "from": "agra",
+      "to": "karachi",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_kathmandu_1",
+      "from": "agra",
+      "to": "kathmandu",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "agra_rawalpindi_1",
+      "from": "agra",
+      "to": "rawalpindi",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "ankara_baghdad_1",
+      "from": "ankara",
+      "to": "baghdad",
+      "len": 3,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ankara_baghdad_2",
+      "from": "ankara",
+      "to": "baghdad",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ankara_tbilisi_1",
+      "from": "ankara",
+      "to": "tbilisi",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "astrakhan_moscow_1",
+      "from": "astrakhan",
+      "to": "moscow",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "astrakhan_moscow_2",
+      "from": "astrakhan",
+      "to": "moscow",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "astrakhan_perm_1",
+      "from": "astrakhan",
+      "to": "perm",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "astrakhan_samarkand_1",
+      "from": "astrakhan",
+      "to": "samarkand",
+      "len": 5,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "astrakhan_tbilisi_1",
+      "from": "astrakhan",
+      "to": "tbilisi",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "astrakhan_tbilisi_2",
+      "from": "astrakhan",
+      "to": "tbilisi",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "astrakhan_tehran_1",
+      "from": "astrakhan",
+      "to": "tehran",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "baghdad_mecca_1",
+      "from": "baghdad",
+      "to": "mecca",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "baghdad_mecca_2",
+      "from": "baghdad",
+      "to": "mecca",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "baghdad_tehran_1",
+      "from": "baghdad",
+      "to": "tehran",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "baghdad_tehran_2",
+      "from": "baghdad",
+      "to": "tehran",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bangkok_hanoi_1",
+      "from": "bangkok",
+      "to": "hanoi",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "bangkok_rangoon_1",
+      "from": "bangkok",
+      "to": "rangoon",
+      "len": 1,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bangkok_rangoon_2",
+      "from": "bangkok",
+      "to": "rangoon",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bangkok_saigon_1",
+      "from": "bangkok",
+      "to": "saigon",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bangkok_saigon_2",
+      "from": "bangkok",
+      "to": "saigon",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bangkok_singapore_1",
+      "from": "bangkok",
+      "to": "singapore",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bangkok_singapore_2",
+      "from": "bangkok",
+      "to": "singapore",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_calcutta_1",
+      "from": "bombay",
+      "to": "calcutta",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_calcutta_2",
+      "from": "bombay",
+      "to": "calcutta",
+      "len": 3,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_colombo_1",
+      "from": "bombay",
+      "to": "colombo",
+      "len": 4,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "bombay_colombo_2",
+      "from": "bombay",
+      "to": "colombo",
+      "len": 4,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "bombay_karachi_1",
+      "from": "bombay",
+      "to": "karachi",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_karachi_2",
+      "from": "bombay",
+      "to": "karachi",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_colombo_1",
+      "from": "calcutta",
+      "to": "colombo",
+      "len": 5,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "calcutta_mandalay_1",
+      "from": "calcutta",
+      "to": "mandalay",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_mandalay_2",
+      "from": "calcutta",
+      "to": "mandalay",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_rangoon_1",
+      "from": "calcutta",
+      "to": "rangoon",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_rangoon_2",
+      "from": "calcutta",
+      "to": "rangoon",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chita_irkutsk_1",
+      "from": "chita",
+      "to": "irkutsk",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chita_irkutsk_2",
+      "from": "chita",
+      "to": "irkutsk",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "chita_khabarovsk_1",
+      "from": "chita",
+      "to": "khabarovsk",
+      "len": 5,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chita_ulan_bator_1",
+      "from": "chita",
+      "to": "ulan_bator",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dihua_krasnoyarsk_1",
+      "from": "dihua",
+      "to": "krasnoyarsk",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dihua_omsk_1",
+      "from": "dihua",
+      "to": "omsk",
+      "len": 5,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dihua_peking_1",
+      "from": "dihua",
+      "to": "peking",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dihua_samarkand_1",
+      "from": "dihua",
+      "to": "samarkand",
+      "len": 5,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dihua_samarkand_2",
+      "from": "dihua",
+      "to": "samarkand",
+      "len": 5,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dihua_xian_1",
+      "from": "dihua",
+      "to": "xian",
+      "len": 5,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hanoi_macau_1",
+      "from": "hanoi",
+      "to": "macau",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hanoi_macau_2",
+      "from": "hanoi",
+      "to": "macau",
+      "len": 1,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hanoi_mandalay_1",
+      "from": "hanoi",
+      "to": "mandalay",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "hanoi_saigon_1",
+      "from": "hanoi",
+      "to": "saigon",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "hanoi_saigon_2",
+      "from": "hanoi",
+      "to": "saigon",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "irkutsk_krasnoyarsk_1",
+      "from": "irkutsk",
+      "to": "krasnoyarsk",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "irkutsk_krasnoyarsk_2",
+      "from": "irkutsk",
+      "to": "krasnoyarsk",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "irkutsk_ulan_bator_1",
+      "from": "irkutsk",
+      "to": "ulan_bator",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "karachi_rawalpindi_1",
+      "from": "karachi",
+      "to": "rawalpindi",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "karachi_samarkand_1",
+      "from": "karachi",
+      "to": "samarkand",
+      "len": 4,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "karachi_shiraz_1",
+      "from": "karachi",
+      "to": "shiraz",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "karachi_shiraz_2",
+      "from": "karachi",
+      "to": "shiraz",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "kathmandu_mandalay_1",
+      "from": "kathmandu",
+      "to": "mandalay",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "kathmandu_rawalpindi_1",
+      "from": "kathmandu",
+      "to": "rawalpindi",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "khabarovsk_peking_1",
+      "from": "khabarovsk",
+      "to": "peking",
+      "len": 5,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "khabarovsk_vladivostok_1",
+      "from": "khabarovsk",
+      "to": "vladivostok",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "khabarovsk_vladivostok_2",
+      "from": "khabarovsk",
+      "to": "vladivostok",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "kobe_seoul_1",
+      "from": "kobe",
+      "to": "seoul",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "kobe_shanghai_1",
+      "from": "kobe",
+      "to": "shanghai",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "kobe_taipei_1",
+      "from": "kobe",
+      "to": "taipei",
+      "len": 5,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "kobe_taipei_2",
+      "from": "kobe",
+      "to": "taipei",
+      "len": 5,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "krasnoyarsk_omsk_1",
+      "from": "krasnoyarsk",
+      "to": "omsk",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "krasnoyarsk_omsk_2",
+      "from": "krasnoyarsk",
+      "to": "omsk",
+      "len": 3,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "lhasa_mandalay_1",
+      "from": "lhasa",
+      "to": "mandalay",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "lhasa_xian_1",
+      "from": "lhasa",
+      "to": "xian",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "macau_shanghai_1",
+      "from": "macau",
+      "to": "shanghai",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "macau_taipei_1",
+      "from": "macau",
+      "to": "taipei",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "macau_xian_1",
+      "from": "macau",
+      "to": "xian",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "macau_xian_2",
+      "from": "macau",
+      "to": "xian",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mandalay_rangoon_1",
+      "from": "mandalay",
+      "to": "rangoon",
+      "len": 1,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "mandalay_xian_1",
+      "from": "mandalay",
+      "to": "xian",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "mecca_shiraz_1",
+      "from": "mecca",
+      "to": "shiraz",
+      "len": 4,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "moscow_perm_1",
+      "from": "moscow",
+      "to": "perm",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "moscow_perm_2",
+      "from": "moscow",
+      "to": "perm",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "omsk_perm_1",
+      "from": "omsk",
+      "to": "perm",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "omsk_perm_2",
+      "from": "omsk",
+      "to": "perm",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "omsk_samarkand_1",
+      "from": "omsk",
+      "to": "samarkand",
+      "len": 4,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "peking_seoul_1",
+      "from": "peking",
+      "to": "seoul",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "peking_shanghai_1",
+      "from": "peking",
+      "to": "shanghai",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "peking_shanghai_2",
+      "from": "peking",
+      "to": "shanghai",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "peking_ulan_bator_1",
+      "from": "peking",
+      "to": "ulan_bator",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "peking_ulan_bator_2",
+      "from": "peking",
+      "to": "ulan_bator",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "peking_xian_1",
+      "from": "peking",
+      "to": "xian",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "peking_xian_2",
+      "from": "peking",
+      "to": "xian",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "rawalpindi_samarkand_1",
+      "from": "rawalpindi",
+      "to": "samarkand",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "saigon_singapore_1",
+      "from": "saigon",
+      "to": "singapore",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "samarkand_tehran_1",
+      "from": "samarkand",
+      "to": "tehran",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "seoul_vladivostok_1",
+      "from": "seoul",
+      "to": "vladivostok",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "shanghai_taipei_1",
+      "from": "shanghai",
+      "to": "taipei",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "shiraz_tehran_1",
+      "from": "shiraz",
+      "to": "tehran",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "shiraz_tehran_2",
+      "from": "shiraz",
+      "to": "tehran",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 2
+    },
+    {
+      "id": "tbilisi_tehran_1",
+      "from": "tbilisi",
+      "to": "tehran",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    },
+    {
+      "id": "tbilisi_tehran_2",
+      "from": "tbilisi",
+      "to": "tehran",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0,
+      "mountains": 1
+    }
+  ],
+  "tickets": [
+    {
+      "id": "agra_samarkand",
+      "from": "samarkand",
+      "to": "agra",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ankara_colombo",
+      "from": "ankara",
+      "to": "colombo",
+      "points": 18,
+      "deck": "long",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ankara_moscow",
+      "from": "moscow",
+      "to": "ankara",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "astrakhan_hanoi",
+      "from": "astrakhan",
+      "to": "hanoi",
+      "points": 18,
+      "deck": "long",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "astrakhan_karachi",
+      "from": "astrakhan",
+      "to": "karachi",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "astrakhan_omsk",
+      "from": "omsk",
+      "to": "astrakhan",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "baghdad_omsk",
+      "from": "omsk",
+      "to": "baghdad",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bangkok_lhasa",
+      "from": "lhasa",
+      "to": "bangkok",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bombay_rawalpindi",
+      "from": "rawalpindi",
+      "to": "bombay",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bombay_xian",
+      "from": "xian",
+      "to": "bombay",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "calcutta_kathmandu",
+      "from": "kathmandu",
+      "to": "calcutta",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "calcutta_moscow",
+      "from": "moscow",
+      "to": "calcutta",
+      "points": 16,
+      "deck": "long",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "chita_shanghai",
+      "from": "chita",
+      "to": "shanghai",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "colombo_rangoon",
+      "from": "rangoon",
+      "to": "colombo",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "dihua_irkutsk",
+      "from": "irkutsk",
+      "to": "dihua",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "dihua_mandalay",
+      "from": "dihua",
+      "to": "mandalay",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "dihua_seoul",
+      "from": "dihua",
+      "to": "seoul",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "hanoi_seoul",
+      "from": "seoul",
+      "to": "hanoi",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "irkutsk_khabarovsk",
+      "from": "irkutsk",
+      "to": "khabarovsk",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "irkutsk_perm",
+      "from": "perm",
+      "to": "irkutsk",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "karachi_khabarovsk",
+      "from": "khabarovsk",
+      "to": "karachi",
+      "points": 17,
+      "deck": "long",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kathmandu_tehran",
+      "from": "tehran",
+      "to": "kathmandu",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kobe_macau",
+      "from": "kobe",
+      "to": "macau",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "kobe_omsk",
+      "from": "omsk",
+      "to": "kobe",
+      "points": 16,
+      "deck": "long",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "krasnoyarsk_peking",
+      "from": "krasnoyarsk",
+      "to": "peking",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "krasnoyarsk_samarkand",
+      "from": "krasnoyarsk",
+      "to": "samarkand",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "krasnoyarsk_singapore",
+      "from": "krasnoyarsk",
+      "to": "singapore",
+      "points": 17,
+      "deck": "long",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lhasa_vladivostok",
+      "from": "vladivostok",
+      "to": "lhasa",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "macau_singapore",
+      "from": "macau",
+      "to": "singapore",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "mecca_moscow",
+      "from": "moscow",
+      "to": "mecca",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "mecca_samarkand",
+      "from": "samarkand",
+      "to": "mecca",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "peking_saigon",
+      "from": "peking",
+      "to": "saigon",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "perm_tehran",
+      "from": "perm",
+      "to": "tehran",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "shiraz_tbilisi",
+      "from": "tbilisi",
+      "to": "shiraz",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "taipei_xian",
+      "from": "xian",
+      "to": "taipei",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ulan_bator_vladivostok",
+      "from": "ulan_bator",
+      "to": "vladivostok",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    }
+  ]
+}

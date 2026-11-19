@@ -9,6 +9,7 @@
   import type { CardColor, PassengerCount, PassengerPick } from '../proto';
   import type { RouteData } from '../map-utils';
   import { routePoints } from '../map-utils';
+  import { mountainClaimNote } from '../mountains';
   import { CARD_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
   import { createOverlayDismiss } from '../overlay-dismiss';
   import { passengerColorCss, passengerColorName, passengerPicks } from '../passengers';
@@ -35,6 +36,7 @@
     hand,
     selectedColor = null,
     ruleset = null,
+    mountainPointsPerTrain = null,
     passengerChoiceList = [],
     onConfirm,
     onCancel,
@@ -46,6 +48,8 @@
     selectedColor?: CardColor | null;
     /** Regole di pagamento del ruleset (locomotive ammesse, carte qualsiasi); assenti = classiche. */
     ruleset?: RulesetPayment | null;
+    /** Punti per ogni treno scartato sulle rotte di montagna (dal catalogo); `null` = non noti. */
+    mountainPointsPerTrain?: number | null;
     /** Estremi con passeggeri di più colori (Germany 2017). */
     passengerChoiceList?: Array<{ cityId: string; passengers: PassengerCount[] }>;
     onConfirm: (cards: CardColor[], passengers: PassengerPick[] | undefined) => void;
@@ -61,6 +65,8 @@
   const ferries = $derived(rules.ferries);
   /** Carte qualsiasi che pagano uno spazio (gruppo); `null` = nessuna sostituzione. */
   const groupSize = $derived(rules.groupSize);
+  /** «⛰ −k treni, +2k punti» sulle rotte di montagna; `null` sulle altre. */
+  const mountainNote = $derived(mountainClaimNote(route, mountainPointsPerTrain));
   const locoInHand = $derived(countCards(hand, 'LOCOMOTIVE'));
   const bounds = $derived(locoBounds(rules, locoInHand));
   const groupLimit = $derived(maxGroups(rules, hand));
@@ -186,6 +192,9 @@
       <p class="cd-note">
         Tunnel: dopo il pagamento si rivelano alcune carte e potresti dover pagare carte extra (o rinunciare).
       </p>
+    {/if}
+    {#if mountainNote}
+      <p class="cd-note">{mountainNote} (oltre alle carte, dalla riserva)</p>
     {/if}
 
     <div class="cd-body">

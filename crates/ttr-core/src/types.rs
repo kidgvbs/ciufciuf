@@ -62,6 +62,24 @@ pub struct Route {
         skip_serializing_if = "Option::is_none"
     )]
     pub any_cards_per_space: Option<u32>,
+    /// Rotta di montagna (Legendary Asia): numero k di simboli X. Si paga e si posa come
+    /// ogni rotta (punti per la lunghezza) e in più il giocatore scarta k treni dalla
+    /// riserva, ognuno vale `mountains.pointsPerTrain` punti subito; 0 = rotta normale.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub mountains: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Route {
+    /// Treni che il claim toglie dalla riserva: la lunghezza più i treni scartati per le X
+    /// di montagna.
+    #[must_use]
+    pub fn train_cost(&self) -> u32 {
+        self.len.saturating_add(self.mountains)
+    }
 }
 
 /// Biglietto: `from` più UNA tra due forme (la validazione le impone esclusive):
@@ -191,6 +209,17 @@ pub struct Ruleset {
     /// Regole dei traghetti; assente = nessuna sostituzione delle locomotive.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ferries: Option<FerriesConfig>,
+    /// Rotte di montagna (Legendary Asia); obbligatorio se la mappa ha rotte con `mountains`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mountains: Option<MountainsConfig>,
+}
+
+/// Regole delle rotte di montagna: valore dei treni scartati per le X.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MountainsConfig {
+    /// Punti immediati per ogni treno scartato.
+    #[serde(rename = "pointsPerTrain")]
+    pub points_per_train: u32,
 }
 
 /// Stazioni per giocatore: `costs[i]` è il costo in carte della stazione `i`-esima.
@@ -369,6 +398,14 @@ impl Ruleset {
         rules
     }
 
+    /// Punti dei treni scartati per le X di montagna di `route` (0 senza montagne).
+    #[must_use]
+    pub fn mountain_points(&self, route: &Route) -> u32 {
+        self.mountains
+            .as_ref()
+            .map_or(0, |m| m.points_per_train.saturating_mul(route.mountains))
+    }
+
     /// Punti del bonus del tipo dato, se il ruleset lo prevede.
     #[must_use]
     pub fn bonus_points(&self, bonus_type: &str) -> Option<u32> {
@@ -425,6 +462,9 @@ pub struct PlayerState {
     /// Mappa route_id → (punti_immediati, treni_usati)
     pub claimed_routes: BTreeMap<String, ClaimedRouteRecord>,
     pub score: i32,
+    /// Parte di `score` data dai treni scartati sulle rotte di montagna.
+    #[serde(default)]
+    pub mountain_points: i32,
     /// Se il giocatore ha già scelto in INITIAL_DRAFT.
     pub initial_draft_done: bool,
     /// Città con una stazione del giocatore, in ordine di costruzione.
@@ -538,6 +578,10 @@ pub const GLOBETROTTER_BONUS_TYPE: &str = "globetrotter";
 /// (Grand Tour / Mandala, India).
 pub const MANDALA_BONUS_TYPE: &str = "mandala";
 
+/// Valore di `Bonus::bonus_type` per il bonus della rete di città più grande
+/// (Asian Explorer, Legendary Asia).
+pub const LARGEST_NETWORK_BONUS_TYPE: &str = "largest_network";
+
 /// Valore canonico di `Route::color` per le rotte grigie.
 pub const GRAY_ROUTE_COLOR: &str = "Gray";
 
@@ -558,6 +602,8 @@ pub enum TieBreaker {
     LongestPath,
     /// Numero totale di passeggeri raccolti.
     Passengers,
+    /// Numero di rotte di montagna reclamate.
+    MountainRoutes,
 }
 
 impl TieBreaker {
@@ -570,6 +616,7 @@ impl TieBreaker {
             "longestPathBonus" => Some(Self::LongestPathBonus),
             "longestPath" => Some(Self::LongestPath),
             "passengers" => Some(Self::Passengers),
+            "mountainRoutes" => Some(Self::MountainRoutes),
             _ => None,
         }
     }

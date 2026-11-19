@@ -73,7 +73,7 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic|india] [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic|india|legendary_asia] [--svg OUT.svg]
 //   --map ID       (default usa) mappa: input data/maps/<ID>.json, output data/layouts/<ID>.json.
 //                  Le regolazioni manuali (LABEL_OVERRIDES, F2 shifts, pre-bend Phoenix) sono
 //                  per-mappa (MAP_TUNING): applicate SOLO alla mappa a cui appartengono.
@@ -188,6 +188,21 @@ const INDIA_SEED = {
   rohri: [163.8, 267.1], wadi: [336.8, 682.2], waltain: [471.5, 641],
 };
 
+// Legendary Asia: pixel dei pallini sul tabellone (implementazione BGA `thoun/tickettoride`, modules/maps/
+// legendaryasia/cities.php, 39 città; quadro di circa 1760×1150). Punto di partenza della simulazione:
+// le distanze del tabellone rispettano già le lunghezze (rapporto pixel/carta 0,78–1,44 della mediana).
+const LASIA_SEED = {
+  agra: [723, 630], ankara: [34, 374], astrakhan: [239, 245], baghdad: [215, 523], bangkok: [1100, 875],
+  bombay: [671, 789], calcutta: [903, 683], chita: [1291, 87], colombo: [794, 1034], dihua: [890, 286],
+  hanoi: [1189, 701], irkutsk: [1116, 61], karachi: [552, 659], kathmandu: [858, 608],
+  khabarovsk: [1650, 122], kobe: [1712, 455], krasnoyarsk: [869, 50], lhasa: [952, 540],
+  macau: [1291, 720], mandalay: [1020, 707], mecca: [132, 743], moscow: [105, 50], omsk: [617, 44],
+  peking: [1345, 370], perm: [365, 42], rangoon: [1019, 820], rawalpindi: [653, 515],
+  saigon: [1185, 935], samarkand: [560, 366], seoul: [1532, 457], shanghai: [1426, 531],
+  shiraz: [394, 608], singapore: [1145, 1098], taipei: [1447, 668], tbilisi: [193, 337],
+  tehran: [312, 457], ulan_bator: [1165, 204], vladivostok: [1608, 292], xian: [1203, 476],
+};
+
 // Posizioni iniziali della sim: bbox geografica (lat/lon) proiettata sul canvas di lavoro,
 // oppure (`image`) i pallini in pixel dell'immagine da cui è stata ricavata la mappa, quando
 // la geografia reale non rispetta le lunghezze delle rotte (Basilicata: Lecce a 4 vagoni da
@@ -263,6 +278,8 @@ const MAP_BOUNDS = {
   // India: seme ottimizzato INDIA_SEED (città); la geografia reale e il tabellone non rispettano le
   // lunghezze (traghetti da 6 e 8 carte lungo le coste, rotte da 1 carta tra città vicine).
   india: { anchor: 0.8, image: { w: 820, h: 1070, xy: INDIA_SEED } },
+  // Legendary Asia: pixel del tabellone (LASIA_SEED).
+  legendary_asia: { image: { w: 1760, h: 1150, xy: LASIA_SEED } },
 };
 if (!MAP_BOUNDS[MAP_ID]) { console.error(`--map sconosciuta: ${MAP_ID} (valide: ${Object.keys(MAP_BOUNDS).join(', ')})`); process.exit(2); }
 const BOUNDS = MAP_BOUNDS[MAP_ID];
@@ -421,6 +438,7 @@ const MAP_TUNING = {
     labelOverrides: { ahmadabad: { anchor: 'end', dir: 'up' }, lucknow: { anchor: 'end', dir: 'down' } },
     f2Shifts: [],
   },
+  legendary_asia: { unit: 40, labelOverrides: {}, f2Shifts: [] },
 };
 const TUNING = MAP_TUNING[MAP_ID];
 

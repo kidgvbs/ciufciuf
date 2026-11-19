@@ -15,6 +15,19 @@ globetrotterBonus: number,
  */
 mandalaBonus: number, 
 /**
+ * Modalità con `mountains`: punti dei treni scartati sulle rotte di montagna (già in
+ * `total`, non in `route_points`).
+ */
+mountainPoints: number, 
+/**
+ * Modalità con `largest_network`: bonus della rete di città più grande (Asian Explorer).
+ */
+largestNetworkBonus: number, 
+/**
+ * Modalità con `largest_network`: città della rete più grande del giocatore.
+ */
+largestNetwork: number, 
+/**
  * Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
  */
 stationPoints: number, total: number, 

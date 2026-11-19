@@ -28,6 +28,7 @@ fn route(id: &str, from: &str, to: &str, len: u32, color: &str, double: bool) ->
         tunnel: false,
         ferries: 0,
         any_cards_per_space: None,
+        mountains: 0,
     }
 }
 
@@ -117,6 +118,7 @@ fn mini_ruleset() -> Ruleset {
         special_rules: vec![],
         locomotives: None,
         ferries: None,
+        mountains: None,
         country_cards: BTreeMap::new(),
         name: "Mini".into(),
         mode: "Standard".into(),

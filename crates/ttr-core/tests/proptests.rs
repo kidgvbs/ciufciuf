@@ -1,6 +1,7 @@
 //! Test property-based sul motore: conservazione, azioni fallite,
 //! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany, Poland,
-//! Nordic, Switzerland e India reali.
+//! Nordic, Switzerland, India e Legendary Asia reali (sull'Asia rotte di montagna e Asian
+//! Explorer).
 //!
 //! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel; sulla
 //! Germany scelgono i biglietti rispettando minimi e massimi per mazzo. I pagamenti delle
@@ -16,8 +17,8 @@ use std::sync::LazyLock;
 use proptest::prelude::*;
 use ttr_core::error::GamePhase;
 use ttr_core::types::{
-    GLOBETROTTER_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Route, Ruleset, SetupDiscards,
-    TRAIN_COLORS, TicketDef,
+    GLOBETROTTER_BONUS_TYPE, LARGEST_NETWORK_BONUS_TYPE, LONGEST_PATH_BONUS_TYPE, MapData, Route,
+    Ruleset, SetupDiscards, TRAIN_COLORS, TicketDef,
 };
 use ttr_core::{Action, DrawSource, Engine, GameEvent, RouteColor, default_player_colors};
 use ttr_proto::CardColor;
@@ -58,6 +59,9 @@ enum Game {
     Switzerland,
     /// India: traghetti, binari doppi solo a 4 giocatori, percorso più lungo e bonus mandala.
     India,
+    /// Legendary Asia: rotte di montagna (treni scartati, +2 punti ciascuno), traghetti,
+    /// bonus Asian Explorer, spareggio per rotte di montagna.
+    LegendaryAsia,
 }
 
 static USA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_v2", "usa"));
@@ -76,6 +80,8 @@ static NORDIC: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("nordic", "n
 static SWITZERLAND: LazyLock<(Ruleset, MapData)> =
     LazyLock::new(|| load("switzerland", "switzerland"));
 static INDIA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("india", "india"));
+static LEGENDARY_ASIA: LazyLock<(Ruleset, MapData)> =
+    LazyLock::new(|| load("legendary_asia", "legendary_asia"));
 
 fn load(ruleset: &str, map: &str) -> (Ruleset, MapData) {
     let ruleset = std::fs::read_to_string(format!("../../data/rulesets/{ruleset}.json")).unwrap();
@@ -100,6 +106,7 @@ fn data(game: Game) -> &'static (Ruleset, MapData) {
         Game::Nordic => &NORDIC,
         Game::Switzerland => &SWITZERLAND,
         Game::India => &INDIA,
+        Game::LegendaryAsia => &LEGENDARY_ASIA,
     }
 }
 
@@ -1361,7 +1368,11 @@ fn play_to_game_over(
         check_station_and_tunnel_state(game, &eng)?;
         for p in 0..players {
             let state = eng.player(p).unwrap();
-            let placed: u32 = state.claimed_routes.values().map(|r| r.train_count).sum();
+            let placed: u32 = state
+                .claimed_routes
+                .iter()
+                .map(|(id, r)| r.train_count + eng.get_route(id).unwrap().mountains)
+                .sum();
             prop_assert_eq!(
                 state.trains_remaining + placed,
                 trains,
@@ -1381,6 +1392,59 @@ fn play_to_game_over(
         turn_ends_after_announcement: turn_ends,
     };
     Ok((eng, finished))
+}
+
+/// Città della rete più grande di rotte proprie del giocatore, da una visita in ampiezza
+/// indipendente dal motore: i Paesi sono nodi privati per rotta e contano una volta per
+/// componente. 0 se il giocatore non ha rotte.
+fn naive_network_size(game: Game, eng: &Engine, player: usize) -> u32 {
+    let countries: BTreeSet<&str> = data(game)
+        .1
+        .cities
+        .iter()
+        .filter(|c| c.country)
+        .map(|c| c.id.as_str())
+        .collect();
+    let node = |route: &Route, city: &str| {
+        if countries.contains(city) {
+            format!("{city}#{}", route.id)
+        } else {
+            city.to_string()
+        }
+    };
+    let routes: Vec<&Route> = eng
+        .player(player)
+        .unwrap()
+        .claimed_routes
+        .keys()
+        .map(|id| eng.get_route(id).unwrap())
+        .collect();
+    let mut adjacent: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for route in &routes {
+        let (a, b) = (node(route, &route.from), node(route, &route.to));
+        adjacent.entry(a.clone()).or_default().push(b.clone());
+        adjacent.entry(b).or_default().push(a);
+    }
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut best = 0;
+    for start in adjacent.keys() {
+        if seen.contains(start) {
+            continue;
+        }
+        let mut cities: BTreeSet<String> = BTreeSet::new();
+        let mut stack = vec![start.clone()];
+        seen.insert(start.clone());
+        while let Some(at) = stack.pop() {
+            cities.insert(at.split('#').next().unwrap().to_string());
+            for next in &adjacent[&at] {
+                if seen.insert(next.clone()) {
+                    stack.push(next.clone());
+                }
+            }
+        }
+        best = best.max(u32::try_from(cities.len()).unwrap());
+    }
+    best
 }
 
 /// Una partita completa chiude il giro finale, assegna i punti e ha un vincitore.
@@ -1488,8 +1552,10 @@ fn check_full_game_invariants(
             0
         };
         let unbuilt = i32::try_from(eng.stations_remaining(fs.player_index)).unwrap();
-        prop_assert_eq!(fs.route_points, finished.route_points[fs.player_index]);
-        prop_assert_eq!(fs.route_points, state.score);
+        prop_assert_eq!(
+            fs.route_points + fs.mountain_points,
+            finished.route_points[fs.player_index]
+        );
         prop_assert_eq!(fs.ticket_completed, completed);
         prop_assert_eq!(fs.ticket_failed, failed);
         prop_assert_eq!(fs.longest_path_bonus, bonus);
@@ -1523,14 +1589,52 @@ fn check_full_game_invariants(
             prop_assert_eq!(marked, 0);
         }
         prop_assert_eq!(fs.mandala_bonus, i32::try_from(mandala).unwrap());
+        // Rotte di montagna: i punti dei treni scartati sono a parte nel punteggio finale
+        // ma dentro il punteggio corrente e nei punti degli eventi `RouteClaimed`.
+        let per_train = ruleset.mountains.as_ref().map_or(0, |m| m.points_per_train);
+        let symbols: u32 = state
+            .claimed_routes
+            .keys()
+            .map(|id| eng.get_route(id).unwrap().mountains)
+            .sum();
+        prop_assert_eq!(
+            fs.mountain_points,
+            i32::try_from(per_train * symbols).unwrap()
+        );
+        prop_assert_eq!(fs.mountain_points, state.mountain_points);
+        prop_assert_eq!(fs.route_points + fs.mountain_points, state.score);
+        // Asian Explorer: stessa dimensione di una visita in ampiezza indipendente; il
+        // bonus va a tutti i pari merito col massimo, solo se > 0.
+        let explorer = ruleset
+            .bonuses
+            .iter()
+            .find(|b| b.bonus_type == LARGEST_NETWORK_BONUS_TYPE)
+            .map(|b| i32::try_from(b.points).unwrap());
+        let size = if explorer.is_some() {
+            naive_network_size(game, &eng, fs.player_index)
+        } else {
+            0
+        };
+        prop_assert_eq!(fs.largest_network, size);
+        let best_size = (0..players)
+            .map(|p| naive_network_size(game, &eng, p))
+            .max()
+            .unwrap_or(0);
+        let explorer_bonus = match explorer {
+            Some(points) if size > 0 && size == best_size => points,
+            _ => 0,
+        };
+        prop_assert_eq!(fs.largest_network_bonus, explorer_bonus);
         prop_assert_eq!(
             fs.total,
             fs.route_points
+                + fs.mountain_points
                 + fs.ticket_completed
                 + fs.ticket_failed
                 + fs.longest_path_bonus
                 + fs.globetrotter_bonus
                 + fs.mandala_bonus
+                + fs.largest_network_bonus
                 + fs.station_points
                 + fs.country_points
                 + fs.passenger_points
@@ -1652,6 +1756,15 @@ proptest! {
     ) {
         check_full_game_invariants(Game::India, seed, players, &choices)?;
     }
+
+    #[test]
+    fn legendary_asia_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::LegendaryAsia, seed, players, &choices)?;
+    }
 }
 
 proptest! {
@@ -1717,6 +1830,34 @@ proptest! {
     #[test]
     fn india_replay_reproduces_state((seed, players, choices) in game_inputs()) {
         check_replay_reproduces_state(Game::India, seed, players, &choices)?;
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 24, ..ProptestConfig::default() })]
+
+    #[test]
+    fn legendary_asia_cards_and_tickets_are_conserved(
+        (seed, players, choices) in game_inputs()
+    ) {
+        check_conservation(Game::LegendaryAsia, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn legendary_asia_failed_action_leaves_state_identical(
+        (seed, players, choices) in game_inputs()
+    ) {
+        check_failed_action_leaves_state_identical(Game::LegendaryAsia, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn legendary_asia_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::LegendaryAsia, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn legendary_asia_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::LegendaryAsia, seed, players, &choices)?;
     }
 }
 
@@ -1840,6 +1981,7 @@ mod longest_path_threshold {
                     tunnel: false,
                     ferries: 0,
                     any_cards_per_space: None,
+                    mountains: 0,
                 },
             );
         }

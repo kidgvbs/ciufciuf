@@ -112,6 +112,12 @@ struct RulesetListItem {
     /// sostituzione).
     #[serde(rename = "ferryAnyCards", skip_serializing_if = "Option::is_none")]
     ferry_any_cards: Option<u32>,
+    /// Punti per ogni treno scartato sulle rotte di montagna (assente = nessuna montagna).
+    #[serde(
+        rename = "mountainPointsPerTrain",
+        skip_serializing_if = "Option::is_none"
+    )]
+    mountain_points_per_train: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -155,6 +161,7 @@ pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
                     .as_ref()
                     .and_then(|l| l.usable_on.clone()),
                 ferry_any_cards: ruleset.ferries.as_ref().map(|f| f.any_cards_per_locomotive),
+                mountain_points_per_train: ruleset.mountains.as_ref().map(|m| m.points_per_train),
             })
         })
         .collect();

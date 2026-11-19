@@ -1,0 +1,72 @@
+{
+  "name": "Legendary Asia",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "standard",
+  "map": "legendary_asia",
+  "players": {
+    "min": 2,
+    "max": 5
+  },
+  "trainsPerPlayer": 45,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "long",
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "long",
+        "count": 1
+      },
+      {
+        "deck": "regular",
+        "count": 3
+      }
+    ],
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 3,
+    "keepMin": 1
+  },
+  "setupDiscards": "removed",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10,
+    "6": 15
+  },
+  "bonuses": [
+    {
+      "type": "largest_network",
+      "label": "Asian Explorer",
+      "points": 10
+    }
+  ],
+  "mountains": {
+    "pointsPerTrain": 2
+  },
+  "tieBreakers": [
+    "completedTickets",
+    "mountainRoutes"
+  ],
+  "specialRules": [
+    "Da 2 a 5 giocatori, 45 treni a testa.",
+    "Rotte doppie: solo in 4 o 5 giocatori si possono usare entrambi i binari (ma mai due binari dello stesso gruppo dallo stesso giocatore). In 2 e 3 giocatori, preso un binario l'altro si chiude. Alcune doppie hanno un binario grigio e uno colorato: quello grigio si paga con carte di un solo colore qualsiasi, anche quello del binario colorato.",
+    "Traghetti: rotte grigie o colorate sul mare, riconoscibili dal simbolo locomotiva. Per prenderle serve una locomotiva per ogni simbolo locomotiva e carte del colore scelto per gli altri spazi.",
+    "Biglietti: ricevi 1 biglietto lungo e 3 normali e ne tieni almeno 2; i biglietti scartati a inizio partita e i lunghi non distribuiti escono dal gioco. Pescandone altri ne vedi 3 e ne tieni almeno 1; quelli scartati durante la partita tornano in fondo al mazzo.",
+    "Rotte di montagna: una rotta con X sugli spazi si paga con le carte e si posa come le altre (e vale i punti della sua lunghezza). In più scarti dalla tua riserva un treno per ogni X, e ogni treno scartato vale subito 2 punti. Non puoi prenderla se hai meno treni della lunghezza più le X. Esempio: Kathmandu–Mandalay (2 spazi, 2 X) richiede 2 carte arancioni e 4 treni dalla riserva (2 posati e 2 scartati) e vale 2 + 4 = 6 punti. In una doppia con un binario colorato di montagna e uno grigio senza X, solo quello colorato ha le X.",
+    "Bonus Asian Explorer: +10 punti a chi ha più città in un'unica rete continua delle proprie rotte (rami e anelli ammessi, ogni città si conta una volta); a pari merito, a tutti. Non c'è il bonus del percorso più lungo.",
+    "Spareggio: a parità di punti vince chi ha completato più biglietti, poi chi ha preso più rotte di montagna."
+  ],
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

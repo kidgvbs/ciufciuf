@@ -274,7 +274,7 @@ impl Engine {
         if self.claimed_routes.contains_key(rid) {
             return false;
         }
-        if self.players[player_index].trains_remaining < route.len {
+        if self.players[player_index].trains_remaining < route.train_cost() {
             return false;
         }
 

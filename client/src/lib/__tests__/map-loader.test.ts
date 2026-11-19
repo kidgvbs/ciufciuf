@@ -151,6 +151,14 @@ describe('isMapData', () => {
       expect(isMapData(withRoute({ ferries })), `ferries=${String(ferries)}`).toBe(false);
     }
   });
+
+  it('accetta le X di montagna (1 fino alla lunghezza) e rifiuta il resto', () => {
+    expect(isMapData(withRoute({ mountains: 1 }))).toBe(true);
+    expect(isMapData(withRoute({ mountains: 2 }))).toBe(true);
+    for (const mountains of [0, -1, 1.5, 3, '1', null]) {
+      expect(isMapData(withRoute({ mountains })), `mountains=${String(mountains)}`).toBe(false);
+    }
+  });
 });
 
 describe('isMapData: Paesi e gruppi sempre aperti', () => {

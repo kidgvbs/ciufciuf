@@ -11,11 +11,12 @@ use crate::event::{FinalScore, GameEvent};
 use crate::payment::{PaymentError, PaymentSpec, check_declared_colors};
 use crate::scoring::{
     LongestPathRules, MandalaGraph, TicketSpec, UnionFind, compute_final_scores, evaluate_tickets,
-    globetrotter_winners, mandala_points, passenger_majority_points,
+    globetrotter_winners, largest_network_size, largest_network_winners, mandala_points,
+    passenger_majority_points,
 };
 use crate::types::{
-    CityId, ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
-    TicketDef, TieBreaker, points_to_score,
+    CityId, ClaimedRouteInfo, ClaimedRouteRecord, LARGEST_NETWORK_BONUS_TYPE,
+    LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route, TicketDef, TieBreaker, points_to_score,
 };
 
 impl Engine {
@@ -109,7 +110,7 @@ impl Engine {
             PaymentError::Invalid(reason) => EngineError::InvalidPayload { reason },
         })?;
 
-        if self.players[player_index].trains_remaining < len {
+        if self.players[player_index].trains_remaining < route.train_cost() {
             return Err(insufficient_cards());
         }
         let taken = self.resolve_passengers(&route, passengers)?;
@@ -145,10 +146,16 @@ impl Engine {
             .get(&len.to_string())
             .copied()
             .unwrap_or(0);
+        // Le X di montagna: treni scartati dalla riserva, punti subito e a parte.
+        let mountain_points = points_to_score(self.ruleset.mountain_points(route));
 
         let player = &mut self.players[player_index];
-        player.trains_remaining -= len;
-        player.score = player.score.saturating_add(points_to_score(points));
+        player.trains_remaining -= route.train_cost();
+        player.score = player
+            .score
+            .saturating_add(points_to_score(points))
+            .saturating_add(mountain_points);
+        player.mountain_points = player.mountain_points.saturating_add(mountain_points);
         player.claimed_routes.insert(
             route.id.clone(),
             ClaimedRouteRecord {
@@ -181,7 +188,8 @@ impl Engine {
             route_id: route.id.clone(),
             player_index,
             cards_used,
-            points,
+            // Punti totali del claim: rotta più treni di montagna.
+            points: points.saturating_add(self.ruleset.mountain_points(route)),
             trains_placed: len,
         });
 
@@ -654,6 +662,37 @@ impl Engine {
             None => vec![0; self.players.len()],
         };
 
+        // Asian Explorer: città della rete più grande di rotte proprie (0 senza il bonus).
+        let network_sizes: Vec<u32> = match self.ruleset.bonus_points(LARGEST_NETWORK_BONUS_TYPE) {
+            Some(_) => routes_per_player
+                .iter()
+                .map(|claimed| {
+                    largest_network_size(claimed, &self.routes_by_id, self.connectivity.countries())
+                })
+                .collect(),
+            None => vec![0; self.players.len()],
+        };
+        let network_winners = largest_network_winners(&network_sizes);
+        let network_points = self
+            .ruleset
+            .bonus_points(LARGEST_NETWORK_BONUS_TYPE)
+            .map_or(0, points_to_score);
+        // Spareggio `mountainRoutes`: rotte con simboli di montagna reclamate.
+        let mountain_routes: Vec<i64> = routes_per_player
+            .iter()
+            .map(|claimed| {
+                let count = claimed
+                    .iter()
+                    .filter(|c| {
+                        self.routes_by_id
+                            .get(&c.route_id)
+                            .is_some_and(|r| r.mountains > 0)
+                    })
+                    .count();
+                i64::try_from(count).unwrap_or(i64::MAX)
+            })
+            .collect();
+
         let mut final_scores: Vec<FinalScore> = self
             .players
             .iter()
@@ -671,6 +710,11 @@ impl Engine {
                     0
                 };
                 let mandala_bonus = mandala_points[i];
+                let largest_network_bonus = if network_winners.contains(&i) {
+                    network_points
+                } else {
+                    0
+                };
                 let station_points = self.unbuilt_station_points(i);
                 let country_points = points_to_score(
                     p.country_cards
@@ -686,17 +730,21 @@ impl Engine {
                     .saturating_add(bonus_val)
                     .saturating_add(globetrotter_bonus)
                     .saturating_add(mandala_bonus)
+                    .saturating_add(largest_network_bonus)
                     .saturating_add(station_points)
                     .saturating_add(country_points)
                     .saturating_add(passenger_points);
                 FinalScore {
                     player_index: i,
-                    route_points: p.score,
+                    route_points: p.score.saturating_sub(p.mountain_points),
                     ticket_completed: s.completed_tickets,
                     ticket_failed: s.failed_tickets,
                     longest_path_bonus: bonus_val,
                     globetrotter_bonus,
                     mandala_bonus,
+                    mountain_points: p.mountain_points,
+                    largest_network_bonus,
+                    largest_network: network_sizes[i],
                     total,
                     station_points,
                     borrowed_routes: s.borrowed_routes.clone(),
@@ -725,6 +773,7 @@ impl Engine {
                         .values()
                         .map(|&n| i64::from(n))
                         .sum(),
+                    TieBreaker::MountainRoutes => mountain_routes[fs.player_index],
                 }
             }));
             key

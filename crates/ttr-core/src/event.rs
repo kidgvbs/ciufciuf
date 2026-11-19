@@ -57,7 +57,10 @@ pub enum GameEvent {
         route_id: RouteId,
         player_index: usize,
         cards_used: Vec<CardColor>,
+        /// Punti del claim: tabella per la lunghezza più i punti dei treni scartati sulle
+        /// rotte di montagna (`mountains × pointsPerTrain`).
         points: u32,
+        /// Treni posati sulla rotta (la lunghezza); i treni scartati per le X non sono contati.
         trains_placed: u32,
     },
     /// Carte rivelate da un tunnel (Europe), prima di `RouteClaimed` o dell'attesa
@@ -122,6 +125,16 @@ pub struct FinalScore {
     /// Bonus dei biglietti con due percorsi distinti (modalità con `mandala`).
     #[serde(default)]
     pub mandala_bonus: i32,
+    /// Punti dei treni scartati sulle rotte di montagna, già in `total` e non in
+    /// `route_points` (modalità con `mountains`).
+    #[serde(default)]
+    pub mountain_points: i32,
+    /// Bonus della rete di città più grande (modalità con `largest_network`).
+    #[serde(default)]
+    pub largest_network_bonus: i32,
+    /// Città della rete più grande del giocatore (0 senza il bonus `largest_network`).
+    #[serde(default)]
+    pub largest_network: u32,
     pub total: i32,
     /// Punti delle stazioni non costruite (Europe).
     #[serde(default)]

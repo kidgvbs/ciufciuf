@@ -10,8 +10,9 @@ use crate::error::EngineInitError;
 use crate::scoring::MAX_CYCLOMATIC_NUMBER;
 use crate::types::{
     Bonus, COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
-    LOCO_RESET_THRESHOLD, LONGEST_PATH_BONUS_TYPE, MANDALA_BONUS_TYPE, MAX_PARALLEL_LANES, MapData,
-    Route, RouteColor, Ruleset, SetupDiscards, TicketDef, TieBreaker, route_lane,
+    LARGEST_NETWORK_BONUS_TYPE, LOCO_RESET_THRESHOLD, LONGEST_PATH_BONUS_TYPE, MANDALA_BONUS_TYPE,
+    MAX_PARALLEL_LANES, MapData, Route, RouteColor, Ruleset, SetupDiscards, TicketDef, TieBreaker,
+    route_lane,
 };
 
 /// Un biglietto ha `to` + `points` (una destinazione) oppure `destinations` (almeno 2),
@@ -211,6 +212,7 @@ impl Ruleset {
                 LONGEST_PATH_BONUS_TYPE,
                 GLOBETROTTER_BONUS_TYPE,
                 MANDALA_BONUS_TYPE,
+                LARGEST_NETWORK_BONUS_TYPE,
             ];
             if !known.contains(&bonus.bonus_type.as_str()) {
                 return Err(EngineInitError::UnknownBonusType {
@@ -344,6 +346,32 @@ impl Ruleset {
                     route_id: route.id.clone(),
                 });
             }
+            if route.mountains > 0 && route.tunnel {
+                return Err(EngineInitError::RouteMountainsOnTunnel {
+                    route_id: route.id.clone(),
+                });
+            }
+            if route.mountains > route.len {
+                return Err(EngineInitError::RouteMountainsExceedLength {
+                    route_id: route.id.clone(),
+                    mountains: route.mountains,
+                    len: route.len,
+                });
+            }
+            if route.mountains > 0
+                && self
+                    .mountains
+                    .as_ref()
+                    .is_none_or(|m| m.points_per_train == 0)
+            {
+                return Err(EngineInitError::MountainsConfigMissing {
+                    route_id: route.id.clone(),
+                });
+            }
+        }
+
+        if self.mountains.is_some() && map.routes.iter().all(|r| r.mountains == 0) {
+            return Err(EngineInitError::MountainsConfigUnused);
         }
 
         for ticket in &map.tickets {

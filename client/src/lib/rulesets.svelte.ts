@@ -3,12 +3,15 @@
 import {
   bigCities,
   globetrotterLabel,
+  largestNetworkLabel,
   mandalaLabel,
   hasGlobetrotter,
+  hasLargestNetwork,
   hasMandala,
   hasLongestPath,
   loadRulesets,
   longestPathLabel,
+  mountainPointsPerTrain,
   rulesetTitleById,
   rulesetPayment,
   specialRules,
@@ -73,6 +76,21 @@ class RulesetCatalogStore {
   /** Il ruleset prevede il bonus Mandala. */
   hasMandala(rulesetId: string | null | undefined): boolean {
     return hasMandala(this.items, rulesetId);
+  }
+
+  /** Nome del bonus della rete più grande per `rulesetId` ('Rete più grande' se il catalogo non lo conosce). */
+  largestNetworkLabel(rulesetId: string | null | undefined): string {
+    return largestNetworkLabel(this.items, rulesetId);
+  }
+
+  /** Il ruleset prevede il bonus della rete più grande. */
+  hasLargestNetwork(rulesetId: string | null | undefined): boolean {
+    return hasLargestNetwork(this.items, rulesetId);
+  }
+
+  /** Punti per treno scartato sulle rotte di montagna (`null` se il ruleset non ha montagne o catalogo non pronto). */
+  mountainPointsPerTrain(rulesetId: string | null | undefined): number | null {
+    return mountainPointsPerTrain(this.items, rulesetId);
   }
 
   /** Ids delle grandi città del ruleset (vuoto se nessuna o ruleset ignoto). */

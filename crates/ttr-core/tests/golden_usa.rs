@@ -132,13 +132,17 @@ fn golden_hash(seed: u64, players: usize) -> u64 {
         }
         let action = next_action(&eng, step, keep_initial, keep_draw);
         let events = eng.apply(action).expect("azione scriptata rifiutata");
-        // I campi Europe di `FinalScore` sono sempre vuoti sulla USA e `globetrotter_bonus` e
-        // `mandala_bonus` sono 0 senza il bonus: non entrano nell'hash, che resta quello
-        // catturato prima della loro introduzione.
+        // I campi Europe di `FinalScore` sono sempre vuoti sulla USA e `globetrotter_bonus`,
+        // `mandala_bonus`, `mountain_points`, `largest_network_bonus` e `largest_network` sono
+        // 0 senza il bonus: non entrano nell'hash, che resta quello catturato prima della loro
+        // introduzione.
         feed(
             &format!("{events:?}")
                 .replace(", globetrotter_bonus: 0", "")
                 .replace(", mandala_bonus: 0", "")
+                .replace(", mountain_points: 0", "")
+                .replace(", largest_network_bonus: 0", "")
+                .replace(", largest_network: 0", "")
                 .replace(", station_points: 0, borrowed_routes: []", "")
                 .replace(", country_points: 0, passenger_points: 0", ""),
         );
