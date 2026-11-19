@@ -152,6 +152,7 @@ fn mini_ruleset() -> Ruleset {
             bonus_type: "longest_path".into(),
             label: "Longest Path".into(),
             points: 10,
+            table: vec![],
         }],
         big_cities: vec![],
         double_route_min_players: 4,
@@ -2867,11 +2868,13 @@ fn longest_path_bonus_is_found_by_type() {
             bonus_type: "globetrotter".into(),
             label: "Globetrotter".into(),
             points: 99,
+            table: vec![],
         },
         Bonus {
             bonus_type: "longest_path".into(),
             label: "Longest Path".into(),
             points: 7,
+            table: vec![],
         },
     ];
     let (ids, names, colors) = two_players();
@@ -3807,12 +3810,14 @@ fn globetrotter_ruleset(with_longest_path: bool) -> Ruleset {
         bonus_type: "globetrotter".into(),
         label: "Globetrotter".into(),
         points: 15,
+        table: vec![],
     }];
     if with_longest_path {
         rs.bonuses.push(Bonus {
             bonus_type: "longest_path".into(),
             label: "Longest Path".into(),
             points: 10,
+            table: vec![],
         });
     }
     rs

@@ -11,4 +11,8 @@ cityId: string | null,
 /**
  * Punti guadagnati o, se fallito, persi (negativi).
  */
-points: number, };
+points: number, 
+/**
+ * Conta per il bonus `mandala`: due percorsi distinti tra le città del biglietto.
+ */
+mandala: boolean, };

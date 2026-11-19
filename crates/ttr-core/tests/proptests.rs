@@ -1,13 +1,14 @@
 //! Test property-based sul motore: conservazione, azioni fallite,
 //! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany, Poland,
-//! Nordic e Switzerland reali.
+//! Nordic, Switzerland e India reali.
 //!
 //! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel; sulla
 //! Germany scelgono i biglietti rispettando minimi e massimi per mazzo. I pagamenti delle
 //! rotte sono generati da `payment_candidates` leggendo le regole dal ruleset (locomotive
 //! ammesse, gruppi di carte qualsiasi): sul Nordic coprono i traghetti da 3 carte e
 //! Murmansk–Lieksa da 4 per spazio, sulla Switzerland le locomotive solo sui tunnel e i
-//! biglietti multi-destinazione.
+//! biglietti multi-destinazione, sull'India il bonus mandala (biglietti con due percorsi
+//! senza rotte in comune).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::LazyLock;
@@ -55,6 +56,8 @@ enum Game {
     /// Switzerland: locomotive solo sui tunnel, pesca libera delle locomotive scoperte con
     /// reset del mercato, biglietti multi-destinazione, percorso più lungo.
     Switzerland,
+    /// India: traghetti, binari doppi solo a 4 giocatori, percorso più lungo e bonus mandala.
+    India,
 }
 
 static USA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_v2", "usa"));
@@ -72,6 +75,7 @@ static GERMANY_2017: LazyLock<(Ruleset, MapData)> =
 static NORDIC: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("nordic", "nordic"));
 static SWITZERLAND: LazyLock<(Ruleset, MapData)> =
     LazyLock::new(|| load("switzerland", "switzerland"));
+static INDIA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("india", "india"));
 
 fn load(ruleset: &str, map: &str) -> (Ruleset, MapData) {
     let ruleset = std::fs::read_to_string(format!("../../data/rulesets/{ruleset}.json")).unwrap();
@@ -95,6 +99,7 @@ fn data(game: Game) -> &'static (Ruleset, MapData) {
         Game::Germany2017 => &GERMANY_2017,
         Game::Nordic => &NORDIC,
         Game::Switzerland => &SWITZERLAND,
+        Game::India => &INDIA,
     }
 }
 
@@ -1503,6 +1508,21 @@ fn check_full_game_invariants(
             _ => 0,
         };
         prop_assert_eq!(fs.globetrotter_bonus, globetrotter);
+        // Mandala: i biglietti marcati sono completati; il bonus è `table[min(k, len) - 1]`
+        // con k i biglietti marcati, 0 senza il bonus nel ruleset (e allora nessun marcato).
+        let marked = results.iter().filter(|r| r.mandala).count();
+        prop_assert!(
+            results.iter().all(|r| !r.mandala || r.completed),
+            "biglietto mandala non completato"
+        );
+        let mandala = match ruleset.mandala_table() {
+            Some(table) if marked > 0 => table[marked.min(table.len()) - 1],
+            _ => 0,
+        };
+        if ruleset.mandala_table().is_none() {
+            prop_assert_eq!(marked, 0);
+        }
+        prop_assert_eq!(fs.mandala_bonus, i32::try_from(mandala).unwrap());
         prop_assert_eq!(
             fs.total,
             fs.route_points
@@ -1510,6 +1530,7 @@ fn check_full_game_invariants(
                 + fs.ticket_failed
                 + fs.longest_path_bonus
                 + fs.globetrotter_bonus
+                + fs.mandala_bonus
                 + fs.station_points
                 + fs.country_points
                 + fs.passenger_points
@@ -1622,6 +1643,15 @@ proptest! {
     ) {
         check_full_game_invariants(Game::Switzerland, seed, players, &choices)?;
     }
+
+    #[test]
+    fn india_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=4,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::India, seed, players, &choices)?;
+    }
 }
 
 proptest! {
@@ -1667,6 +1697,26 @@ proptest! {
     #[test]
     fn switzerland_replay_reproduces_state((seed, players, choices) in game_inputs()) {
         check_replay_reproduces_state(Game::Switzerland, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn india_cards_and_tickets_are_conserved((seed, players, choices) in game_inputs()) {
+        check_conservation(Game::India, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn india_failed_action_leaves_state_identical((seed, players, choices) in game_inputs()) {
+        check_failed_action_leaves_state_identical(Game::India, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn india_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::India, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn india_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::India, seed, players, &choices)?;
     }
 }
 
@@ -2162,6 +2212,120 @@ fn bots_exercise_card_groups_and_multi_destination_tickets() {
         completed > 0 && failed > 0,
         "biglietti multi-destinazione non esercitati"
     );
+}
+
+/// Cammino più corto (per treni) da `from` a `to` senza le rotte in `banned`: ripete il
+/// rilassamento di Bellman–Ford sulle rotte non orientate; restituisce gli indici delle rotte.
+fn shortest_path(
+    routes: &[&Route],
+    banned: &BTreeSet<usize>,
+    from: &str,
+    to: &str,
+) -> Option<Vec<usize>> {
+    let mut best: BTreeMap<&str, (u32, Vec<usize>)> = BTreeMap::new();
+    best.insert(from, (0, Vec::new()));
+    for _ in 0..routes.len() {
+        for (i, route) in routes
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !banned.contains(i))
+        {
+            for (a, b) in [(&route.from, &route.to), (&route.to, &route.from)] {
+                let Some((cost, path)) = best.get(a.as_str()).cloned() else {
+                    continue;
+                };
+                let cost = cost + route.len;
+                if best.get(b.as_str()).is_none_or(|(c, _)| cost < *c) {
+                    let mut path = path;
+                    path.push(i);
+                    best.insert(b, (cost, path));
+                }
+            }
+        }
+    }
+    best.remove(to).map(|(_, path)| path)
+}
+
+/// Su India reale, con un biglietto collegato da due percorsi senza rotte in comune (il
+/// primo trovato dal più corto, poi dal più corto nelle rotte rimaste) il giocatore prende
+/// il bonus mandala della prima voce della tabella, e solo quel biglietto è marcato. I bot
+/// casuali non lo raggiungono mai: senza questo test l'invariante sarebbe vuota.
+#[test]
+fn india_two_disjoint_paths_earn_the_mandala_bonus() {
+    let (ruleset, map) = data(Game::India);
+    // Un giocatore non prende mai due binari dello stesso gruppo: solo il primo di ognuno.
+    let routes: Vec<&Route> = map
+        .routes
+        .iter()
+        .filter(|r| !r.double || r.id.ends_with("_1"))
+        .collect();
+    let none = BTreeSet::new();
+    let (ticket, picked) = map
+        .tickets
+        .iter()
+        .filter(|t| t.to.is_some())
+        .filter_map(|t| {
+            let to = t.to.as_deref()?;
+            let first = shortest_path(&routes, &none, &t.from, to)?;
+            let banned: BTreeSet<usize> = first.iter().copied().collect();
+            let second = shortest_path(&routes, &banned, &t.from, to)?;
+            let picked: Vec<usize> = first.into_iter().chain(second).collect();
+            let trains: u32 = picked.iter().map(|&i| routes[i].len).sum();
+            (trains <= 45).then_some((t, picked))
+        })
+        .min_by_key(|(_, picked)| picked.iter().map(|&i| routes[i].len).sum::<u32>())
+        .expect("nessun biglietto India con due percorsi disgiunti entro 45 treni");
+
+    let mut eng = new_engine(Game::India, 7, 2);
+    eng.set_player_tickets(0, &[ticket.id.as_str()]);
+    for &i in &picked {
+        let route = routes[i];
+        let cards = vec![CardColor::Locomotive; route.len as usize];
+        eng.set_phase_for_test(GamePhase::PlayerTurn, 0);
+        eng.set_player_hand(0, cards.clone());
+        eng.apply(Action::ClaimRoute {
+            player_index: 0,
+            route_id: route.id.clone(),
+            cards_discarded: cards,
+            passengers: Default::default(),
+        })
+        .unwrap();
+    }
+    let current = eng.current_player();
+    eng.set_phase_for_test(GamePhase::PlayerTurn, current);
+    eng.set_player_trains(current, 2);
+    let mut final_scores = None;
+    for _ in 0..200 {
+        let pi = eng.current_player();
+        let events = eng
+            .apply(Action::DrawTrainCard {
+                player_index: pi,
+                source: DrawSource::Deck,
+            })
+            .unwrap();
+        for event in events {
+            if let GameEvent::GameOver {
+                final_scores: f, ..
+            } = event
+            {
+                final_scores = Some(f);
+            }
+        }
+        if final_scores.is_some() {
+            break;
+        }
+    }
+    let final_scores = final_scores.expect("la partita non è terminata");
+    let marked: Vec<&str> = eng
+        .final_ticket_results(0)
+        .iter()
+        .filter(|r| r.mandala)
+        .map(|r| r.ticket_id.as_str())
+        .collect();
+    assert_eq!(marked, [ticket.id.as_str()]);
+    let first = ruleset.mandala_table().unwrap()[0];
+    assert_eq!(final_scores[0].mandala_bonus, i32::try_from(first).unwrap());
+    assert_eq!(final_scores[1].mandala_bonus, 0);
 }
 
 /// Murmansk–Lieksa si paga con 7 carte verdi più 8 qualsiasi: il generatore le produce e il

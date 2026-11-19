@@ -11,6 +11,10 @@ export type FinalScoreInfo = { playerId: string, routePoints: number, ticketComp
  */
 globetrotterBonus: number, 
 /**
+ * Modalità con `mandala`: bonus dei biglietti con due percorsi distinti (Grand Tour).
+ */
+mandalaBonus: number, 
+/**
  * Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
  */
 stationPoints: number, total: number, 

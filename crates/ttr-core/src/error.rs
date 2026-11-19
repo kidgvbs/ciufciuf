@@ -133,6 +133,18 @@ pub enum EngineInitError {
     #[error("bonus '{bonus_type}' ripetuto nel ruleset")]
     DuplicateBonusType { bonus_type: String },
 
+    #[error("bonus '{bonus_type}': table non ammessa per questo tipo")]
+    BonusTableNotAllowed { bonus_type: String },
+
+    #[error("bonus mandala: table vuota")]
+    MandalaTableEmpty,
+
+    #[error("bonus mandala: table decrescente alla posizione {index}")]
+    MandalaTableDecreasing { index: usize },
+
+    #[error("bonus mandala: points {points} diverso dall'ultimo valore di table ({last})")]
+    MandalaPointsMismatch { points: u32, last: u32 },
+
     #[error("modalità del ruleset vuota")]
     EmptyRulesetMode,
 

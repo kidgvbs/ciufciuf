@@ -1,0 +1,71 @@
+{
+  "name": "India",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "standard",
+  "map": "india",
+  "players": {
+    "min": 2,
+    "max": 4
+  },
+  "trainsPerPlayer": 45,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "regular",
+        "count": 4
+      }
+    ],
+    "keepMin": 2
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 3,
+    "keepMin": 1
+  },
+  "setupDiscards": "reshuffleBottom",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "6": 13,
+    "8": 21
+  },
+  "bonuses": [
+    {
+      "type": "longest_path",
+      "label": "Indian Express",
+      "points": 10
+    },
+    {
+      "type": "mandala",
+      "label": "Grand Tour",
+      "points": 40,
+      "table": [
+        5,
+        10,
+        20,
+        30,
+        40
+      ]
+    }
+  ],
+  "specialRules": [
+    "Da 2 a 4 giocatori, 45 treni a testa.",
+    "Rotte doppie: solo in 4 giocatori si possono usare entrambi i binari (ma mai due binari dello stesso gruppo dallo stesso giocatore). In 2 e 3 giocatori, preso un binario l'altro si chiude.",
+    "Traghetti: rotte grigie sul mare, riconoscibili dai simboli locomotiva. Per prenderle servono una locomotiva per ogni simbolo locomotiva e carte del colore scelto (uno solo, sulle grigie) per gli altri spazi. Niente tunnel e niente stazioni.",
+    "Biglietti: 4 iniziali (tieni almeno 2); pescandone altri ne vedi 3 e ne tieni almeno 1. I biglietti scartati, a inizio partita e dopo, tornano in fondo al mazzo.",
+    "Bonus Indian Express: +10 punti a chi ha il percorso continuo più lungo (a pari merito, a tutti).",
+    "Bonus Grand Tour (Mandala): un tuo biglietto vale per il bonus se le sue due città sono collegate da almeno 2 percorsi continui diversi fatti con i tuoi treni. I due percorsi possono incrociarsi (passare per le stesse città) ma non condividere nessuna rotta. Il bonus dipende da quanti biglietti qualificano: 1 → 5, 2 → 10, 3 → 20, 4 → 30, 5 o più → 40 punti in totale; si somma ai punti dei biglietti completati. Esempio: se due dei tuoi biglietti hanno le città unite da un anello di tue rotte, prendi 10 punti di bonus."
+  ],
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

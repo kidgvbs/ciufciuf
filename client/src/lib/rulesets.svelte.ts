@@ -3,7 +3,9 @@
 import {
   bigCities,
   globetrotterLabel,
+  mandalaLabel,
   hasGlobetrotter,
+  hasMandala,
   hasLongestPath,
   loadRulesets,
   longestPathLabel,
@@ -53,6 +55,11 @@ class RulesetCatalogStore {
     return globetrotterLabel(this.items, rulesetId);
   }
 
+  /** Nome del bonus Mandala per `rulesetId` ('Grand Tour' se il catalogo non lo conosce). */
+  mandalaLabel(rulesetId: string | null | undefined): string {
+    return mandalaLabel(this.items, rulesetId);
+  }
+
   /** Il ruleset prevede il bonus percorso più lungo (catalogo non pronto o ruleset ignoto → sì). */
   hasLongestPath(rulesetId: string | null | undefined): boolean {
     return hasLongestPath(this.items, rulesetId);
@@ -61,6 +68,11 @@ class RulesetCatalogStore {
   /** Il ruleset prevede il bonus Globetrotter. */
   hasGlobetrotter(rulesetId: string | null | undefined): boolean {
     return hasGlobetrotter(this.items, rulesetId);
+  }
+
+  /** Il ruleset prevede il bonus Mandala. */
+  hasMandala(rulesetId: string | null | undefined): boolean {
+    return hasMandala(this.items, rulesetId);
   }
 
   /** Ids delle grandi città del ruleset (vuoto se nessuna o ruleset ignoto). */

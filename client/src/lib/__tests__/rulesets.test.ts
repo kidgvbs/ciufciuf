@@ -4,15 +4,18 @@ import {
   DEFAULT_RULESET_ID,
   FALLBACK_GLOBETROTTER_LABEL,
   FALLBACK_LONGEST_PATH_LABEL,
+  FALLBACK_MANDALA_LABEL,
   bigCities,
   defaultRulesetId,
   globetrotterLabel,
   groupByMap,
   hasGlobetrotter,
   hasLongestPath,
+  hasMandala,
   isRulesetInfo,
   loadRulesets,
   longestPathLabel,
+  mandalaLabel,
   modeBlurb,
   parseRulesetCatalog,
   rulesetBlurb,
@@ -320,6 +323,48 @@ describe('etichette dei bonus', () => {
     expect(hasLongestPath(catalog, null)).toBe(true);
     expect(hasGlobetrotter([], 'usa_v2')).toBe(false);
     expect(hasGlobetrotter(catalog, undefined)).toBe(false);
+  });
+});
+
+const mandalaBonus = {
+  type: 'mandala',
+  label: 'Grand Tour',
+  points: 40,
+  table: [5, 10, 20, 30, 40],
+};
+const india: RulesetInfo = {
+  ...usa,
+  id: 'india',
+  mapId: 'india',
+  bonuses: [{ type: 'longest_path', label: 'Indian Express', points: 10 }, mandalaBonus],
+};
+
+describe('bonus Mandala', () => {
+  it('accetta la tabella opzionale e rifiuta valori non interi', () => {
+    expect(isRulesetInfo(india)).toBe(true);
+    expect(isRulesetInfo({ ...india, bonuses: [{ ...mandalaBonus, table: [5, 1.5] }] })).toBe(false);
+    expect(isRulesetInfo({ ...india, bonuses: [{ ...mandalaBonus, table: 'x' }] })).toBe(false);
+  });
+
+  it('mandalaLabel con fallback "Grand Tour"', () => {
+    expect(mandalaLabel([india], 'india')).toBe('Grand Tour');
+    const custom = { ...india, bonuses: [{ ...mandalaBonus, label: 'Mandala' }] };
+    expect(mandalaLabel([custom], 'india')).toBe('Mandala');
+    expect(mandalaLabel([usa], 'usa_v2')).toBe(FALLBACK_MANDALA_LABEL);
+    expect(mandalaLabel([], null)).toBe('Grand Tour');
+  });
+
+  it('hasMandala segue i bonus del ruleset (ignoto → false)', () => {
+    expect(hasMandala([india, usa], 'india')).toBe(true);
+    expect(hasMandala([india, usa], 'usa_v2')).toBe(false);
+    expect(hasMandala([], 'india')).toBe(false);
+    expect(hasMandala([india], undefined)).toBe(false);
+  });
+
+  it('modeBlurb mostra il massimo del bonus', () => {
+    expect(modeBlurb(india)).toBe(
+      '33 biglietti in gioco · ricevi 4, tieni 2 · pesca 3, tieni 1 · Indian Express +10 · Grand Tour fino a +40',
+    );
   });
 });
 

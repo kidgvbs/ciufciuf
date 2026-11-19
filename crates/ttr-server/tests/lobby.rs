@@ -595,6 +595,7 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     };
     let lp = "longest_path";
     let gt = "globetrotter";
+    let md = "mandala";
     assert_eq!(
         summary,
         vec![
@@ -606,6 +607,7 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
             row("europe_mega", "Mega", 101, 7, 3, 3, &[lp], 0),
             row("germany", "Deutschland", 62, 5, 2, 4, &[gt], 0),
             row("germany_2017", "Passeggeri", 89, 5, 2, 4, &[gt], 0),
+            row("india", "Standard", 58, 4, 2, 3, &[lp, md], 0),
             row("nordic", "Standard", 46, 5, 2, 3, &[gt], 0),
             row("poland", "Standard", 35, 4, 2, 3, &[], 0),
             row("switzerland", "Standard", 46, 5, 2, 3, &[lp], 0),
@@ -702,6 +704,7 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
         ("germany_2017", 9),
         ("nordic", 10),
         ("poland", 6),
+        ("india", 6),
     ] {
         let texts = rules(id);
         assert_eq!(texts.len(), count, "{id}");

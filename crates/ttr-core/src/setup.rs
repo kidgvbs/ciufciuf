@@ -9,9 +9,9 @@ use crate::density::{RouteSpan, max_cyclomatic_number};
 use crate::error::EngineInitError;
 use crate::scoring::MAX_CYCLOMATIC_NUMBER;
 use crate::types::{
-    COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE, LOCO_RESET_THRESHOLD,
-    LONGEST_PATH_BONUS_TYPE, MAX_PARALLEL_LANES, MapData, Route, RouteColor, Ruleset,
-    SetupDiscards, TicketDef, TieBreaker, route_lane,
+    Bonus, COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
+    LOCO_RESET_THRESHOLD, LONGEST_PATH_BONUS_TYPE, MANDALA_BONUS_TYPE, MAX_PARALLEL_LANES, MapData,
+    Route, RouteColor, Ruleset, SetupDiscards, TicketDef, TieBreaker, route_lane,
 };
 
 /// Un biglietto ha `to` + `points` (una destinazione) oppure `destinations` (almeno 2),
@@ -35,6 +35,33 @@ fn check_ticket_form(ticket: &TicketDef) -> Result<(), EngineInitError> {
         }
         _ => Ok(()),
     }
+}
+
+/// `table` solo sul bonus `mandala`, dove è obbligatoria: non vuota, non decrescente e con
+/// `points` uguale all'ultimo valore.
+fn check_bonus_table(bonus: &Bonus) -> Result<(), EngineInitError> {
+    if bonus.bonus_type != MANDALA_BONUS_TYPE {
+        return if bonus.table.is_empty() {
+            Ok(())
+        } else {
+            Err(EngineInitError::BonusTableNotAllowed {
+                bonus_type: bonus.bonus_type.clone(),
+            })
+        };
+    }
+    let Some(&last) = bonus.table.last() else {
+        return Err(EngineInitError::MandalaTableEmpty);
+    };
+    if let Some(index) = bonus.table.windows(2).position(|pair| pair[1] < pair[0]) {
+        return Err(EngineInitError::MandalaTableDecreasing { index: index + 1 });
+    }
+    if bonus.points != last {
+        return Err(EngineInitError::MandalaPointsMismatch {
+            points: bonus.points,
+            last,
+        });
+    }
+    Ok(())
 }
 
 /// Rotte `(da, a, lunghezza)` come le può costruire un giocatore: un giocatore prende al
@@ -180,7 +207,11 @@ impl Ruleset {
     fn check_bonuses(&self) -> Result<(), EngineInitError> {
         let mut seen: BTreeSet<&str> = BTreeSet::new();
         for bonus in &self.bonuses {
-            let known = [LONGEST_PATH_BONUS_TYPE, GLOBETROTTER_BONUS_TYPE];
+            let known = [
+                LONGEST_PATH_BONUS_TYPE,
+                GLOBETROTTER_BONUS_TYPE,
+                MANDALA_BONUS_TYPE,
+            ];
             if !known.contains(&bonus.bonus_type.as_str()) {
                 return Err(EngineInitError::UnknownBonusType {
                     bonus_type: bonus.bonus_type.clone(),
@@ -191,6 +222,7 @@ impl Ruleset {
                     bonus_type: bonus.bonus_type.clone(),
                 });
             }
+            check_bonus_table(bonus)?;
         }
         Ok(())
     }

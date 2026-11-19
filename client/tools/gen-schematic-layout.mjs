@@ -73,7 +73,7 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic] [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic|india] [--svg OUT.svg]
 //   --map ID       (default usa) mappa: input data/maps/<ID>.json, output data/layouts/<ID>.json.
 //                  Le regolazioni manuali (LABEL_OVERRIDES, F2 shifts, pre-bend Phoenix) sono
 //                  per-mappa (MAP_TUNING): applicate SOLO alla mappa a cui appartengono.
@@ -167,6 +167,27 @@ const SWISS_SEED = {
   'osterreich#osterreich_vaduz_1': [1018.4, 278.2],
 };
 
+// India: seme ottimizzato (px del canvas di lavoro, riquadro 820×1070) per le 39 città. Trovato con una
+// ricottura simulata (PRNG a seed fisso, in più riprese dal tabellone) partendo dalle posizioni del
+// tabellone (percentuali della wiki di fan, tabella in docs/data-sources-india.md) e minimizzando:
+// rapporti di lunghezza fuori da ~0,97–1,3 (rotte da 1 carta fino a 2,0; da 5 in su 0,93–1,5) rispetto
+// alla mediana (il generatore scala il seme perché la mediana valga 1), incroci e distanze
+// rotta–rotta/città–rotta/città–città troppo piccole, angoli tra rotte incidenti < 38°, posto libero
+// per il nome di ogni città (8 direzioni, anche vicino ai traghetti Bombay–Karachi), scostamento dalla
+// forma del tabellone. È dato (non si ricalcola a ogni run).
+const INDIA_SEED = {
+  agra: [376.4, 389.8], ahmadabad: [232.7, 477.2], ambala: [366.7, 197.8], bareilly: [451.7, 251.6],
+  bezwada: [412.7, 718.7], bhatinda: [248.3, 210], bhopal: [390.9, 454.2], bilaspur: [518.8, 434.2],
+  bombay: [166.6, 652.2], calcutta: [659.4, 519.9], calicut: [217.4, 913.8], chittagong: [752.5, 498.4],
+  delhi: [364.1, 292.8], dhubri: [694.5, 419.1], erode: [408.7, 875.9], guntakal: [343.4, 759],
+  indur: [409.1, 599.4], jacobabad: [94.2, 197.9], jaipur: [309.1, 386.4], jarhat: [759.6, 346.7],
+  jodhpur: [214, 345.5], karachi: [60, 371.5], katni: [474.5, 386.1], khandwa: [302, 546.5],
+  lahore: [209.4, 100.5], lucknow: [450.4, 321.1], madras: [468.9, 802.8], mangalore: [267.3, 848],
+  manmad: [247.5, 595.2], mormugau: [227.4, 716.7], patna: [605.2, 395.7], peshawar: [126.2, 60],
+  poona: [262.4, 658], quilon: [289.5, 1009], raipur: [480.9, 515.6], ratiam: [298.3, 452.8],
+  rohri: [163.8, 267.1], wadi: [336.8, 682.2], waltain: [471.5, 641],
+};
+
 // Posizioni iniziali della sim: bbox geografica (lat/lon) proiettata sul canvas di lavoro,
 // oppure (`image`) i pallini in pixel dell'immagine da cui è stata ricavata la mappa, quando
 // la geografia reale non rispetta le lunghezze delle rotte (Basilicata: Lecce a 4 vagoni da
@@ -239,6 +260,9 @@ const MAP_BOUNDS = {
   // (MAP_TUNING) ogni Paese è sostituito da una bandierina per rotta di confine, come sul tabellone:
   // il disegno ora può rispettare le lunghezze delle rotte.
   switzerland: { anchor: 0.45, image: { w: 1241, h: 817, xy: SWISS_SEED } },
+  // India: seme ottimizzato INDIA_SEED (città); la geografia reale e il tabellone non rispettano le
+  // lunghezze (traghetti da 6 e 8 carte lungo le coste, rotte da 1 carta tra città vicine).
+  india: { anchor: 0.8, image: { w: 820, h: 1070, xy: INDIA_SEED } },
 };
 if (!MAP_BOUNDS[MAP_ID]) { console.error(`--map sconosciuta: ${MAP_ID} (valide: ${Object.keys(MAP_BOUNDS).join(', ')})`); process.exit(2); }
 const BOUNDS = MAP_BOUNDS[MAP_ID];
@@ -385,6 +409,18 @@ const MAP_TUNING = {
     f2Shifts: [],
   },
   nordic: { unit: 40, labelOverrides: {}, f2Shifts: [] },
+  india: {
+    unit: 40,
+    lenOneDense: true,
+    // Triangoli degeneri: madras–waltain 3 = madras–bezwada 1 + bezwada–waltain 2 (senza il bersaglio
+    // ridotto Bezwada finisce sulla rotta e le due si incrociano) e delhi–lucknow 2 = delhi–bareilly 1 +
+    // bareilly–lucknow 1 (senza il bersaglio allungato la rotta diretta scende sotto 0,8×).
+    linkScale: { 'madras|waltain': 0.8, 'delhi|lucknow': 1.15 },
+    // Ahmadabad: nome sopra a sinistra (a sinistra in basso finisce sotto i traghetti Bombay–Karachi);
+    // Lucknow: a sinistra (a destra la rotta Bareilly–Patna passa sul nome).
+    labelOverrides: { ahmadabad: { anchor: 'end', dir: 'up' }, lucknow: { anchor: 'end', dir: 'down' } },
+    f2Shifts: [],
+  },
 };
 const TUNING = MAP_TUNING[MAP_ID];
 

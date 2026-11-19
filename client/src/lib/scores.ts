@@ -35,13 +35,14 @@ export function borrowedRouteLabel(b: BorrowedRoute, map: MapData | null): strin
  * Una riga del dettaglio biglietti del punteggio finale: «✓ Origine → Destinazione realizzata +N»
  * per un biglietto completato (con più destinazioni solo quella realizzata), «✗ Origine → A / B −N»
  * per uno fallito (tutte le destinazioni). Con mappa o biglietto sconosciuti restano gli id.
+ * Un biglietto che conta per il bonus Mandala (due percorsi distinti) ha il suffisso « 🪷».
  */
 export function ticketResultLabel(r: TicketResultInfo, map: MapData | null): string {
   const city = (id: string) => map?.cities.find((c) => c.id === id)?.name ?? id;
   const def = map?.tickets.find((t) => t.id === r.ticketId);
   if (r.completed) {
     const to = r.cityId !== null ? city(r.cityId) : '';
-    return `✓ ${def ? city(def.from) : r.ticketId} → ${to} +${r.points}`;
+    return `✓ ${def ? city(def.from) : r.ticketId} → ${to} +${r.points}${r.mandala ? ' 🪷' : ''}`;
   }
   return `✗ ${def ? ticketLabel(def, city) : r.ticketId} ${r.points}`;
 }

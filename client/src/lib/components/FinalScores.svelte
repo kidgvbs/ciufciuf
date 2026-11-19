@@ -8,7 +8,7 @@
   import type { MapData } from '../map-utils';
   import type { FinalScoreInfo, PlayerSummary } from '../proto';
 
-  let { scores, players, playerId, longestPathPlayerIds, longestPathName, globetrotterName, mapData, children }: {
+  let { scores, players, playerId, longestPathPlayerIds, longestPathName, globetrotterName, mandalaName, mapData, children }: {
     scores: FinalScoreInfo[];
     players: PlayerSummary[];
     /** Giocatore del telefono: la sua scheda è evidenziata. */
@@ -19,6 +19,8 @@
     longestPathName: string | null;
     /** Nome del bonus Globetrotter; `null` se il ruleset non lo prevede. */
     globetrotterName: string | null;
+    /** Nome del bonus Mandala (Grand Tour); `null` se il ruleset non lo prevede. */
+    mandalaName: string | null;
     /** Mappa della partita (nomi delle città); `null` finché non è caricata. */
     mapData: MapData | null;
     /** Contenuto mostrato fra la riga del vincitore e la classifica (es. la mappa). */
@@ -27,6 +29,8 @@
 
   const winners = $derived(winnerNames(scores, players));
   const globetrotterIds = $derived(scores.filter((fs) => fs.globetrotterBonus > 0).map((fs) => fs.playerId));
+
+  const mandalaIds = $derived(scores.filter((fs) => fs.mandalaBonus > 0).map((fs) => fs.playerId));
 
   function namesOf(ids: string[]): string {
     return ids.map((pid) => players.find((ps) => ps.player_id === pid)?.name ?? pid).join(', ');
@@ -50,6 +54,7 @@
         {#if fs.ticketFailed < 0} · {fs.ticketFailed}{/if}
         {#if longestPathName !== null && fs.longestPathBonus > 0} · 🏆 +{fs.longestPathBonus}{/if}
         {#if fs.globetrotterBonus > 0} · 🌍 +{fs.globetrotterBonus}{/if}
+        {#if (fs.mandalaBonus ?? 0) > 0} · 🪷 +{fs.mandalaBonus}{/if}
         {#if (fs.stationPoints ?? 0) > 0} · 🏠 +{fs.stationPoints}{/if}
         {#if (fs.countryPoints ?? 0) > 0} · Carte Paese +{fs.countryPoints}{/if}
         {#if (fs.passengerPoints ?? 0) > 0} · Passeggeri +{fs.passengerPoints}{/if}
@@ -81,6 +86,11 @@
 {#if globetrotterName !== null && globetrotterIds.length > 0}
   <div class="longest-banner">
     🌍 {globetrotterName}: {namesOf(globetrotterIds)}
+  </div>
+{/if}
+{#if mandalaName !== null && mandalaIds.length > 0}
+  <div class="longest-banner">
+    🪷 {mandalaName}: {namesOf(mandalaIds)}
   </div>
 {/if}
 

@@ -10,8 +10,8 @@ use crate::error::{EngineError, GamePhase};
 use crate::event::{FinalScore, GameEvent};
 use crate::payment::{PaymentError, PaymentSpec, check_declared_colors};
 use crate::scoring::{
-    LongestPathRules, TicketSpec, UnionFind, compute_final_scores, evaluate_tickets,
-    globetrotter_winners, passenger_majority_points,
+    LongestPathRules, MandalaGraph, TicketSpec, UnionFind, compute_final_scores, evaluate_tickets,
+    globetrotter_winners, mandala_points, passenger_majority_points,
 };
 use crate::types::{
     CityId, ClaimedRouteInfo, ClaimedRouteRecord, LAST_ROUND_TRAIN_THRESHOLD, PendingTunnel, Route,
@@ -545,6 +545,37 @@ impl Engine {
         });
     }
 
+    /// Bonus `mandala` per giocatore (tutti 0 senza il bonus nel ruleset): marca in
+    /// `final_ticket_results` i biglietti con una destinazione collegata alla partenza da
+    /// almeno due percorsi senza rotte in comune tra le sole rotte del giocatore (non
+    /// quelle prese in prestito dalle stazioni), poi legge la tabella con il loro numero.
+    fn mark_mandala_tickets(&mut self, routes_per_player: &[Vec<ClaimedRouteInfo>]) -> Vec<i32> {
+        let Some(table) = self.ruleset.mandala_table() else {
+            return vec![0; self.players.len()];
+        };
+        let countries = self.connectivity.countries();
+        self.final_ticket_results
+            .iter_mut()
+            .zip(routes_per_player)
+            .map(|(results, claimed)| {
+                let graph = MandalaGraph::new(claimed, &self.routes_by_id, countries);
+                for result in results.iter_mut() {
+                    result.mandala = self
+                        .tickets_by_id
+                        .get(&result.ticket_id)
+                        .is_some_and(|def| {
+                            TicketSpec::of(def)
+                                .destinations
+                                .iter()
+                                .any(|&(to, _)| graph.two_disjoint_paths(&def.from, to))
+                        });
+                }
+                let count = results.iter().filter(|r| r.mandala).count();
+                points_to_score(mandala_points(table, count))
+            })
+            .collect()
+    }
+
     /// Calcola il punteggio finale e genera l'evento GameOver.
     fn compute_game_over(&mut self) -> Vec<GameEvent> {
         let routes_per_player: Vec<Vec<ClaimedRouteInfo>> = (0..self.players.len())
@@ -607,6 +638,7 @@ impl Engine {
             .iter_mut()
             .map(|s| std::mem::take(&mut s.ticket_results))
             .collect();
+        let mandala_points = self.mark_mandala_tickets(&routes_per_player);
 
         let passenger_points: Vec<i32> = match &self.ruleset.passengers {
             Some(config) => {
@@ -638,6 +670,7 @@ impl Engine {
                 } else {
                     0
                 };
+                let mandala_bonus = mandala_points[i];
                 let station_points = self.unbuilt_station_points(i);
                 let country_points = points_to_score(
                     p.country_cards
@@ -652,6 +685,7 @@ impl Engine {
                     .saturating_add(s.failed_tickets)
                     .saturating_add(bonus_val)
                     .saturating_add(globetrotter_bonus)
+                    .saturating_add(mandala_bonus)
                     .saturating_add(station_points)
                     .saturating_add(country_points)
                     .saturating_add(passenger_points);
@@ -662,6 +696,7 @@ impl Engine {
                     ticket_failed: s.failed_tickets,
                     longest_path_bonus: bonus_val,
                     globetrotter_bonus,
+                    mandala_bonus,
                     total,
                     station_points,
                     borrowed_routes: s.borrowed_routes.clone(),

@@ -2,7 +2,7 @@
 //!
 //! Piano §9.1 (Union-Find), §9.3 (Longest path DFS con backtracking).
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ops::Bound;
 
 use crate::types::{
@@ -374,6 +374,7 @@ fn ticket_results(
                     ticket_id: def.id.clone(),
                     completed: true,
                     destination: Some(to.to_string()),
+                    mandala: false,
                     points: points_to_score(points),
                 }
             }
@@ -381,6 +382,7 @@ fn ticket_results(
                 ticket_id: def.id.clone(),
                 completed: false,
                 destination: None,
+                mandala: false,
                 points: -points_to_score(spec.failed_points()),
             },
         })
@@ -963,6 +965,119 @@ fn longest_path_search(
             .iter()
             .map(|&edge| graph_routes[edge].id.clone())
             .collect(),
+    }
+}
+
+// ── Bonus Mandala (India) ────────────────────────────────────────────
+
+/// Rete di un giocatore per il bonus `mandala`: solo le sue rotte, ognuna un arco non
+/// orientato di capacità 1. Gli estremi Paese sono nodi privati (`route_node`), quindi un
+/// Paese non collega mai due rotte e non è mai un estremo raggiungibile di un biglietto.
+pub(crate) struct MandalaGraph {
+    /// Nome del nodo → indice, in ordine alfabetico.
+    nodes: BTreeMap<String, usize>,
+    /// Per nodo, gli archi uscenti (indici in `arcs`) nell'ordine di id delle rotte.
+    adjacency: Vec<Vec<usize>>,
+    /// Arco `2e` = `u → v`, arco `2e + 1` = `v → u` (il residuo l'uno dell'altro); l'elemento
+    /// è il nodo di arrivo.
+    arcs: Vec<usize>,
+}
+
+impl MandalaGraph {
+    pub(crate) fn new(
+        claimed: &[ClaimedRouteInfo],
+        routes_map: &BTreeMap<RouteId, Route>,
+        countries: &BTreeSet<CityId>,
+    ) -> Self {
+        let mut ids: Vec<&RouteId> = claimed.iter().map(|c| &c.route_id).collect();
+        ids.sort();
+        let ends: Vec<(String, String)> = ids
+            .iter()
+            .filter_map(|id| routes_map.get(*id))
+            .map(|r| {
+                (
+                    route_node(countries, &r.id, &r.from),
+                    route_node(countries, &r.id, &r.to),
+                )
+            })
+            .collect();
+        let mut names: BTreeSet<&str> = BTreeSet::new();
+        for (from, to) in &ends {
+            names.insert(from);
+            names.insert(to);
+        }
+        let nodes: BTreeMap<String, usize> = names
+            .into_iter()
+            .enumerate()
+            .map(|(i, name)| (name.to_string(), i))
+            .collect();
+        let mut adjacency = vec![Vec::new(); nodes.len()];
+        let mut arcs = Vec::with_capacity(ends.len() * 2);
+        for (from, to) in &ends {
+            let (u, v) = (nodes[from], nodes[to]);
+            adjacency[u].push(arcs.len());
+            arcs.push(v);
+            adjacency[v].push(arcs.len());
+            arcs.push(u);
+        }
+        Self {
+            nodes,
+            adjacency,
+            arcs,
+        }
+    }
+
+    /// `true` se `from` e `to` sono collegati da almeno due percorsi continui senza rotte in
+    /// comune (possono incrociarsi nelle città): flusso massimo ≥ 2 con capacità unitarie,
+    /// cioè due aumenti BFS.
+    pub(crate) fn two_disjoint_paths(&self, from: &str, to: &str) -> bool {
+        let (Some(&source), Some(&sink)) = (self.nodes.get(from), self.nodes.get(to)) else {
+            return false;
+        };
+        if source == sink {
+            return false;
+        }
+        let mut capacity = vec![1u8; self.arcs.len()];
+        (0..2).all(|_| self.augment(source, sink, &mut capacity))
+    }
+
+    /// Un cammino aumentante BFS da `source` a `sink` sulla rete residua.
+    fn augment(&self, source: usize, sink: usize, capacity: &mut [u8]) -> bool {
+        let mut via: Vec<Option<usize>> = vec![None; self.adjacency.len()];
+        let mut seen = vec![false; self.adjacency.len()];
+        seen[source] = true;
+        let mut queue = VecDeque::from([source]);
+        while let Some(node) = queue.pop_front() {
+            for &arc in &self.adjacency[node] {
+                let next = self.arcs[arc];
+                if capacity[arc] == 0 || seen[next] {
+                    continue;
+                }
+                seen[next] = true;
+                via[next] = Some(arc);
+                if next == sink {
+                    let mut at = sink;
+                    while let Some(arc) = via[at] {
+                        capacity[arc] -= 1;
+                        capacity[arc ^ 1] += 1;
+                        at = self.arcs[arc ^ 1];
+                    }
+                    return true;
+                }
+                queue.push_back(next);
+            }
+        }
+        false
+    }
+}
+
+/// Bonus `mandala` con `count` biglietti qualificati: `table[count - 1]`, l'ultimo valore
+/// oltre la fine della tabella, 0 senza biglietti.
+#[must_use]
+pub fn mandala_points(table: &[u32], count: usize) -> u32 {
+    match count {
+        0 => 0,
+        n => table.get(n - 1).or(table.last()).copied().unwrap_or(0),
     }
 }
 

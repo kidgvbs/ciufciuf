@@ -1,0 +1,1902 @@
+{
+  "cities": [
+    {
+      "id": "agra",
+      "name": "Agra",
+      "lat": 27.18,
+      "lon": 78.01
+    },
+    {
+      "id": "ahmadabad",
+      "name": "Ahmadabad",
+      "lat": 23.03,
+      "lon": 72.58
+    },
+    {
+      "id": "ambala",
+      "name": "Ambala",
+      "lat": 30.38,
+      "lon": 76.78
+    },
+    {
+      "id": "bareilly",
+      "name": "Bareilly",
+      "lat": 28.37,
+      "lon": 79.43
+    },
+    {
+      "id": "bezwada",
+      "name": "Bezwada",
+      "lat": 16.51,
+      "lon": 80.65
+    },
+    {
+      "id": "bhatinda",
+      "name": "Bhatinda",
+      "lat": 30.21,
+      "lon": 74.95
+    },
+    {
+      "id": "bhopal",
+      "name": "Bhopal",
+      "lat": 23.26,
+      "lon": 77.41
+    },
+    {
+      "id": "bilaspur",
+      "name": "Bilaspur",
+      "lat": 22.08,
+      "lon": 82.14
+    },
+    {
+      "id": "bombay",
+      "name": "Bombay",
+      "lat": 19.08,
+      "lon": 72.88
+    },
+    {
+      "id": "calcutta",
+      "name": "Calcutta",
+      "lat": 22.57,
+      "lon": 88.36
+    },
+    {
+      "id": "calicut",
+      "name": "Calicut",
+      "lat": 11.26,
+      "lon": 75.78
+    },
+    {
+      "id": "chittagong",
+      "name": "Chittagong",
+      "lat": 22.36,
+      "lon": 91.78
+    },
+    {
+      "id": "delhi",
+      "name": "Delhi",
+      "lat": 28.61,
+      "lon": 77.21
+    },
+    {
+      "id": "dhubri",
+      "name": "Dhubri",
+      "lat": 26.02,
+      "lon": 89.98
+    },
+    {
+      "id": "erode",
+      "name": "Erode",
+      "lat": 11.34,
+      "lon": 77.72
+    },
+    {
+      "id": "guntakal",
+      "name": "Guntakal",
+      "lat": 15.17,
+      "lon": 77.37
+    },
+    {
+      "id": "indur",
+      "name": "Indur",
+      "lat": 18.67,
+      "lon": 78.09
+    },
+    {
+      "id": "jacobabad",
+      "name": "Jacobabad",
+      "lat": 28.28,
+      "lon": 68.44
+    },
+    {
+      "id": "jaipur",
+      "name": "Jaipur",
+      "lat": 26.91,
+      "lon": 75.79
+    },
+    {
+      "id": "jarhat",
+      "name": "Jarhat",
+      "lat": 26.75,
+      "lon": 94.22
+    },
+    {
+      "id": "jodhpur",
+      "name": "Jodhpur",
+      "lat": 26.24,
+      "lon": 73.02
+    },
+    {
+      "id": "karachi",
+      "name": "Karachi",
+      "lat": 24.86,
+      "lon": 67.01
+    },
+    {
+      "id": "katni",
+      "name": "Katni",
+      "lat": 23.83,
+      "lon": 80.4
+    },
+    {
+      "id": "khandwa",
+      "name": "Khandwa",
+      "lat": 21.83,
+      "lon": 76.35
+    },
+    {
+      "id": "lahore",
+      "name": "Lahore",
+      "lat": 31.55,
+      "lon": 74.34
+    },
+    {
+      "id": "lucknow",
+      "name": "Lucknow",
+      "lat": 26.85,
+      "lon": 80.95
+    },
+    {
+      "id": "madras",
+      "name": "Madras",
+      "lat": 13.08,
+      "lon": 80.27
+    },
+    {
+      "id": "mangalore",
+      "name": "Mangalore",
+      "lat": 12.91,
+      "lon": 74.86
+    },
+    {
+      "id": "manmad",
+      "name": "Manmad",
+      "lat": 20.25,
+      "lon": 74.44
+    },
+    {
+      "id": "mormugau",
+      "name": "Mormugau",
+      "lat": 15.4,
+      "lon": 73.8
+    },
+    {
+      "id": "patna",
+      "name": "Patna",
+      "lat": 25.59,
+      "lon": 85.14
+    },
+    {
+      "id": "peshawar",
+      "name": "Peshawar",
+      "lat": 34.01,
+      "lon": 71.58
+    },
+    {
+      "id": "poona",
+      "name": "Poona",
+      "lat": 18.52,
+      "lon": 73.86
+    },
+    {
+      "id": "quilon",
+      "name": "Quilon",
+      "lat": 8.89,
+      "lon": 76.61
+    },
+    {
+      "id": "raipur",
+      "name": "Raipur",
+      "lat": 21.25,
+      "lon": 81.63
+    },
+    {
+      "id": "ratiam",
+      "name": "Ratiam",
+      "lat": 23.33,
+      "lon": 75.04
+    },
+    {
+      "id": "rohri",
+      "name": "Rohri",
+      "lat": 27.69,
+      "lon": 68.9
+    },
+    {
+      "id": "wadi",
+      "name": "Wadi",
+      "lat": 17.06,
+      "lon": 76.99
+    },
+    {
+      "id": "waltain",
+      "name": "Waltain",
+      "lat": 17.69,
+      "lon": 83.22
+    }
+  ],
+  "routes": [
+    {
+      "id": "agra_bhopal_1",
+      "from": "agra",
+      "to": "bhopal",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_bhopal_2",
+      "from": "agra",
+      "to": "bhopal",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_delhi_1",
+      "from": "agra",
+      "to": "delhi",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_jaipur_1",
+      "from": "agra",
+      "to": "jaipur",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_jaipur_2",
+      "from": "agra",
+      "to": "jaipur",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_katni_1",
+      "from": "agra",
+      "to": "katni",
+      "len": 2,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agra_lucknow_1",
+      "from": "agra",
+      "to": "lucknow",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ahmadabad_bombay_1",
+      "from": "ahmadabad",
+      "to": "bombay",
+      "len": 3,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ahmadabad_jodhpur_1",
+      "from": "ahmadabad",
+      "to": "jodhpur",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ahmadabad_jodhpur_2",
+      "from": "ahmadabad",
+      "to": "jodhpur",
+      "len": 3,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ahmadabad_khandwa_1",
+      "from": "ahmadabad",
+      "to": "khandwa",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ahmadabad_ratiam_1",
+      "from": "ahmadabad",
+      "to": "ratiam",
+      "len": 1,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ambala_bareilly_1",
+      "from": "ambala",
+      "to": "bareilly",
+      "len": 2,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ambala_bhatinda_1",
+      "from": "ambala",
+      "to": "bhatinda",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ambala_bhatinda_2",
+      "from": "ambala",
+      "to": "bhatinda",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ambala_delhi_1",
+      "from": "ambala",
+      "to": "delhi",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ambala_delhi_2",
+      "from": "ambala",
+      "to": "delhi",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ambala_lahore_1",
+      "from": "ambala",
+      "to": "lahore",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bareilly_delhi_1",
+      "from": "bareilly",
+      "to": "delhi",
+      "len": 1,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bareilly_lucknow_1",
+      "from": "bareilly",
+      "to": "lucknow",
+      "len": 1,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bareilly_patna_1",
+      "from": "bareilly",
+      "to": "patna",
+      "len": 4,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bezwada_guntakal_1",
+      "from": "bezwada",
+      "to": "guntakal",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bezwada_indur_1",
+      "from": "bezwada",
+      "to": "indur",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bezwada_indur_2",
+      "from": "bezwada",
+      "to": "indur",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bezwada_madras_1",
+      "from": "bezwada",
+      "to": "madras",
+      "len": 1,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bezwada_waltain_1",
+      "from": "bezwada",
+      "to": "waltain",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bezwada_waltain_2",
+      "from": "bezwada",
+      "to": "waltain",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhatinda_delhi_1",
+      "from": "bhatinda",
+      "to": "delhi",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhatinda_jodhpur_1",
+      "from": "bhatinda",
+      "to": "jodhpur",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhatinda_lahore_1",
+      "from": "bhatinda",
+      "to": "lahore",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhatinda_lahore_2",
+      "from": "bhatinda",
+      "to": "lahore",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhatinda_rohri_1",
+      "from": "bhatinda",
+      "to": "rohri",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhopal_bilaspur_1",
+      "from": "bhopal",
+      "to": "bilaspur",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhopal_bilaspur_2",
+      "from": "bhopal",
+      "to": "bilaspur",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhopal_khandwa_1",
+      "from": "bhopal",
+      "to": "khandwa",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bhopal_ratiam_1",
+      "from": "bhopal",
+      "to": "ratiam",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bilaspur_calcutta_1",
+      "from": "bilaspur",
+      "to": "calcutta",
+      "len": 4,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bilaspur_katni_1",
+      "from": "bilaspur",
+      "to": "katni",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bilaspur_katni_2",
+      "from": "bilaspur",
+      "to": "katni",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bilaspur_raipur_1",
+      "from": "bilaspur",
+      "to": "raipur",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bilaspur_raipur_2",
+      "from": "bilaspur",
+      "to": "raipur",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_calicut_1",
+      "from": "bombay",
+      "to": "calicut",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "bombay_karachi_1",
+      "from": "bombay",
+      "to": "karachi",
+      "len": 6,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "bombay_karachi_2",
+      "from": "bombay",
+      "to": "karachi",
+      "len": 6,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "bombay_manmad_1",
+      "from": "bombay",
+      "to": "manmad",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_mormugau_1",
+      "from": "bombay",
+      "to": "mormugau",
+      "len": 1,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bombay_poona_1",
+      "from": "bombay",
+      "to": "poona",
+      "len": 1,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_chittagong_1",
+      "from": "calcutta",
+      "to": "chittagong",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "calcutta_chittagong_2",
+      "from": "calcutta",
+      "to": "chittagong",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "calcutta_dhubri_1",
+      "from": "calcutta",
+      "to": "dhubri",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_dhubri_2",
+      "from": "calcutta",
+      "to": "dhubri",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_madras_1",
+      "from": "calcutta",
+      "to": "madras",
+      "len": 8,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "calcutta_patna_1",
+      "from": "calcutta",
+      "to": "patna",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_raipur_1",
+      "from": "calcutta",
+      "to": "raipur",
+      "len": 4,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calcutta_waltain_1",
+      "from": "calcutta",
+      "to": "waltain",
+      "len": 4,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calicut_erode_1",
+      "from": "calicut",
+      "to": "erode",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calicut_erode_2",
+      "from": "calicut",
+      "to": "erode",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calicut_mangalore_1",
+      "from": "calicut",
+      "to": "mangalore",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calicut_mangalore_2",
+      "from": "calicut",
+      "to": "mangalore",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "calicut_quilon_1",
+      "from": "calicut",
+      "to": "quilon",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "calicut_quilon_2",
+      "from": "calicut",
+      "to": "quilon",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "chittagong_dhubri_1",
+      "from": "chittagong",
+      "to": "dhubri",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "chittagong_jarhat_1",
+      "from": "chittagong",
+      "to": "jarhat",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "delhi_jaipur_1",
+      "from": "delhi",
+      "to": "jaipur",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "delhi_lucknow_1",
+      "from": "delhi",
+      "to": "lucknow",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dhubri_jarhat_1",
+      "from": "dhubri",
+      "to": "jarhat",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dhubri_jarhat_2",
+      "from": "dhubri",
+      "to": "jarhat",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dhubri_patna_1",
+      "from": "dhubri",
+      "to": "patna",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "dhubri_patna_2",
+      "from": "dhubri",
+      "to": "patna",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erode_madras_1",
+      "from": "erode",
+      "to": "madras",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erode_madras_2",
+      "from": "erode",
+      "to": "madras",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "erode_quilon_1",
+      "from": "erode",
+      "to": "quilon",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "guntakal_madras_1",
+      "from": "guntakal",
+      "to": "madras",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "guntakal_mangalore_1",
+      "from": "guntakal",
+      "to": "mangalore",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "guntakal_mormugau_1",
+      "from": "guntakal",
+      "to": "mormugau",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "guntakal_wadi_1",
+      "from": "guntakal",
+      "to": "wadi",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "guntakal_wadi_2",
+      "from": "guntakal",
+      "to": "wadi",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "indur_manmad_1",
+      "from": "indur",
+      "to": "manmad",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "indur_wadi_1",
+      "from": "indur",
+      "to": "wadi",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jacobabad_karachi_1",
+      "from": "jacobabad",
+      "to": "karachi",
+      "len": 4,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jacobabad_lahore_1",
+      "from": "jacobabad",
+      "to": "lahore",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jacobabad_peshawar_1",
+      "from": "jacobabad",
+      "to": "peshawar",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jacobabad_peshawar_2",
+      "from": "jacobabad",
+      "to": "peshawar",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jacobabad_rohri_1",
+      "from": "jacobabad",
+      "to": "rohri",
+      "len": 1,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jacobabad_rohri_2",
+      "from": "jacobabad",
+      "to": "rohri",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jaipur_jodhpur_1",
+      "from": "jaipur",
+      "to": "jodhpur",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jaipur_ratiam_1",
+      "from": "jaipur",
+      "to": "ratiam",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jaipur_ratiam_2",
+      "from": "jaipur",
+      "to": "ratiam",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "jodhpur_karachi_1",
+      "from": "jodhpur",
+      "to": "karachi",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "karachi_rohri_1",
+      "from": "karachi",
+      "to": "rohri",
+      "len": 3,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katni_lucknow_1",
+      "from": "katni",
+      "to": "lucknow",
+      "len": 1,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katni_lucknow_2",
+      "from": "katni",
+      "to": "lucknow",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katni_patna_1",
+      "from": "katni",
+      "to": "patna",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "katni_patna_2",
+      "from": "katni",
+      "to": "patna",
+      "len": 2,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "khandwa_manmad_1",
+      "from": "khandwa",
+      "to": "manmad",
+      "len": 1,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "khandwa_raipur_1",
+      "from": "khandwa",
+      "to": "raipur",
+      "len": 4,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "khandwa_ratiam_1",
+      "from": "khandwa",
+      "to": "ratiam",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lahore_peshawar_1",
+      "from": "lahore",
+      "to": "peshawar",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lahore_peshawar_2",
+      "from": "lahore",
+      "to": "peshawar",
+      "len": 1,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "madras_mangalore_1",
+      "from": "madras",
+      "to": "mangalore",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "madras_waltain_1",
+      "from": "madras",
+      "to": "waltain",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mangalore_mormugau_1",
+      "from": "mangalore",
+      "to": "mormugau",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "manmad_poona_1",
+      "from": "manmad",
+      "to": "poona",
+      "len": 1,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mormugau_poona_1",
+      "from": "mormugau",
+      "to": "poona",
+      "len": 1,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "mormugau_wadi_1",
+      "from": "mormugau",
+      "to": "wadi",
+      "len": 2,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "poona_wadi_1",
+      "from": "poona",
+      "to": "wadi",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "raipur_waltain_1",
+      "from": "raipur",
+      "to": "waltain",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "raipur_waltain_2",
+      "from": "raipur",
+      "to": "waltain",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "agra_jarhat",
+      "from": "agra",
+      "to": "jarhat",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "agra_rohri",
+      "from": "rohri",
+      "to": "agra",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ahmadabad_bareilly",
+      "from": "bareilly",
+      "to": "ahmadabad",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ahmadabad_calicut",
+      "from": "ahmadabad",
+      "to": "calicut",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ahmadabad_karachi",
+      "from": "karachi",
+      "to": "ahmadabad",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ambala_mormugau",
+      "from": "ambala",
+      "to": "mormugau",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ambala_ratiam",
+      "from": "ambala",
+      "to": "ratiam",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ambala_waltain",
+      "from": "ambala",
+      "to": "waltain",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bareilly_calcutta",
+      "from": "bareilly",
+      "to": "calcutta",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bareilly_guntakal",
+      "from": "bareilly",
+      "to": "guntakal",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bezwada_bhatinda",
+      "from": "bhatinda",
+      "to": "bezwada",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bezwada_bombay",
+      "from": "bombay",
+      "to": "bezwada",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bezwada_ratiam",
+      "from": "ratiam",
+      "to": "bezwada",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bhatinda_bilaspur",
+      "from": "bhatinda",
+      "to": "bilaspur",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bhatinda_manmad",
+      "from": "bhatinda",
+      "to": "manmad",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bhopal_calcutta",
+      "from": "bhopal",
+      "to": "calcutta",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bhopal_mormugau",
+      "from": "bhopal",
+      "to": "mormugau",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bhopal_peshawar",
+      "from": "peshawar",
+      "to": "bhopal",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bilaspur_calicut",
+      "from": "bilaspur",
+      "to": "calicut",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bilaspur_dhubri",
+      "from": "bilaspur",
+      "to": "dhubri",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bombay_jacobabad",
+      "from": "jacobabad",
+      "to": "bombay",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bombay_jarhat",
+      "from": "jarhat",
+      "to": "bombay",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bombay_lucknow",
+      "from": "lucknow",
+      "to": "bombay",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bombay_quilon",
+      "from": "bombay",
+      "to": "quilon",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "calcutta_erode",
+      "from": "calcutta",
+      "to": "erode",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "calcutta_indur",
+      "from": "calcutta",
+      "to": "indur",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "calcutta_jacobabad",
+      "from": "jacobabad",
+      "to": "calcutta",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "calicut_delhi",
+      "from": "delhi",
+      "to": "calicut",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "chittagong_delhi",
+      "from": "delhi",
+      "to": "chittagong",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "chittagong_khandwa",
+      "from": "khandwa",
+      "to": "chittagong",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "chittagong_wadi",
+      "from": "chittagong",
+      "to": "wadi",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "delhi_indur",
+      "from": "delhi",
+      "to": "indur",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "delhi_karachi",
+      "from": "karachi",
+      "to": "delhi",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "delhi_lahore",
+      "from": "lahore",
+      "to": "delhi",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "dhubri_lahore",
+      "from": "lahore",
+      "to": "dhubri",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "dhubri_mangalore",
+      "from": "dhubri",
+      "to": "mangalore",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "erode_lucknow",
+      "from": "lucknow",
+      "to": "erode",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "erode_manmad",
+      "from": "manmad",
+      "to": "erode",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "guntakal_jodhpur",
+      "from": "jodhpur",
+      "to": "guntakal",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "guntakal_raipur",
+      "from": "guntakal",
+      "to": "raipur",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "jacobabad_ratiam",
+      "from": "jacobabad",
+      "to": "ratiam",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "jaipur_patna",
+      "from": "jaipur",
+      "to": "patna",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "jaipur_poona",
+      "from": "jaipur",
+      "to": "poona",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "jaipur_raipur",
+      "from": "jaipur",
+      "to": "raipur",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "jodhpur_khandwa",
+      "from": "jodhpur",
+      "to": "khandwa",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "jodhpur_lucknow",
+      "from": "jodhpur",
+      "to": "lucknow",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "karachi_poona",
+      "from": "karachi",
+      "to": "poona",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "katni_khandwa",
+      "from": "katni",
+      "to": "khandwa",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "katni_wadi",
+      "from": "katni",
+      "to": "wadi",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "katni_waltain",
+      "from": "katni",
+      "to": "waltain",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "lahore_wadi",
+      "from": "lahore",
+      "to": "wadi",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "madras_patna",
+      "from": "patna",
+      "to": "madras",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "madras_peshawar",
+      "from": "peshawar",
+      "to": "madras",
+      "points": 17,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "madras_quilon",
+      "from": "madras",
+      "to": "quilon",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "mangalore_rohri",
+      "from": "rohri",
+      "to": "mangalore",
+      "points": 12,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "mangalore_waltain",
+      "from": "waltain",
+      "to": "mangalore",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "manmad_raipur",
+      "from": "raipur",
+      "to": "manmad",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "mormugau_patna",
+      "from": "patna",
+      "to": "mormugau",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    }
+  ]
+}

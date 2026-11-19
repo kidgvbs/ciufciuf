@@ -322,6 +322,11 @@ pub struct Bonus {
     pub bonus_type: String,
     pub label: String,
     pub points: u32,
+    /// Solo `mandala`: bonus totale per numero di biglietti qualificati, cumulativo
+    /// (`table[k - 1]` con k biglietti; oltre la lunghezza vale l'ultimo valore).
+    /// Non vuoto, non decrescente, con `points` uguale all'ultimo valore.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub table: Vec<u32>,
 }
 
 /// Regola di scelta del draft iniziale per un deck: biglietti distribuiti a ogni
@@ -371,6 +376,15 @@ impl Ruleset {
             .iter()
             .find(|b| b.bonus_type == bonus_type)
             .map(|b| b.points)
+    }
+
+    /// Tabella cumulativa del bonus `mandala`, se il ruleset lo prevede.
+    #[must_use]
+    pub fn mandala_table(&self) -> Option<&[u32]> {
+        self.bonuses
+            .iter()
+            .find(|b| b.bonus_type == MANDALA_BONUS_TYPE)
+            .map(|b| b.table.as_slice())
     }
 
     /// Spareggi in ordine di importanza: quelli del ruleset (le chiavi sconosciute, che la
@@ -439,6 +453,10 @@ pub struct TicketResult {
     pub completed: bool,
     /// Destinazione realizzata; `None` se il biglietto è fallito.
     pub destination: Option<CityId>,
+    /// Il biglietto conta per il bonus `mandala`: una sua destinazione è collegata alla
+    /// partenza da almeno due percorsi senza rotte in comune. Sempre `false` senza il bonus.
+    #[serde(default)]
+    pub mandala: bool,
     /// Punti guadagnati (> 0) o persi (≤ 0: il valore più basso del biglietto).
     pub points: i32,
 }
@@ -515,6 +533,10 @@ pub const LONGEST_PATH_BONUS_TYPE: &str = "longest_path";
 
 /// Valore di `Bonus::bonus_type` per il bonus di chi completa più biglietti.
 pub const GLOBETROTTER_BONUS_TYPE: &str = "globetrotter";
+
+/// Valore di `Bonus::bonus_type` per il bonus dei biglietti con due percorsi distinti
+/// (Grand Tour / Mandala, India).
+pub const MANDALA_BONUS_TYPE: &str = "mandala";
 
 /// Valore canonico di `Route::color` per le rotte grigie.
 pub const GRAY_ROUTE_COLOR: &str = "Gray";

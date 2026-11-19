@@ -373,6 +373,7 @@
           longestPathPlayerIds={publicStore.longestPathPlayerIds}
           longestPathName={rulesetCatalog.hasLongestPath(gameMap.rulesetId) ? rulesetCatalog.longestPathLabel(gameMap.rulesetId) : null}
           globetrotterName={rulesetCatalog.hasGlobetrotter(gameMap.rulesetId) ? rulesetCatalog.globetrotterLabel(gameMap.rulesetId) : null}
+          mandalaName={rulesetCatalog.hasMandala(gameMap.rulesetId) ? rulesetCatalog.mandalaLabel(gameMap.rulesetId) : null}
           mapData={gameMap.state.data}
         >
           <!-- Mappa a fine partita: il percorso più lungo è evidenziato (glow dorato). -->

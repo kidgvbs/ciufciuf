@@ -641,6 +641,7 @@ pub(crate) fn build_final_scores(
                 ticket_failed: fs.ticket_failed,
                 longest_path_bonus: fs.longest_path_bonus,
                 globetrotter_bonus: fs.globetrotter_bonus,
+                mandala_bonus: fs.mandala_bonus,
                 station_points: fs.station_points,
                 total: fs.total,
                 winner: fs.winner,
@@ -654,6 +655,7 @@ pub(crate) fn build_final_scores(
                         completed: t.completed,
                         city_id: t.destination.clone(),
                         points: t.points,
+                        mandala: t.mandala,
                     })
                     .collect(),
                 borrowed_routes: fs

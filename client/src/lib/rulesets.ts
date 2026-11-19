@@ -11,10 +11,12 @@ import type { RulesetPayment } from './payment';
 
 /** Bonus di fine partita del ruleset (tipi sconosciuti ammessi: i consumatori li ignorano). */
 export interface RulesetBonus {
-  /** `longest_path` o `globetrotter` (altri tipi futuri sono ignorati). */
+  /** `longest_path`, `globetrotter` o `mandala` (altri tipi futuri sono ignorati). */
   type: string;
   label: string;
   points: number;
+  /** Solo `mandala`: bonus cumulativo per numero di biglietti qualificati (`points` è il massimo). */
+  table?: number[];
 }
 
 export interface RulesetInfo {
@@ -75,6 +77,7 @@ export const DEFAULT_RULESET_ID = 'usa_v2';
 
 const LONGEST_PATH = 'longest_path';
 const GLOBETROTTER = 'globetrotter';
+const MANDALA = 'mandala';
 const STANDARD_MODE = 'Standard';
 
 /** Nome del bonus percorso più lungo quando il catalogo non lo conosce. */
@@ -82,6 +85,9 @@ export const FALLBACK_LONGEST_PATH_LABEL = 'Longest Path';
 
 /** Nome del bonus Globetrotter quando il catalogo non lo conosce. */
 export const FALLBACK_GLOBETROTTER_LABEL = 'Globetrotter';
+
+/** Nome del bonus Mandala quando il catalogo non lo conosce. */
+export const FALLBACK_MANDALA_LABEL = 'Grand Tour';
 
 const UNEXPECTED_RESPONSE = 'Risposta inattesa dal server';
 
@@ -94,7 +100,14 @@ function isCount(v: unknown): v is number {
 }
 
 function isRulesetBonus(v: unknown): v is RulesetBonus {
-  return isRecord(v) && isNonEmptyString(v.type) && isNonEmptyString(v.label) && typeof v.points === 'number' && Number.isInteger(v.points);
+  return (
+    isRecord(v) &&
+    isNonEmptyString(v.type) &&
+    isNonEmptyString(v.label) &&
+    typeof v.points === 'number' &&
+    Number.isInteger(v.points) &&
+    (v.table === undefined || (Array.isArray(v.table) && v.table.every(isCount)))
+  );
 }
 
 /** `true` se `v` ha la forma di `RulesetInfo` (conteggi interi ≥ 0, giocatori 1 ≤ min ≤ max, bonus con tipo/etichetta/punti). */
@@ -199,6 +212,14 @@ export function globetrotterLabel(
   return bonusOf(catalog, rulesetId, GLOBETROTTER)?.label ?? FALLBACK_GLOBETROTTER_LABEL;
 }
 
+/** Nome del bonus Mandala per `rulesetId`; 'Grand Tour' se assente dal catalogo o non previsto. */
+export function mandalaLabel(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): string {
+  return bonusOf(catalog, rulesetId, MANDALA)?.label ?? FALLBACK_MANDALA_LABEL;
+}
+
 /** `true` se il ruleset prevede il bonus percorso più lungo. Catalogo non pronto o ruleset ignoto → `true` (comportamento storico). */
 export function hasLongestPath(
   catalog: readonly RulesetInfo[],
@@ -213,6 +234,14 @@ export function hasGlobetrotter(
   rulesetId: string | null | undefined,
 ): boolean {
   return bonusOf(catalog, rulesetId, GLOBETROTTER) !== null;
+}
+
+/** `true` se il ruleset prevede il bonus Mandala (ruleset ignoto → `false`). */
+export function hasMandala(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): boolean {
+  return bonusOf(catalog, rulesetId, MANDALA) !== null;
 }
 
 /** Ids delle grandi città da marcare sulla mappa di `rulesetId` (vuoto se assente o senza). */
@@ -281,8 +310,10 @@ export function modeBlurb(r: RulesetInfo): string {
   ];
   if (r.passengers === true) parts.push('passeggeri');
   if (r.countryCards === true) parts.push('carte Paese');
-  const known = r.bonuses.filter((b) => b.type === LONGEST_PATH || b.type === GLOBETROTTER);
+  const known = r.bonuses.filter(
+    (b) => b.type === LONGEST_PATH || b.type === GLOBETROTTER || b.type === MANDALA,
+  );
   if (known.length === 0) parts.push('nessun bonus');
-  else for (const b of known) parts.push(`${b.label} +${b.points}`);
+  else for (const b of known) parts.push(b.type === MANDALA ? `${b.label} fino a +${b.points}` : `${b.label} +${b.points}`);
   return parts.join(' · ');
 }
