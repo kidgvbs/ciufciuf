@@ -23,6 +23,13 @@
 // Gate ratio: ≤1.6× standard, ≤1.7× per rotte ≥5 carte (eccezione documentata).
 //
 // Pipeline:
+//   0. (opt-in per mappa: MAP_TUNING[map].splitCountries, oggi solo Switzerland) Paesi → bandierine:
+//      ogni città `country: true` è sostituita da un nodo `<paese>#<id rotta>` di grado 1 per ogni
+//      rotta di confine (sul tabellone ogni bandierina ha UNA rotta). Le bandierine entrano nella
+//      simulazione e in tutti i controlli come «label» fisse col loro footprint 22×15 (+bordo); gli id
+//      pseudo restano fuori da cities/labels (solo estremi in routes). A fine pipeline il NOME di ogni
+//      Paese (cities/labels) è piazzato in un punto libero vicino alle sue bandierine («Nomi dei Paesi»).
+//      Seme: SWISS_SEED (città + bandierine). Le altre mappe non passano di qui: output byte-identico.
 //   1. d3-force (forceSimulation): nodi inizializzati alle coordinate
 //      geografiche proiettate su un canvas di lavoro grande (1400×900),
 //      forceLink(distanza = len*UNIT), forceManyBody(-90), forceCollide(25).
@@ -90,6 +97,75 @@ const argVal = (flag) => { const i = process.argv.indexOf(flag); return i !== -1
 const MAP_ID = argVal('--map') ?? 'usa';
 const MAP_PATH = join(__dirname, '..', '..', 'data', 'maps', `${MAP_ID}.json`);
 const OUT_PATH = join(__dirname, '..', '..', 'data', 'layouts', `${MAP_ID}.json`);
+
+// Switzerland: posizioni sul tabellone in % (x da sinistra, y dall'alto) da
+// docs/data-sources-switzerland.md (wiki di fan, ±1%). Le bandierine di confine sono
+// `<paese>#<id rotta>` (una per rotta di confine; Kreuzlingen: est = White _1, ovest = Orange _2).
+const SWISS_BOARD_PCT = {
+  baden: [48.2, 20.9], basel: [35.6, 17.9], bellinzona: [65.7, 79.6], bern: [32.3, 46.0],
+  brig: [43.3, 72.7], brusio: [86.3, 75.6], chur: [74.3, 50.5], davos: [83.9, 50.5],
+  delemont: [28.2, 27.1], fribourg: [27.8, 52.7], geneve: [5.8, 79.3], interlaken: [41.2, 58.9],
+  kreuzlingen: [67.8, 13.4], la_chaux_de_fonds: [17.4, 37.6], lausanne: [17.2, 63.5],
+  locarno: [59.9, 81.4], lugano: [64.6, 87.9], luzern: [49.4, 41.1], martigny: [23.7, 84.6],
+  neuchatel: [21.9, 44.0], olten: [40.9, 29.1], pfaffikon: [60.4, 35.1], sargans: [71.6, 42.6],
+  schaffhausen: [55.1, 9.4], schwyz: [56.2, 43.5], sion: [31.2, 76.4], solothurn: [33.9, 31.1],
+  st_gallen: [70.8, 21.9], vaduz: [75.2, 35.1], wassen: [57.0, 57.7], winterthur: [57.9, 17.9],
+  yverdon: [16.2, 53.0], zug: [54.0, 35.1], zurich: [53.9, 25.8],
+  'deutschland#basel_deutschland_1': [36.1, 9.2],
+  'deutschland#deutschland_kreuzlingen_1': [71.9, 6.9],
+  'deutschland#deutschland_kreuzlingen_2': [65.1, 5.2],
+  'deutschland#deutschland_schaffhausen_1': [59.6, 4.9],
+  'deutschland#deutschland_st_gallen_1': [78.6, 14.2],
+  'france#delemont_france_1': [29.4, 12.9],
+  'france#france_geneve_1': [4.8, 87.9],
+  'france#france_la_chaux_de_fonds_1': [8.9, 31.3],
+  'france#france_martigny_1': [17.6, 95.1],
+  'italia#brig_italia_1': [51.0, 89.3],
+  'italia#brusio_italia_1': [91.1, 87.8],
+  'italia#davos_italia_1': [96.6, 54.7],
+  'italia#italia_locarno_1': [57.3, 94.8],
+  'italia#italia_lugano_1': [70.2, 92.1],
+  'osterreich#davos_osterreich_1': [96.0, 44.3],
+  'osterreich#osterreich_st_gallen_1': [86.6, 30.9],
+  'osterreich#osterreich_vaduz_1': [81.3, 34.1],
+};
+
+// Switzerland: seme ottimizzato (px del canvas di lavoro, 60px per carta) per le 34 città E le 17
+// bandierine (`<paese>#<id rotta>`). Trovato con una ricottura simulata (PRNG a seed fisso) partendo
+// dalle posizioni del tabellone (SWISS_BOARD_PCT) e minimizzando: rapporti di lunghezza fuori da
+// 0,92–1,35, incroci e distanze rotta-rotta/città-rotta/città-città troppo piccole, angoli tra rotte
+// incidenti < 36°, scostamento dalla forma del tabellone. È dato (non si ricalcola a ogni run).
+const SWISS_SEED = {
+  'baden': [597.3, 149.9], 'basel': [432.7, 130.3], 'bellinzona': [838.4, 664.6],
+  'bern': [383.9, 367.7], 'brig': [488.2, 601.9], 'brusio': [1078.4, 632.7],
+  'chur': [922.4, 413.7], 'davos': [1060.2, 388.1], 'delemont': [358.5, 214.2],
+  'fribourg': [332.5, 429.0], 'geneve': [20.0, 683.1], 'interlaken': [495.7, 488.9],
+  'kreuzlingen': [829.0, 94.3], 'la_chaux_de_fonds': [199.7, 254.6], 'lausanne': [198.1, 542.4],
+  'locarno': [785.1, 679.2], 'lugano': [795.1, 733.4], 'luzern': [634.6, 322.7],
+  'martigny': [290.7, 737.4], 'neuchatel': [236.5, 327.8], 'olten': [499.1, 229.7],
+  'pfaffikon': [746.7, 288.2], 'sargans': [907.3, 334.0], 'schaffhausen': [669.3, 60.1],
+  'schwyz': [699.9, 353.9], 'sion': [329.7, 634.9], 'solothurn': [433.5, 237.8],
+  'st_gallen': [865.3, 167.9], 'vaduz': [937.5, 280.7], 'wassen': [669.8, 480.1],
+  'winterthur': [705.6, 134.8], 'yverdon': [138.0, 397.4], 'zug': [671.2, 278.5],
+  'zurich': [657.8, 204.1],
+  'deutschland#basel_deutschland_1': [434.8, 58.6],
+  'deutschland#deutschland_kreuzlingen_1': [890.1, 45.3],
+  'deutschland#deutschland_kreuzlingen_2': [804.3, 24.9],
+  'deutschland#deutschland_schaffhausen_1': [738.7, 20.0],
+  'deutschland#deutschland_st_gallen_1': [980.7, 98.6],
+  'france#delemont_france_1': [349.9, 94.0],
+  'france#france_geneve_1': [33.8, 743.1],
+  'france#france_la_chaux_de_fonds_1': [86.5, 250.4],
+  'france#france_martigny_1': [197.5, 794.4],
+  'italia#brig_italia_1': [619.7, 757.0],
+  'italia#brusio_italia_1': [1149.7, 731.3],
+  'italia#davos_italia_1': [1218.9, 452.1],
+  'italia#italia_locarno_1': [706.5, 797.0],
+  'italia#italia_lugano_1': [893.3, 788.2],
+  'osterreich#davos_osterreich_1': [1221.6, 354.1],
+  'osterreich#osterreich_st_gallen_1': [1086.5, 251.7],
+  'osterreich#osterreich_vaduz_1': [1018.4, 278.2],
+};
 
 // Posizioni iniziali della sim: bbox geografica (lat/lon) proiettata sul canvas di lavoro,
 // oppure (`image`) i pallini in pixel dell'immagine da cui è stata ricavata la mappa, quando
@@ -159,29 +235,10 @@ const MAP_BOUNDS = {
       },
     },
   },
-  // Switzerland: seme di posizioni ottimizzato per rispettare le lunghezze delle rotte (rapporto
-  // 0.8–1.6, senza incroci in linea retta) partendo dalla foto del tabellone (1000×666, percentuali
-  // della wiki di fan). I Paesi sono un solo nodo con più bandierine sul tabellone, quindi il
-  // disegno originale non rispetta le lunghezze (Basel e Kreuzlingen a 1 carta da Deutschland).
-  switzerland: {
-    anchor: 0.45,
-    image: {
-      w: 580,
-      h: 479,
-      xy: {
-        baden: [314, 126], basel: [261, 26], bellinzona: [304, 386], bern: [218, 180],
-        brig: [174, 441], brusio: [387, 390], chur: [510, 254], davos: [525, 365],
-        delemont: [153, 61], deutschland: [341, 20], france: [46, 101], fribourg: [188, 254],
-        geneve: [53, 142], interlaken: [194, 330], italia: [359, 459], kreuzlingen: [406, 50],
-        la_chaux_de_fonds: [117, 170], lausanne: [130, 373], locarno: [357, 383], lugano: [376, 350],
-        luzern: [367, 187], martigny: [20, 212], neuchatel: [160, 227], olten: [237, 136],
-        osterreich: [560, 196], pfaffikon: [437, 153], sargans: [529, 220], schaffhausen: [293, 51],
-        schwyz: [409, 222], sion: [53, 320], solothurn: [194, 71], st_gallen: [454, 41],
-        vaduz: [496, 147], wassen: [318, 245], winterthur: [353, 104], yverdon: [128, 334],
-        zug: [407, 180], zurich: [350, 150],
-      },
-    },
-  },
+  // Switzerland: seme ottimizzato SWISS_SEED (città + bandierine di confine). Con `splitCountries`
+  // (MAP_TUNING) ogni Paese è sostituito da una bandierina per rotta di confine, come sul tabellone:
+  // il disegno ora può rispettare le lunghezze delle rotte.
+  switzerland: { anchor: 0.45, image: { w: 1241, h: 817, xy: SWISS_SEED } },
 };
 if (!MAP_BOUNDS[MAP_ID]) { console.error(`--map sconosciuta: ${MAP_ID} (valide: ${Object.keys(MAP_BOUNDS).join(', ')})`); process.exit(2); }
 const BOUNDS = MAP_BOUNDS[MAP_ID];
@@ -198,6 +255,17 @@ const BOUNDS = MAP_BOUNDS[MAP_ID];
 //                   gate di lunghezza (ratio ≥0.8)
 //   lenOneDense:    true = anche senza cluster-escape le rotte len-1 tollerano fino a 2.5× (catene di
 //                   len-1 con gruppi da 3 binari, Ruhr: lo spazio dei binari paralleli le allarga)
+//   splitCountries: true = ogni Paese (`country: true`) è sostituito, PRIMA della simulazione, da una
+//                   bandierina per rotta di confine (nodo `<paese>#<id rotta>` di grado 1, senza label):
+//                   sul tabellone ogni bandierina ha UNA sola rotta e i Paesi non sono un punto solo.
+//                   Il footprint della bandierina (FLAG_W×FLAG_H) vale come «etichetta» fissa in tutti i
+//                   controlli (label, tratta-label, pallino, bounding). In output restano le città vere +
+//                   un punto per il NOME di ogni Paese (cities/labels), libero da rotte/bandierine/label;
+//                   gli id pseudo non compaiono in cities/labels (solo come estremi in routes).
+//   countryNameHints: { id Paese: [x%, y%] } (con splitCountries) dove il tabellone scrive il nome del
+//                   Paese, in % della foto del tabellone; boardPct = posizioni % delle città vere sulla
+//                   stessa foto (cornice di riferimento per portare le ancore sul layout: adattamento
+//                   affine ai minimi quadrati). Ancora della ricerca del punto libero per il nome.
 //   f2Shifts:       [cityId, dx, dy, motivazione] — micro-shift approach-separation (USA ≤10px,
 //                   Europe fino a ~18px: tetto cumulato 30px per città con il cluster-escape)
 const MAP_TUNING = {
@@ -305,7 +373,17 @@ const MAP_TUNING = {
     ],
   },
   poland: { unit: 40, labelOverrides: {}, f2Shifts: [] },
-  switzerland: { unit: 60, lenOneDense: true, labelOverrides: {}, f2Shifts: [] },
+  switzerland: {
+    unit: 60,
+    lenOneDense: true,
+    splitCountries: true,
+    // Nome di ogni Paese sul tabellone (% della foto 1000×666): DEUTSCHLAND in alto a destra,
+    // FRANCE a ovest, ÖSTERREICH a est, ITALIA in basso a destra.
+    boardPct: SWISS_BOARD_PCT,
+    countryNameHints: { deutschland: [83.5, 9.3], france: [13.5, 22.5], italia: [83.5, 91.3], osterreich: [87, 36] },
+    labelOverrides: {},
+    f2Shifts: [],
+  },
   nordic: { unit: 40, labelOverrides: {}, f2Shifts: [] },
 };
 const TUNING = MAP_TUNING[MAP_ID];
@@ -350,6 +428,13 @@ const MAX_LANES = 4;
 const CHARGE = -115;         // repulsione calibrata (3f+8v2: cluster sud-est)
 const LINK_STRENGTH = 0.9;  // forza dei link
 const COLLIDE_R = 29;       // raggio collisione calibrato (3f+8v2)
+// Bandierine di confine (solo con `splitCountries`): footprint reale sul tabellone TV a
+// cityDotR = 8: rettangolo 3:2 22×15 centrato sull'ancora (+2px di bordo/ombra, +1 di respiro).
+const FLAG_W = 22, FLAG_H = 15;
+const FLAG_BOX_PAD = 3;        // bordo/ombra 2px + 1px di respiro
+const FLAG_COLLIDE_R = 20;     // collisione d3 delle bandierine (i pallini città: COLLIDE_R)
+const FLAG_CLEARANCE = 20;     // tratta non-incidente ≥ 20px dal centro della bandierina
+const FLAG_TOUCH_R = 14;       // punto «dentro» la bandierina (semi-diagonale 13.3)
 const TICKS = 1000;         // tick deterministici (↑ da 800, più convergenza con charge maggiore)
 const IMAGE_ANCHOR = 0.2;   // forza verso i pallini dell'immagine (`image`) o verso la geografia (`anchor`)
 
@@ -557,6 +642,40 @@ function distPointCurve(px, py, curve) {
 // ── 0. Caricamento ─────────────────────────────────────────────────────
 const mapData = JSON.parse(readFileSync(MAP_PATH, 'utf8'));
 
+// ── 0b. splitCountries: un nodo-bandierina per rotta di confine ─────────────
+// Ogni città `country: true` sparisce dal grafo della simulazione; al suo posto un nodo
+// `<paese>#<id rotta>` di grado 1 per ogni rotta che la tocca (le rotte vengono riscritte sul nuovo
+// estremo). Il Paese resta solo come punto del NOME (vedi «Nomi dei Paesi»). Le regole di gioco
+// non cambiano: questo è solo il disegno.
+const SPLIT = TUNING.splitCountries === true;
+const flagInfo = new Map();      // id pseudo → { country, routeId }
+const countryCities = [];        // città-Paese originali (nome da disegnare)
+const SPLIT_ORIGINAL_ORDER = mapData.cities.map((c) => c.id);
+if (SPLIT) {
+  const countryIds = new Set(mapData.cities.filter((c) => c.country).map((c) => c.id));
+  const flagCities = [];
+  for (const c of mapData.cities) {
+    if (!countryIds.has(c.id)) continue;
+    countryCities.push(c);
+    for (const r of mapData.routes) {
+      if (r.from !== c.id && r.to !== c.id) continue;
+      const pid = `${c.id}#${r.id}`;
+      flagInfo.set(pid, { country: c.id, routeId: r.id });
+      flagCities.push({ id: pid, name: '', lat: c.lat, lon: c.lon });
+    }
+  }
+  const flagOfRoute = (cid, rid) => `${cid}#${rid}`;
+  mapData.routes = mapData.routes.map((r) => ({
+    ...r,
+    from: countryIds.has(r.from) ? flagOfRoute(r.from, r.id) : r.from,
+    to: countryIds.has(r.to) ? flagOfRoute(r.to, r.id) : r.to,
+  }));
+  for (const r of mapData.routes) {
+    if (flagInfo.has(r.from) && flagInfo.has(r.to)) { console.error(`rotta ${r.id}: Paese–Paese, non supportata da splitCountries`); process.exit(2); }
+  }
+  mapData.cities = [...mapData.cities.filter((c) => !countryIds.has(c.id)), ...flagCities];
+}
+
 // Proiezione geografica → canvas di lavoro (stessa bbox di map-utils.projectCity per USA);
 // con `image` i pixel dell'immagine sorgente scalati in modo che la mediana delle rotte
 // misuri len*UNIT, centrati nel canvas.
@@ -593,6 +712,12 @@ const proj = SEED ? (() => {
 const cityIds = mapData.cities.map((c) => c.id);
 const idIndex = new Map(cityIds.map((id, i) => [id, i]));
 const names = new Map(mapData.cities.map((c) => [c.id, c.name]));
+const isFlag = cityIds.map((id) => flagInfo.has(id)); // per indice
+const flagIds = cityIds.filter((id) => flagInfo.has(id));
+// Raggio del pallino per indice (le bandierine: semi-diagonale del footprint).
+const dotRof = (ci) => (isFlag[ci] ? FLAG_TOUCH_R : DOT_R);
+// Distanza minima centro-città → tratta non-incidente.
+const clearOf = (ci) => (isFlag[ci] ? FLAG_CLEARANCE : CITY_CLEARANCE);
 
 // Edge = coppia di città non orientata (le doppie collassano in UN edge).
 const pairRoutes = new Map();
@@ -639,7 +764,7 @@ const nodes = mapData.cities.map((c) => {
 const simulation = forceSimulation(nodes)
   .force('link', forceLink(links).id((d) => d.id).distance((l) => l.dist).strength(LINK_STRENGTH))
   .force('charge', forceManyBody().strength(CHARGE))
-  .force('collide', forceCollide().radius(COLLIDE_R))
+  .force('collide', forceCollide().radius(SPLIT ? (d) => (flagInfo.has(d.id) ? FLAG_COLLIDE_R : COLLIDE_R) : COLLIDE_R))
   .randomSource(() => 0.5) // jiggle deterministico (mai attivo: nodi iniziali distinti)
   .stop();
 if (SEED) {
@@ -662,6 +787,7 @@ for (let cycle = 0; cycle < 3; cycle++) {
   let maxMove = 0;
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
+      if (SPLIT && (flagInfo.has(nodes[i].id) || flagInfo.has(nodes[j].id))) continue;
       const wi = textW(names.get(nodes[i].id) || '');
       const wj = textW(names.get(nodes[j].id) || '');
       // Solo coppie con label larghe (> 80px somma) e città vicine
@@ -956,7 +1082,7 @@ function bendPointCitySafe(e) {
     const [px, py] = e.points[pi];
     for (let ci = 0; ci < cityPos.length; ci++) {
       if (ends.has(ci)) continue;
-      if (Math.hypot(px - cityPos[ci][0], py - cityPos[ci][1]) < DOT_R + 5) return false;
+      if (Math.hypot(px - cityPos[ci][0], py - cityPos[ci][1]) < dotRof(ci) + 5) return false;
     }
   }
   return true;
@@ -1216,7 +1342,7 @@ function cityClearanceConflicts() {
     for (let ci = 0; ci < cityIds.length; ci++) {
       if (ci === e.a || ci === e.b) continue;
       const d = routeCityDist(e, ci);
-      if (d < CITY_CLEARANCE) conflicts.push({ edge: e, cityIdx: ci, dist: d });
+      if (d < clearOf(ci)) conflicts.push({ edge: e, cityIdx: ci, dist: d });
     }
   }
   // Risolvi i conflitti più gravi (distanza minore) prima
@@ -1237,7 +1363,7 @@ function bendFromCity(e, ci) {
   for (const sign of [prefSign, -prefSign, e.bendSign, -e.bendSign]) {
     for (let step = 2; step <= MAX_CITY_BEND; step += 2) {
       setBend(e, sign, step);
-      if (routeCityDist(e, ci) >= CITY_CLEARANCE &&
+      if (routeCityDist(e, ci) >= clearOf(ci) &&
           noRouteConflict(e) && bendPointCitySafe(e) && doubleTrackSafe(e)) {
         e.bendSign = sign;
         return true;
@@ -1367,6 +1493,10 @@ function candidatesFor() {
 }
 
 function labelBox(cx, cy, cand, name) {
+  if (cand.flag) {
+    const hw = FLAG_W / 2 + FLAG_BOX_PAD, hh = FLAG_H / 2 + FLAG_BOX_PAD;
+    return { left: cx - hw, right: cx + hw, top: cy - hh, bottom: cy + hh };
+  }
   const w = textW(name);
   let left;
   if (cand.anchor === 'middle') left = cx + cand.dx - w / 2;
@@ -1440,15 +1570,18 @@ function labelCoreHitCurve(e, box) {
 
 const degree = new Map(cityIds.map((id) => [id, 0]));
 for (const e of edges) { degree.set(cityIds[e.a], degree.get(cityIds[e.a]) + 1); degree.set(cityIds[e.b], degree.get(cityIds[e.b]) + 1); }
-const order = mapData.cities.map((c) => c.id).sort((x, y) => {
+const order = mapData.cities.filter((c) => !flagInfo.has(c.id)).map((c) => c.id).sort((x, y) => {
   const dx = degree.get(x), dy = degree.get(y);
   if (dx !== dy) return dy - dx;
   const lx = (names.get(x) || '').length, ly = (names.get(y) || '').length;
   if (lx !== ly) return ly - lx;
   return x < y ? -1 : 1;
 });
+// Id con un box nei controlli tratta-box: città (label) + bandierine (footprint fisso).
+const boxIds = [...order, ...flagIds];
 
 const labels = new Map();
+const FLAG_LABEL = Object.freeze({ dx: 0, dy: 0, anchor: 'middle', flag: true });
 const cityIndexPos = () => cityIds.map((id, i) => ({ id, x: cityPos[i][0], y: cityPos[i][1] }));
 
 // Punteggio di una posizione: collisioni (core ×5, label ×2, dot ×2).
@@ -1476,7 +1609,7 @@ function scoreLabel(c, cand, name, selfId) {
     if (rectsOverlap(box, labelBox(oc.x, oc.y, olb, names.get(oid)))) nLabel++;
   }
   for (const oc of cityIndexPos()) {
-    if (oc.id !== selfId && distPointRect(oc.x, oc.y, box) < DOT_R + 1) nDot++;
+    if (oc.id !== selfId && !flagInfo.has(oc.id) && distPointRect(oc.x, oc.y, box) < DOT_R + 1) nDot++;
   }
   const nOwn = ownershipBad(c, box, selfId) ? 1 : 0;
   // 3f+7: conflitti puri (no distanza — il tier system decide il tier)
@@ -1564,6 +1697,8 @@ function pickBest(c, name, selfId) {
 
 function placeLabels() {
   labels.clear();
+  // Le bandierine sono «label» fisse (footprint): le città le vedono come ostacoli.
+  for (const id of flagIds) labels.set(id, FLAG_LABEL);
   for (const id of order) {
     const c = cityIndexPos().find((cc) => cc.id === id);
     const best = pickBest(c, names.get(id), id);
@@ -1726,7 +1861,7 @@ for (let round = 0; round < MAX_LABEL_ROUNDS; round++) {
 
   // Controlla se qualche label tocca ancora CORE di tratte non-incidenti
   let anyLabelHit = false;
-  for (const id of order) {
+  for (const id of boxIds) {
     const box = boxFor(id);
     for (const e of edges) {
       if (cityIds[e.a] === id || cityIds[e.b] === id) continue;
@@ -1738,7 +1873,7 @@ for (let round = 0; round < MAX_LABEL_ROUNDS; round++) {
 
   // Nessun candidato pulito → bend delle tratte (ULTIMA risorsa)
   let bent = false;
-  for (const id of order) {
+  for (const id of boxIds) {
     const box = boxFor(id);
     for (const e of edges) {
       if (labelCoreHit(e, box) && bendFromLabel(e, box)) bent = true;
@@ -1766,7 +1901,7 @@ for (let recheck = 0; recheck < 3; recheck++) {
   placeLabels();
   let rlBent = false;
   let anyHit = false;
-  for (const id of order) {
+  for (const id of boxIds) {
     const box = boxFor(id);
     for (const e of edges) {
       if (cityIds[e.a] === id || cityIds[e.b] === id) continue;
@@ -1775,7 +1910,7 @@ for (let recheck = 0; recheck < 3; recheck++) {
     if (anyHit) break;
   }
   if (anyHit) {
-    for (const id of order) {
+    for (const id of boxIds) {
       const box = boxFor(id);
       for (const e of edges) {
         if (labelCoreHit(e, box) && bendFromLabel(e, box)) rlBent = true;
@@ -2044,7 +2179,7 @@ for (let cleanup = 0; cleanup < 5; cleanup++) {
   }
   // Route-label
   let rlBent = false;
-  for (const id of order) {
+  for (const id of boxIds) {
     const box = boxFor(id);
     for (const e of edges) {
       if (labelCoreHit(e, box) && bendFromLabel(e, box)) rlBent = true;
@@ -2062,7 +2197,7 @@ placeLabels();
 let cityMicroPushes = 0;
 for (let up = 0; up < 3; up++) {
   let pushed = false;
-  for (const id of order) {
+  for (const id of boxIds) {
     const ci = idIndex.get(id);
     const box = boxFor(id);
     for (const e of edges) {
@@ -2086,7 +2221,7 @@ for (let up = 0; up < 3; up++) {
     for (let ci = 0; ci < cityIds.length; ci++) {
       if (ci === e.a || ci === e.b) continue;
       const d = routeCityDist(e, ci);
-      if (d >= CITY_CLEARANCE) continue;
+      if (d >= clearOf(ci)) continue;
       const t = trimmed(e);
       let bestD = Infinity, bestP = null;
       for (let k = 0; k < t.length - 1; k++) {
@@ -2095,7 +2230,7 @@ for (let up = 0; up < 3; up++) {
         if (dd < bestD) { bestD = dd; bestP = [px, py]; }
       }
       if (!bestP || bestD < 0.01) continue;
-      const push = Math.min(2, (CITY_CLEARANCE - d) * 0.5);
+      const push = Math.min(2, (clearOf(ci) - d) * 0.5);
       cityPos[ci][0] += (cityPos[ci][0] - bestP[0]) / bestD * push;
       cityPos[ci][1] += (cityPos[ci][1] - bestP[1]) / bestD * push;
       pushed = true; cityMicroPushes++;
@@ -2129,7 +2264,7 @@ for (let up = 0; up < 3; up++) {
   placeLabels();
   for (let rlR = 0; rlR < 6; rlR++) {
     let rlB = false;
-    for (const id of order) { const box = boxFor(id); for (const e of edges) { if (labelCoreHit(e, box) && bendFromLabel(e, box)) rlB = true; } }
+    for (const id of boxIds) { const box = boxFor(id); for (const e of edges) { if (labelCoreHit(e, box) && bendFromLabel(e, box)) rlB = true; } }
     placeLabels(); if (!rlB) break;
   }
   for (let pp = 0; pp < 8; pp++) {
@@ -2259,7 +2394,7 @@ function reRunCleanup() {
   // Route-label bends
   for (let rlR = 0; rlR < 6; rlR++) {
     let rlB = false;
-    for (const id of order) { const box = boxFor(id); for (const e of edges) { if (labelCoreHit(e, box) && bendFromLabel(e, box)) rlB = true; } }
+    for (const id of boxIds) { const box = boxFor(id); for (const e of edges) { if (labelCoreHit(e, box) && bendFromLabel(e, box)) rlB = true; } }
     placeLabels(); if (!rlB) break;
   }
   // Pairwise label resolution
@@ -2397,7 +2532,7 @@ if (clusterApplied) {
   for (let up = 0; up < 3; up++) {
     let pushed = false;
     // Label-CORE: push city away from overlapping route
-    for (const id of order) {
+    for (const id of boxIds) {
       const ci = idIndex.get(id);
       const box = boxFor(id);
       for (const e of edges) {
@@ -2422,7 +2557,7 @@ if (clusterApplied) {
       for (let ci = 0; ci < cityIds.length; ci++) {
         if (ci === e.a || ci === e.b) continue;
         const d = routeCityDist(e, ci);
-        if (d >= CITY_CLEARANCE) continue;
+        if (d >= clearOf(ci)) continue;
         const t = trimmed(e);
         let bestD = Infinity, bestP = null;
         for (let k = 0; k < t.length - 1; k++) {
@@ -2431,7 +2566,7 @@ if (clusterApplied) {
           if (dd < bestD) { bestD = dd; bestP = [px, py]; }
         }
         if (!bestP || bestD < 0.01) continue;
-        const push = Math.min(4, (CITY_CLEARANCE - d) * 1.2);
+        const push = Math.min(4, (clearOf(ci) - d) * 1.2);
         cityPos[ci][0] += (cityPos[ci][0] - bestP[0]) / bestD * push;
         cityPos[ci][1] += (cityPos[ci][1] - bestP[1]) / bestD * push;
         pushed = true;
@@ -2531,12 +2666,12 @@ function straightenValidates(e) {
   // Route-city clearance
   for (let ci = 0; ci < cityIds.length; ci++) {
     if (ci === e.a || ci === e.b) continue;
-    if (distPointDrawnEdge(cityPos[ci][0], cityPos[ci][1], e) < CITY_CLEARANCE) {
+    if (distPointDrawnEdge(cityPos[ci][0], cityPos[ci][1], e) < clearOf(ci)) {
       e.points = saved; e.bendSign = savedSign; return false;
     }
   }
   // Label-CORE (skip labels of route's own endpoints — same as final validation line ~2009)
-  for (const id of order) {
+  for (const id of boxIds) {
     if (cityIds[e.a] === id || cityIds[e.b] === id) continue; // 3f+9: escludi tratte incidenti
     const box = boxFor(id);
     if (labelCoreHit(e, box)) { e.points = saved; e.bendSign = savedSign; return false; }
@@ -2596,9 +2731,9 @@ for (let strCycle = 0; strCycle < 10; strCycle++) {
 function edgeLocalOK(e) {
   for (let ci = 0; ci < cityIds.length; ci++) {
     if (ci === e.a || ci === e.b) continue;
-    if (distPointDrawnEdge(cityPos[ci][0], cityPos[ci][1], e) < CITY_CLEARANCE) return false;
+    if (distPointDrawnEdge(cityPos[ci][0], cityPos[ci][1], e) < clearOf(ci)) return false;
   }
-  for (const id of order) {
+  for (const id of boxIds) {
     if (cityIds[e.a] === id || cityIds[e.b] === id) continue;
     if (labelCoreHitCurve(e, boxFor(id))) return false;
   }
@@ -2837,7 +2972,7 @@ function polishEval() {
   for (let i = 0; i < n; i++) {
     const c = { x: cityPos[i][0], y: cityPos[i][1] };
     if (distPointRect(c.x, c.y, boxes[i]) > MAX_LABEL_DIST + 0.05) return null;
-    if (ownershipBad(c, boxes[i], cityIds[i])) { if (!polishSoftOwn) return null; nOwn++; }
+    if (!isFlag[i] && ownershipBad(c, boxes[i], cityIds[i])) { if (!polishSoftOwn) return null; nOwn++; }
     for (let j = 0; j < n; j++) {
       if (j === i) continue;
       if (j > i && rectsOverlap(boxes[i], boxes[j])) return null;
@@ -2857,8 +2992,9 @@ function polishEval() {
     for (let ci = 0; ci < n; ci++) {
       if (ci === e.a || ci === e.b) continue;
       const px = cityPos[ci][0], py = cityPos[ci][1];
-      if (px < bb[0] - CITY_CLEARANCE || px > bb[2] + CITY_CLEARANCE || py < bb[1] - CITY_CLEARANCE || py > bb[3] + CITY_CLEARANCE) continue;
-      if (distPointDrawnEdge(px, py, e) < CITY_CLEARANCE) return null;
+      const cl = clearOf(ci);
+      if (px < bb[0] - cl || px > bb[2] + cl || py < bb[1] - cl || py > bb[3] + cl) continue;
+      if (distPointDrawnEdge(px, py, e) < cl) return null;
     }
   }
   if (errSumP / edges.length > 30) return null;
@@ -2869,7 +3005,7 @@ function polishEval() {
       const e = edges[k];
       const ink = polishLabelInk(e, ents[k], boxes[i]);
       if (ink === 0) continue;
-      if (e.a === i || e.b === i) { nInc++; inkSeg += ink; }
+      if (e.a === i || e.b === i) { if (isFlag[i]) continue; nInc++; inkSeg += ink; }
       else return null;
     }
   }
@@ -2989,6 +3125,7 @@ function polishViolations() {
   const out = [];
   const ents = edges.map(drawnEntry);
   for (let ci = 0; ci < cityIds.length; ci++) {
+    if (isFlag[ci]) continue; // bandierina: grado 1, nessuna label da pulire
     const inc = edgesAt[ci];
     for (let x = 0; x < inc.length; x++) for (let y = x + 1; y < inc.length; y++) {
       const a = inc[x], b = inc[y];
@@ -3134,6 +3271,90 @@ if (!polishCur) {
 clashResidual = countClashes();
 const polishMoved = cityIds.map((id, i) => [id, dist(cityPos[i], polishOrigin[i])]).filter(([, d]) => d > 0.05);
 
+// ── Nomi dei Paesi (solo splitCountries) ───────────────────────────────
+// Il Paese non ha più un punto: il suo NOME (`cities[<paese>]` + `labels[<paese>]`) sta in un punto libero
+// fuori dalla Svizzera, vicino alle sue bandierine, come sul tabellone (DEUTSCHLAND in alto, FRANCE a
+// ovest, ÖSTERREICH a est, ITALIA a sud). Ancora = posizione del nome sul tabellone (percentuali, in
+// MAP_TUNING[map].countryNameHints) portata sul layout con un adattamento affine delle città vere dal
+// seme; il punto finale è il più vicino all'ancora (griglia 6px, deterministico) per cui il box del
+// nome (+ margine) non tocca rotte, bandierine, label, pallini né altri nomi, la bandierina più
+// vicina è di quel Paese e il nome sta oltre di essa (dal lato opposto della sua città).
+const COUNTRY_NAME_PAD = 6;
+const countryNames = new Map(); // id Paese → { name, x, y } (centro del box del testo)
+const countryNameDy = () => round1((ascOf() - descOf()) / 2); // box centrato sull'ancora
+const countryBoxOf = (cn) => labelBox(cn.x, cn.y, { dx: 0, dy: countryNameDy(), anchor: 'middle' }, cn.name);
+const inflate = (b, p) => ({ left: b.left - p, right: b.right + p, top: b.top - p, bottom: b.bottom + p });
+const flagCountry = (fid) => flagInfo.get(fid).country;
+// Il box del nome di `cn` è libero? (rotte, bandierine, label, pallini, altri nomi, proprietà)
+function countryNameFree(cn) {
+  const box = countryBoxOf(cn), inf = inflate(box, COUNTRY_NAME_PAD);
+  for (const e of edges) {
+    const sw2 = swOf(e.len) / 2, bb = drawnEntry(e).bbox;
+    if (inf.left > bb[2] + sw2 || inf.right < bb[0] - sw2 || inf.top > bb[3] + sw2 || inf.bottom < bb[1] - sw2) continue;
+    for (const t of labelCurvesOf(e)) {
+      for (let k = 0; k < t.length - 1; k++) {
+        if (segRectDist(t[k][0], t[k][1], t[k + 1][0], t[k + 1][1], inf) < sw2) return false;
+      }
+    }
+  }
+  for (const id of boxIds) if (rectsOverlap(inf, boxFor(id))) return false;
+  for (let ci = 0; ci < cityIds.length; ci++) {
+    if (!isFlag[ci] && distPointRect(cityPos[ci][0], cityPos[ci][1], inf) < DOT_R + 2) return false;
+  }
+  for (const other of countryNames.values()) {
+    if (other !== cn && rectsOverlap(inf, inflate(countryBoxOf(other), COUNTRY_NAME_PAD))) return false;
+  }
+  // proprietà: la bandierina più vicina al box è di questo Paese, e il nome le sta oltre
+  let near = null, nearD = Infinity;
+  for (const fid of flagIds) {
+    const ci = idIndex.get(fid);
+    const d = distPointRect(cityPos[ci][0], cityPos[ci][1], box);
+    if (d < nearD) { nearD = d; near = ci; }
+  }
+  if (near === null || flagCountry(cityIds[near]) !== cn.id) return false;
+  const e = edgesAt[near][0], other = cityPos[e.a === near ? e.b : e.a];
+  return (cn.x - cityPos[near][0]) * (cityPos[near][0] - other[0]) + (cn.y - cityPos[near][1]) * (cityPos[near][1] - other[1]) >= 0;
+}
+if (SPLIT) {
+  const hints = TUNING.countryNameHints;
+  const boardPct = TUNING.boardPct;
+  // adattamento affine (minimi quadrati) tabellone (%) → layout sulle città vere
+  const real = cityIds.map((id, i) => i).filter((i) => !isFlag[i]);
+  const S = [[0, 0, 0], [0, 0, 0], [0, 0, 0]], bx = [0, 0, 0], by = [0, 0, 0];
+  for (const i of real) {
+    const [sx, sy] = boardPct[cityIds[i]], v = [sx, sy, 1];
+    for (let r = 0; r < 3; r++) {
+      for (let c = 0; c < 3; c++) S[r][c] += v[r] * v[c];
+      bx[r] += v[r] * cityPos[i][0]; by[r] += v[r] * cityPos[i][1];
+    }
+  }
+  const det3 = (m) => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const solve3 = (m, r) => {
+    const d = det3(m);
+    return [0, 1, 2].map((k) => det3(m.map((row, i) => row.map((v, j) => (j === k ? r[i] : v)))) / d);
+  };
+  const cx = solve3(S, bx), cy = solve3(S, by);
+  const toLayout = ([px, py]) => [cx[0] * px + cx[1] * py + cx[2], cy[0] * px + cy[1] * py + cy[2]];
+  const offsets = [];
+  for (let dx = -300; dx <= 300; dx += 6) for (let dy = -300; dy <= 300; dy += 6) {
+    if (Math.hypot(dx, dy) <= 300) offsets.push([dx, dy]);
+  }
+  offsets.sort((p, q) => Math.hypot(p[0], p[1]) - Math.hypot(q[0], q[1]) || p[0] - q[0] || p[1] - q[1]);
+  for (const c of countryCities) {
+    const hint = hints?.[c.id];
+    if (!hint) { console.error(`countryNameHints: manca ${c.id}`); process.exit(2); }
+    const [ax, ay] = toLayout(hint);
+    const cn = { id: c.id, name: c.name, x: ax, y: ay };
+    let placed = false;
+    for (const [dx, dy] of offsets) {
+      cn.x = ax + dx; cn.y = ay + dy;
+      if (countryNameFree(cn)) { placed = true; break; }
+    }
+    if (!placed) { console.error(`nome Paese ${c.id}: nessun punto libero entro 300px dall'ancora`); process.exit(2); }
+    countryNames.set(c.id, cn);
+  }
+}
+
 // ── 5. Bounding → canvas di output (variabile) ─────────────────────────
 let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 function grow(px, py) {
@@ -3151,10 +3372,12 @@ for (const id of cityIds) {
   const box = boxFor(id);
   grow(box.left, box.top); grow(box.right, box.bottom);
 }
+for (const cn of countryNames.values()) { const b = countryBoxOf(cn); grow(b.left, b.top); grow(b.right, b.bottom); }
 
 const shiftX = MARGIN - minX, shiftY = MARGIN - minY;
 for (const p of cityPos) { p[0] += shiftX; p[1] += shiftY; }
 for (const e of edges) for (const p of e.points) { p[0] += shiftX; p[1] += shiftY; }
+for (const cn of countryNames.values()) { cn.x += shiftX; cn.y += shiftY; }
 const W = Math.ceil(maxX - minX + 2 * MARGIN);
 const H = Math.ceil(maxY - minY + 2 * MARGIN);
 
@@ -3194,8 +3417,30 @@ for (let i = 0; i < order.length; i++) {
     }
   }
   for (const oc of cityIndexPos()) {
-    if (oc.id !== id && distPointRect(oc.x, oc.y, box) < DOT_R + 1) labelDot++;
+    if (oc.id !== id && !flagInfo.has(oc.id) && distPointRect(oc.x, oc.y, box) < DOT_R + 1) labelDot++;
   }
+}
+
+// Bandierine (splitCountries): footprint contro label, altre bandierine, pallini e tratte non incidenti
+// (le tratte incidenti arrivano alla bandierina: sono il suo unico ancoraggio). Contano come label-label
+// / label-CORE / label-pallino (stessi gate), perché il footprint è una «label» fissa.
+const flagBoxIssues = [];
+for (let fi = 0; fi < flagIds.length; fi++) {
+  const fid = flagIds[fi], fbox = boxFor(fid), fci = idIndex.get(fid);
+  for (const id of order) if (rectsOverlap(fbox, boxFor(id))) { labelLabel++; flagBoxIssues.push(`${fid} × label ${id}`); }
+  for (let fj = fi + 1; fj < flagIds.length; fj++) if (rectsOverlap(fbox, boxFor(flagIds[fj]))) { labelLabel++; flagBoxIssues.push(`${fid} × ${flagIds[fj]}`); }
+  for (let ci = 0; ci < cityIds.length; ci++) {
+    if (ci === fci || isFlag[ci]) continue;
+    if (distPointRect(cityPos[ci][0], cityPos[ci][1], fbox) < DOT_R + 1) { labelDot++; flagBoxIssues.push(`${fid} × pallino ${cityIds[ci]}`); }
+  }
+  for (const e of edges) {
+    if (e.a === fci || e.b === fci) continue;
+    if (labelCoreHit(e, fbox)) { labelRouteCore++; flagBoxIssues.push(`${fid} × tratta ${e.key}`); }
+  }
+}
+let countryNameBad = 0;
+for (const cn of countryNames.values()) {
+  if (!countryNameFree(cn)) { countryNameBad++; flagBoxIssues.push(`nome Paese ${cn.id} non libero`); }
 }
 
 // 3f+7: distanza minima città-città non adiacenti (obiettivo ≥18px)
@@ -3218,9 +3463,9 @@ for (const e of edges) {
     if (ci === e.a || ci === e.b) continue;
     // F2: distanza sulla curva campionata, non sulla polyline
     const d = distPointDrawnEdge(cityPos[ci][0], cityPos[ci][1], e);
-    if (d < CITY_CLEARANCE) {
+    if (d < clearOf(ci)) {
       routeCityConflicts++;
-      routeCityConflictList.push(`${cityIds[e.a]}-${cityIds[e.b]} vs ${cityIds[ci]} (${d.toFixed(1)}px < ${CITY_CLEARANCE}px)`);
+      routeCityConflictList.push(`${cityIds[e.a]}-${cityIds[e.b]} vs ${cityIds[ci]} (${d.toFixed(1)}px < ${clearOf(ci)}px)`);
     }
   }
 }
@@ -3278,9 +3523,24 @@ for (const e of edges) {
 
 // ── Output JSON ────────────────────────────────────────────────────────
 const citiesOut = {};
-for (let i = 0; i < cityIds.length; i++) citiesOut[cityIds[i]] = { x: r2(cityPos[i][0]), y: r2(cityPos[i][1]) };
 const labelsOut = {};
-for (const [id, lb] of labels) labelsOut[id] = lb;
+if (SPLIT) {
+  // Solo città vere + nome dei Paesi (ordine della mappa); gli id pseudo delle bandierine restano
+  // fuori: compaiono unicamente come estremi in routes.
+  for (const id of SPLIT_ORIGINAL_ORDER) {
+    const cn = countryNames.get(id), i = idIndex.get(id);
+    if (cn) {
+      citiesOut[id] = { x: r2(cn.x), y: r2(cn.y) };
+      labelsOut[id] = { dx: 0, dy: countryNameDy(), anchor: 'middle' };
+    } else {
+      citiesOut[id] = { x: r2(cityPos[i][0]), y: r2(cityPos[i][1]) };
+      labelsOut[id] = labels.get(id);
+    }
+  }
+} else {
+  for (let i = 0; i < cityIds.length; i++) citiesOut[cityIds[i]] = { x: r2(cityPos[i][0]), y: r2(cityPos[i][1]) };
+  for (const [id, lb] of labels) labelsOut[id] = lb;
+}
 const routesOut = {};
 for (const e of edges) {
   const pts = e.points.map((p) => [round1(p[0]), round1(p[1])]);
@@ -3386,6 +3646,11 @@ if (worstApproach.length > 0) {
   console.log(`  approach separation (curve ≥${APPROACH_ZONE}px dal dot, soglia ≥${APPROACH_MIN_DIST}px): 0 violazioni ✓`);
 }
 console.log(`  TOTALE: ${total} conflitti`);
+if (SPLIT) {
+  console.log(`  bandierine di confine: ${flagIds.length} (footprint ${FLAG_W}×${FLAG_H}px + ${FLAG_BOX_PAD}px) | conflitti footprint (label, bandierine, pallini, tratte): ${flagBoxIssues.length}`);
+  for (const s of flagBoxIssues) console.log(`    ⚠ FLAG ${s}`);
+  console.log(`  nomi dei Paesi: ${[...countryNames.values()].map((c) => `${c.id}(${c.x.toFixed(0)},${c.y.toFixed(0)})`).join(', ')} | non liberi: ${countryNameBad}`);
+}
 
 // Preview SVG opzionale
 const svgArg = process.argv.indexOf('--svg');
@@ -3397,6 +3662,10 @@ if (svgArg !== -1 && process.argv[svgArg + 1]) {
 let failed = false;
 console.log(`  incroci/sovrapposizioni rotte: ${clashResidual.length} (prima della risoluzione: ${clashBefore})${clashResidual.length ? ' — ' + clashResidual.map(([a, b]) => `${a.key}×${b.key}`).join(', ') : ''}`);
 console.log(`  label-ownership: ${labelOwnershipList.length} | label > ${MAX_LABEL_DIST}px: ${labelDistWarnings.length}`);
+if (countryNameBad > 0) {
+  console.error(`FALLITO: ${countryNameBad} nomi di Paese non liberi.`);
+  failed = true;
+}
 if (clashResidual.length > 0) {
   console.error(`FALLITO: ${clashResidual.length} incroci/sovrapposizioni rotte residui.`);
   failed = true;
@@ -3484,15 +3753,35 @@ function previewSvg() {
       s += `<polyline points="${p}" fill="none" stroke="${col}" stroke-width="${swOf(e.len)}" stroke-linecap="round" stroke-linejoin="round" opacity="0.75"/>\n`;
     });
   }
+  const FLAG_PREVIEW = {
+    deutschland: ['h', '#111', '#dd0000', '#ffce00'], osterreich: ['h', '#ed2939', '#ffffff', '#ed2939'],
+    france: ['v', '#0055a4', '#ffffff', '#ef4135'], italia: ['v', '#009246', '#ffffff', '#ce2b37'],
+  };
   for (let i = 0; i < cityIds.length; i++) {
     const [x, y] = cityPos[i];
-    s += mapData.cities[i].country
-      ? `<rect x="${(x - DOT_R).toFixed(1)}" y="${(y - DOT_R).toFixed(1)}" width="${2 * DOT_R}" height="${2 * DOT_R}" rx="3" fill="#e8d9b0" stroke="#453416" stroke-width="2"/>\n`
-      : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${DOT_R}" fill="#fbf6e9" stroke="#453416" stroke-width="2"/>\n`;
+    if (isFlag[i]) {
+      // footprint reale 22×15 (3 bande: l'aspetto vero lo disegna il client)
+      const [dir, ...cols] = FLAG_PREVIEW[flagCountry(cityIds[i])] ?? ['h', '#888', '#888', '#888'];
+      const x0 = x - FLAG_W / 2, y0 = y - FLAG_H / 2;
+      cols.forEach((col, k) => {
+        s += dir === 'h'
+          ? `<rect x="${x0.toFixed(1)}" y="${(y0 + (k * FLAG_H) / 3).toFixed(1)}" width="${FLAG_W}" height="${(FLAG_H / 3).toFixed(2)}" fill="${col}"/>\n`
+          : `<rect x="${(x0 + (k * FLAG_W) / 3).toFixed(2)}" y="${y0.toFixed(1)}" width="${(FLAG_W / 3).toFixed(2)}" height="${FLAG_H}" fill="${col}"/>\n`;
+      });
+      s += `<rect x="${x0.toFixed(1)}" y="${y0.toFixed(1)}" width="${FLAG_W}" height="${FLAG_H}" fill="none" stroke="#453416" stroke-width="2"/>\n`;
+    } else if (mapData.cities[i].country) {
+      s += `<rect x="${(x - DOT_R).toFixed(1)}" y="${(y - DOT_R).toFixed(1)}" width="${2 * DOT_R}" height="${2 * DOT_R}" rx="3" fill="#e8d9b0" stroke="#453416" stroke-width="2"/>\n`;
+    } else {
+      s += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${DOT_R}" fill="#fbf6e9" stroke="#453416" stroke-width="2"/>\n`;
+    }
   }
   for (const [id, lb] of labels) {
+    if (lb.flag) continue;
     const c = cityIndexPos().find((cc) => cc.id === id);
     s += `<text x="${(c.x + lb.dx).toFixed(1)}" y="${(c.y + lb.dy).toFixed(1)}" text-anchor="${lb.anchor}" font-size="${FONT_SIZE}" font-weight="600" fill="#453416" paint-order="stroke" stroke="#f6ebd0" stroke-width="3.2">${names.get(id)}</text>\n`;
+  }
+  for (const cn of countryNames.values()) {
+    s += `<text x="${cn.x.toFixed(1)}" y="${(cn.y + countryNameDy()).toFixed(1)}" text-anchor="middle" font-size="${FONT_SIZE}" font-weight="600" font-style="italic" fill="#6b5a3a" paint-order="stroke" stroke="#f6ebd0" stroke-width="3.2">${cn.name}</text>\n`;
   }
   s += `</svg>\n`;
   return s;

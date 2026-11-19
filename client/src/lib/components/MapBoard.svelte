@@ -33,6 +33,8 @@
   import { passengerColorCss } from '../passengers';
   import * as MapUtils from '../map-utils';
   import type { MapData as MapDataType, MapLayout, Point, RouteData } from '../map-utils';
+  import { flagShapes } from '../flags';
+  import Flag from './Flag.svelte';
   import * as PZ from '../pan-zoom.ts';
 
   let {
@@ -340,6 +342,18 @@
 
   const cityPositions = $derived(new Map<string, Point>(Object.entries(layout.cities)));
 
+  // Ancore di ogni città: la posizione per le città normali, una per valico (bandiera) per i
+  // Paesi confinanti. Il layout dice dove, i dati di mappa quali sono Paesi.
+  const anchors = $derived(MapUtils.cityAnchors(mapData, layout));
+  const countryAnchorSet = $derived(
+    new Set<Point>(mapData.cities.filter((c) => c.country).flatMap((c) => anchors.get(c.id) ?? [])),
+  );
+  // Bandiera: 3:2, 22×15 a pieno formato; nel compact scala come il pallino città (6 invece di 8).
+  const flagW = $derived(22 * (cityDotR / 8));
+  const flagH = $derived(15 * (cityDotR / 8));
+  // Anello dei pin biglietto attorno a una bandiera: oltre la sua semidiagonale.
+  const flagRingR = $derived(Math.hypot(flagW / 2, flagH / 2) + 3.5);
+
   // Etichette lontane dal pallino (vincolate dal generatore a ≤32px):
   // filetto sottile pallino→etichetta, così il nome resta legato alla sua
   // città anche nei cluster. Punto d'arrivo = bordo del testo verso il dot.
@@ -350,6 +364,8 @@
       const pos = cityPositions.get(city.id);
       const l = layout.labels[city.id];
       if (!pos || !l) continue;
+      // Paese senza bandiera sul punto dell'etichetta (Svizzera): nessun filetto verso il vuoto.
+      if (city.country && !anchors.get(city.id)?.some((a) => Math.hypot(a.x - pos.x, a.y - pos.y) < 0.5)) continue;
       // Ancora sul bordo del box testo più vicino al pallino
       let ex = l.dx;
       let ey = l.dy - 0.35 * fs; // centro verticale (cap height ≈ 0.7em)
@@ -526,7 +542,7 @@
   // pointer-events none, il tap-to-claim sulle rotte sottostanti resta
   // intatto. La sparizione al completamento la decide il controller
   // (filtra i biglietti `completed` segnalati dal server): qui zero logica.
-  const ticketLayers = $derived(MapUtils.ticketLayers(highlightTickets, cityPositions));
+  const ticketLayers = $derived(MapUtils.ticketLayers(highlightTickets, anchors));
 
   function playerColor(pid: string): string {
     const p = publicStore.playersSummary.find(ps => ps.player_id === pid);
@@ -839,28 +855,45 @@
         </g>
         {#each mapData.cities as city (city.id)}
           {@const pos = cityPositions.get(city.id)}
-          {#if pos}
-            {@const hub = !city.country && (cityDegree.get(city.id) ?? 0) >= 6}
+          {#if city.country}
+            <!-- Paese confinante (vicolo cieco): una bandiera nazionale per ogni valico (ancora),
+                 tutte della stessa misura; il nome lo disegna il livello 9. Codice assente o
+                 sconosciuto: la targhetta neutra con bandierina. -->
+            {@const exposedAsButton = cityInteractive && selectableCitySet.has(city.id)}
+            {@const known = flagShapes(city.flag) !== undefined}
+            <g role={exposedAsButton ? undefined : 'img'}
+              aria-label={exposedAsButton ? undefined : cityLabel(city)}
+              aria-hidden={exposedAsButton ? 'true' : undefined}>
+              {#each anchors.get(city.id) ?? [] as a, i (i)}
+                <g>
+                  {#if known}
+                    <rect x={a.x - flagW / 2 + SHADOW_DX} y={a.y - flagH / 2 + SHADOW_DY}
+                      width={flagW} height={flagH} fill="#2a1d0c" opacity="0.25" />
+                    <Flag code={city.flag} x={a.x} y={a.y} width={flagW} height={flagH}
+                      border={2} borderColor="#453416" />
+                  {:else}
+                    {@const h = cityDotR}
+                    <rect x={a.x - h + SHADOW_DX} y={a.y - h + SHADOW_DY} width={2 * h} height={2 * h}
+                      rx="3" fill="#2a1d0c" opacity="0.25" />
+                    <rect x={a.x - h} y={a.y - h} width={2 * h} height={2 * h} rx="3"
+                      fill="#e3cf9c" stroke="#453416" stroke-width="2" class="country-badge" />
+                    <path d="M {a.x - h * 0.35} {a.y + h * 0.62} V {a.y - h * 0.62} L {a.x + h * 0.55} {a.y - h * 0.22} L {a.x - h * 0.35} {a.y + h * 0.18}"
+                      fill="#453416" fill-opacity="0.75" stroke="#453416" stroke-width="1.4"
+                      stroke-linejoin="round" stroke-linecap="round" />
+                  {/if}
+                </g>
+              {/each}
+            </g>
+          {:else if pos}
+            {@const hub = (cityDegree.get(city.id) ?? 0) >= 6}
             {@const exposedAsButton = cityInteractive && selectableCitySet.has(city.id)}
             <g role={exposedAsButton ? undefined : 'img'}
               aria-label={exposedAsButton ? undefined : cityLabel(city)}
               aria-hidden={exposedAsButton ? 'true' : undefined}>
-              {#if city.country}
-                <!-- Paese confinante (vicolo cieco): targhetta quadrata con bandierina, non un pallino -->
-                {@const h = cityDotR}
-                <rect x={pos.x - h + SHADOW_DX} y={pos.y - h + SHADOW_DY} width={2 * h} height={2 * h}
-                  rx="3" fill="#2a1d0c" opacity="0.25" />
-                <rect x={pos.x - h} y={pos.y - h} width={2 * h} height={2 * h} rx="3"
-                  fill="#e3cf9c" stroke="#453416" stroke-width="2" class="country-badge" />
-                <path d="M {pos.x - h * 0.35} {pos.y + h * 0.62} V {pos.y - h * 0.62} L {pos.x + h * 0.55} {pos.y - h * 0.22} L {pos.x - h * 0.35} {pos.y + h * 0.18}"
-                  fill="#453416" fill-opacity="0.75" stroke="#453416" stroke-width="1.4"
-                  stroke-linejoin="round" stroke-linecap="round" />
-              {:else}
-                <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
-                  fill="#2a1d0c" opacity="0.25" />
-                <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
-                  stroke="#453416" stroke-width="2" />
-              {/if}
+              <circle cx={pos.x + SHADOW_DX} cy={pos.y + SHADOW_DY} r={cityDotR + (hub ? 1.5 : 0)}
+                fill="#2a1d0c" opacity="0.25" />
+              <circle cx={pos.x} cy={pos.y} r={cityDotR + (hub ? 1.5 : 0)} fill="url(#{uid}-city-dot)"
+                stroke="#453416" stroke-width="2" />
               {#if hub}
                 <circle cx={pos.x} cy={pos.y} r={cityDotR * 0.45} fill="#453416" opacity="0.75" />
               {/if}
@@ -912,11 +945,12 @@
       {#each ticketLayers as layer}
         <g class="ticket-highlight" aria-hidden="true">
           {#each layer.pins as pinPos}
+            {@const pinR = countryAnchorSet.has(pinPos) ? flagRingR : cityDotR + 4}
             <g transform="translate({pinPos.x} {pinPos.y})">
-              <circle r={cityDotR + 4} fill="none" stroke={layer.color} stroke-width={2.5 * swFactor} />
-              <circle r={cityDotR + 4} fill="none" stroke={layer.color} stroke-width={1.2 * swFactor}
+              <circle r={pinR} fill="none" stroke={layer.color} stroke-width={2.5 * swFactor} />
+              <circle r={pinR} fill="none" stroke={layer.color} stroke-width={1.2 * swFactor}
                 class="pin-pulse" />
-              <g transform="translate({cityDotR + 5} {-(cityDotR + 5)})">
+              <g transform="translate({pinR + 1} {-(pinR + 1)})">
                 <circle r={7.5 * swFactor + 1.5} fill="#fbf6e9" stroke={layer.color} stroke-width={1.5 * swFactor} />
                 <path d={starPath(0, 0, 6 * swFactor, 2.6 * swFactor)} fill={layer.color} />
               </g>

@@ -162,6 +162,8 @@ describe('isMapData: Paesi e gruppi sempre aperti', () => {
     expect(isMapData(withCity({ country: true }))).toBe(true);
     expect(isMapData(withCity({ country: false }))).toBe(true);
     expect(isMapData(withCity({ country: 'sì' }))).toBe(false);
+    expect(isMapData(withCity({ country: true, flag: 'CH' }))).toBe(true);
+    expect(isMapData(withCity({ country: true, flag: 7 }))).toBe(false);
     const withRoute = (extra: Record<string, unknown>) => ({
       ...MAP,
       routes: [{ ...MAP.routes[0], ...extra }],

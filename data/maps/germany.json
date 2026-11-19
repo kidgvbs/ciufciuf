@@ -35,7 +35,8 @@
       "name": "Dänemark",
       "lat": 55.0,
       "lon": 9.0,
-      "country": true
+      "country": true,
+      "flag": "DK"
     },
     {
       "id": "dortmund",
@@ -78,7 +79,8 @@
       "name": "Frankreich",
       "lat": 48.7,
       "lon": 7.4,
-      "country": true
+      "country": true,
+      "flag": "FR"
     },
     {
       "id": "freiburg",
@@ -181,7 +183,8 @@
       "name": "Niederlande",
       "lat": 52.3,
       "lon": 6.4,
-      "country": true
+      "country": true,
+      "flag": "NL"
     },
     {
       "id": "nurnberg",
@@ -194,7 +197,8 @@
       "name": "Österreich",
       "lat": 47.9,
       "lon": 13.1,
-      "country": true
+      "country": true,
+      "flag": "AT"
     },
     {
       "id": "regensburg",
@@ -219,7 +223,8 @@
       "name": "Schweiz",
       "lat": 47.45,
       "lon": 8.6,
-      "country": true
+      "country": true,
+      "flag": "CH"
     },
     {
       "id": "schwerin",

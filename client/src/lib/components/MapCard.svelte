@@ -7,6 +7,9 @@
   // placeholder neutro disegnato da noi. Il sottotitolo deriva dai dati del ruleset.
   import { rulesetBlurb, type RulesetInfo } from '../rulesets';
   import { loadRulesetMap, type RulesetMap } from '../map-loader';
+  import { cityAnchors } from '../map-utils';
+  import { flagShapes } from '../flags';
+  import Flag from './Flag.svelte';
 
   let { host, ruleset, selected, onSelect }: {
     host: string;
@@ -56,11 +59,22 @@
         return { id: r.id, d };
       })
       .filter((r): r is NonNullable<typeof r> => r !== null);
+    // Città normali: un pallino; Paesi confinanti: una bandierina per ogni valico (ancora).
+    const anchors = cityAnchors(map, layout);
     const cities = map.cities.flatMap((c) => {
-      const p = layout.cities[c.id];
+      const p = c.country ? undefined : layout.cities[c.id];
       return p ? [{ x: ox + p.x * k, y: oy + p.y * k }] : [];
     });
-    return { routes, cities };
+    const flags = map.cities.flatMap((c) =>
+      c.country
+        ? (anchors.get(c.id) ?? []).map((p) => ({
+            x: ox + p.x * k,
+            y: oy + p.y * k,
+            code: flagShapes(c.flag) ? c.flag : undefined,
+          }))
+        : [],
+    );
+    return { routes, cities, flags };
   });
   const blurb = $derived(rulesetBlurb(ruleset));
 </script>
@@ -81,6 +95,13 @@
         {/each}
         {#each thumb.cities as p}
           <circle cx={p.x} cy={p.y} r="1.8" fill="#57432a" opacity="0.9" />
+        {/each}
+        {#each thumb.flags as f}
+          {#if f.code}
+            <Flag code={f.code} x={f.x} y={f.y} width={7.5} height={5} border={0.7} />
+          {:else}
+            <circle cx={f.x} cy={f.y} r="1.8" fill="#57432a" opacity="0.9" />
+          {/if}
         {/each}
       </svg>
     {:else}

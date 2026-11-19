@@ -27,6 +27,10 @@ pub struct City {
     /// rotta del giocatore che vi entra.
     #[serde(default)]
     pub country: bool,
+    /// Codice ISO 3166-1 alpha-2 (maiuscolo) della bandiera nazionale disegnata sulla mappa,
+    /// solo per i Paesi; è solo presentazione, il motore lo ignora.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flag: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -14,6 +14,8 @@ export interface CityData {
   lon: number;
   /** Paese confinante (vicolo cieco): marcatore distinto dal pallino città. Assente = false. */
   country?: boolean;
+  /** Paese confinante: codice ISO 3166-1 alpha-2 maiuscolo della bandiera da disegnare. */
+  flag?: string;
 }
 
 export interface RouteData {
@@ -289,35 +291,105 @@ export interface TicketLayer {
 }
 
 /**
+ * Ancore dei Paesi confinanti: per ogni rotta con esattamente un capo `country`, l'estremo della
+ * polyline più lontano dalla città dell'altro capo (l'ordine dei punti non conta) è la bandiera
+ * (valico) di quel Paese; ancore a meno di 0.5 px dalla stessa del Paese si fondono. Un Paese
+ * senza rotte disegnabili ha come ancora la sua posizione nel layout (nessuna, se manca).
+ * Ordine deterministico: quello delle rotte della mappa.
+ */
+export function countryAnchors(
+  mapData: Pick<MapData, 'cities' | 'routes'>,
+  layout: Pick<MapLayout, 'cities' | 'routes'>,
+): Map<string, Point[]> {
+  const countries = new Set(mapData.cities.filter((c) => c.country).map((c) => c.id));
+  const anchors = new Map<string, Point[]>();
+  for (const route of mapData.routes) {
+    const fromCountry = countries.has(route.from);
+    if (fromCountry === countries.has(route.to)) continue;
+    const [country, other] = fromCountry ? [route.from, route.to] : [route.to, route.from];
+    const poly = layout.routes[route.id];
+    const otherPos = layout.cities[other];
+    if (!poly || poly.length < 2 || !otherPos) continue;
+    const [first, last] = [poly[0]!, poly[poly.length - 1]!];
+    const far = Math.hypot(first[0] - otherPos.x, first[1] - otherPos.y) >
+      Math.hypot(last[0] - otherPos.x, last[1] - otherPos.y)
+      ? first
+      : last;
+    const list = anchors.get(country) ?? [];
+    if (!list.some((p) => Math.hypot(p.x - far[0], p.y - far[1]) < ANCHOR_DEDUPE_PX)) {
+      list.push({ x: far[0], y: far[1] });
+    }
+    anchors.set(country, list);
+  }
+  for (const id of countries) {
+    const pos = layout.cities[id];
+    if (!anchors.has(id) && pos) anchors.set(id, [pos]);
+  }
+  return anchors;
+}
+
+/** Sotto questa distanza (px viewBox) due ancore dello stesso Paese sono la stessa bandiera. */
+const ANCHOR_DEDUPE_PX = 0.5;
+
+/**
+ * Ancore di ogni città della mappa: un Paese confinante ha le sue bandiere (`countryAnchors`),
+ * una città normale la sua sola posizione. Le città senza posizione nel layout mancano.
+ */
+export function cityAnchors(
+  mapData: Pick<MapData, 'cities' | 'routes'>,
+  layout: Pick<MapLayout, 'cities' | 'routes'>,
+): Map<string, Point[]> {
+  const countries = countryAnchors(mapData, layout);
+  const out = new Map<string, Point[]>();
+  for (const city of mapData.cities) {
+    const list = city.country ? countries.get(city.id) : undefined;
+    const pos = layout.cities[city.id];
+    if (list) out.set(city.id, list);
+    else if (!city.country && pos) out.set(city.id, [pos]);
+  }
+  return out;
+}
+
+/**
  * Layer dei biglietti evidenziati: colore per indice, curva leggera (controllo quadratico
- * spostato sulla normale di ~8% della distanza). Salta i pin senza origine sulla mappa e le
- * destinazioni mancanti o coincidenti con l'origine; senza destinazioni disegnabili il
- * biglietto non dà alcun layer (l'indice, e quindi il colore, resta comunque quello del pin).
+ * spostato sulla normale di ~8% della distanza). Ogni id si risolve in un elenco di ancore
+ * (`cityAnchors`): pin su tutte le ancore dell'origine e di ogni destinazione disegnabile, e per
+ * ogni destinazione una linea tra la coppia (ancora d'origine, ancora di destinazione) più
+ * vicina. Salta i pin senza origine sulla mappa e le destinazioni mancanti o coincidenti con
+ * l'origine; senza destinazioni disegnabili il biglietto non dà alcun layer (l'indice, e quindi
+ * il colore, resta comunque quello del pin).
  */
 export function ticketLayers(
   pins: ReadonlyArray<TicketPin>,
-  positions: ReadonlyMap<string, Point>,
+  anchors: ReadonlyMap<string, ReadonlyArray<Point>>,
 ): TicketLayer[] {
   const layers: TicketLayer[] = [];
   pins.forEach((t, i) => {
-    const fromPos = positions.get(t.from);
-    if (!fromPos) return;
+    const fromAnchors = anchors.get(t.from);
+    if (!fromAnchors || fromAnchors.length === 0) return;
     const targets: Point[] = [];
     const paths: string[] = [];
     for (const id of t.to) {
-      const toPos = positions.get(id);
-      if (!toPos) continue;
-      const dx = toPos.x - fromPos.x;
-      const dy = toPos.y - fromPos.y;
-      const dist = Math.hypot(dx, dy);
-      if (dist === 0) continue;
-      const mx = (fromPos.x + toPos.x) / 2 - (dy / dist) * dist * 0.08;
-      const my = (fromPos.y + toPos.y) / 2 + (dx / dist) * dist * 0.08;
-      targets.push(toPos);
-      paths.push(`M ${fromPos.x} ${fromPos.y} Q ${mx} ${my} ${toPos.x} ${toPos.y}`);
+      const toAnchors = anchors.get(id);
+      if (!toAnchors) continue;
+      let best: { from: Point; to: Point; dist: number } | null = null;
+      for (const from of fromAnchors) {
+        for (const to of toAnchors) {
+          const dist = Math.hypot(to.x - from.x, to.y - from.y);
+          if (!best || dist < best.dist) best = { from, to, dist };
+        }
+      }
+      if (!best || best.dist === 0) continue;
+      const { from: a, to: b, dist } = best;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const mx = (a.x + b.x) / 2 - (dy / dist) * dist * 0.08;
+      const my = (a.y + b.y) / 2 + (dx / dist) * dist * 0.08;
+      targets.push(...toAnchors);
+      paths.push(`M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`);
     }
     if (paths.length === 0) return;
-    layers.push({ pins: [fromPos, ...targets], paths, color: ticketPinColor(i) });
+    layers.push({ pins: [...fromAnchors, ...targets], paths, color: ticketPinColor(i) });
   });
   return layers;
 }

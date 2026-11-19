@@ -21,6 +21,8 @@
 - Un gruppo parallelo ha 2–4 binari (`double: true`, stessi estremi, id `_1`…`_n`); le lunghezze dei binari possono differire (Nordic: Mo i Rana–Trondheim 6 traghetto + 5 tunnel), ogni binario ha i propri punti e costo. Un giocatore non ne prende mai due; con meno di `doubleRouteMinPlayers` giocatori, preso un binario gli altri sono bloccati.
 - `alwaysOpen: true` (Poland, rotte verso i Paesi): tutti i binari del gruppo sono aperti con qualunque numero di giocatori, uno per giocatore.
 - `country: true` su una città: Paese confinante, vicolo cieco. Due rotte che entrano nello stesso Paese **non** sono collegate tra loro (Freiburg–Frankreich e Saarbrücken–Frankreich non uniscono Freiburg e Saarbrücken). Un biglietto con estremo Paese è completato da una qualunque rotta del giocatore che vi entra, collegata all'altro estremo.
+- `flag` (solo sulle città `country: true`, codice ISO 3166-1 alpha-2 maiuscolo, es. `"CH"`): bandiera nazionale disegnata sulla mappa; è solo presentazione, il motore la ignora. `ttr-validate` dà errore se è su una città non Paese o non è `^[A-Z]{2}$`, avviso se un Paese ne è privo.
+- Più rotte sulla stessa coppia con un estremo Paese possono essere tutte `double: false`: ognuna è un varco di confine a sé (il motore le dà un nodo privato) e lo stesso giocatore può prenderle tutte (Switzerland: Kreuzlingen–Deutschland, `_1` bianca a est e `_2` arancione a ovest). Un mix di `double` e non `double` sulla stessa coppia, o più di 4 rotte, è un errore di `ttr-validate`.
 
 Disegno: i binari di un gruppo stanno a `k · passo` dalla mezzeria, con `k = −(n−1)/2 … (n−1)/2` e passo = spessore del tratto + gap (`doubleGap` del layout); con 2 binari è il vecchio ±(metà tratto + metà gap). I Paesi sono targhette quadrate invece del pallino.
 

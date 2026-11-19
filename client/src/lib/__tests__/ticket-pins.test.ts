@@ -91,11 +91,11 @@ describe('ticketPinColor', () => {
 
 describe('ticketLayers', () => {
   const positions = new Map([
-    ['fr', { x: 0, y: 0 }],
-    ['de', { x: 100, y: 0 }],
-    ['it', { x: 0, y: 100 }],
-    ['at', { x: 100, y: 100 }],
-    ['dup', { x: 0, y: 0 }],
+    ['fr', [{ x: 0, y: 0 }]],
+    ['de', [{ x: 100, y: 0 }]],
+    ['it', [{ x: 0, y: 100 }]],
+    ['at', [{ x: 100, y: 100 }]],
+    ['dup', [{ x: 0, y: 0 }]],
   ]);
 
   it('biglietto classico: due pin e una linea', () => {
@@ -138,5 +138,31 @@ describe('ticketLayers', () => {
     expect(layers).toHaveLength(1);
     expect(layers[0]!.pins).toEqual([{ x: 0, y: 0 }, { x: 0, y: 100 }]);
     expect(layers[0]!.paths).toHaveLength(1);
+  });
+
+  it('più ancore: pin su tutte quelle di origine e destinazione, linea tra la coppia più vicina', () => {
+    const anchors = new Map([
+      ['ch', [{ x: 0, y: 0 }, { x: 200, y: 0 }]],
+      ['de', [{ x: 50, y: 300 }, { x: 190, y: 40 }, { x: 400, y: 400 }]],
+    ]);
+    const layers = ticketLayers([{ from: 'ch', to: ['de'] }], anchors);
+    expect(layers).toHaveLength(1);
+    expect(layers[0]!.pins).toEqual([
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 50, y: 300 },
+      { x: 190, y: 40 },
+      { x: 400, y: 400 },
+    ]);
+    expect(layers[0]!.paths).toHaveLength(1);
+    expect(layers[0]!.paths[0]).toMatch(/^M 200 0 Q [-\d. e]+ 190 40$/);
+  });
+
+  it('più ancore: una destinazione con un\'ancora sull\'origine non dà linea', () => {
+    const anchors = new Map([
+      ['a', [{ x: 0, y: 0 }, { x: 10, y: 10 }]],
+      ['b', [{ x: 10, y: 10 }, { x: 500, y: 500 }]],
+    ]);
+    expect(ticketLayers([{ from: 'a', to: ['b'] }], anchors)).toEqual([]);
   });
 });

@@ -82,9 +82,12 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
     r.check("Rotte parallele: max 4 per coppia, double marcato", |r| {
         let (total, groups, single_pairs) = check_double_routes(r, map);
         println!(
-            "  Segmenti totali: {} ({} gruppi paralleli + {} singole)",
+            "  Segmenti totali: {} ({} gruppi paralleli + {} altre coppie)",
             total, groups, single_pairs
         );
+    });
+    r.check("Paesi: flag ISO alpha-2", |r| {
+        check_flags(r, map);
     });
     r.check("Mappa: numero di segmenti plausibile", |r| {
         if map.routes.len() < 10 {
@@ -181,8 +184,16 @@ fn check_deck_counts(r: &mut Report, ruleset: &Ruleset) {
 }
 
 /// Al massimo `MAX_PARALLEL_LANES` rotte per coppia non ordinata di città; con più rotte
-/// sulla stessa coppia tutte `double`. Restituisce (rotte, gruppi paralleli, coppie singole).
+/// sulla stessa coppia tutte `double`, tranne quando un estremo è un Paese: ogni rotta è un
+/// varco di confine a sé (il motore le dà un nodo privato ciascuna) e può essere `double: false`.
+/// Restituisce (rotte, gruppi paralleli `double`, coppie senza gruppo parallelo).
 fn check_double_routes(r: &mut Report, map: &MapData) -> (usize, usize, usize) {
+    let countries: BTreeSet<&str> = map
+        .cities
+        .iter()
+        .filter(|c| c.country)
+        .map(|c| c.id.as_str())
+        .collect();
     let mut pair_segments: BTreeMap<(&str, &str), Vec<&Route>> = BTreeMap::new();
     for rt in &map.routes {
         let key = if rt.from <= rt.to {
@@ -192,15 +203,24 @@ fn check_double_routes(r: &mut Report, map: &MapData) -> (usize, usize, usize) {
         };
         pair_segments.entry(key).or_default().push(rt);
     }
+    let mut groups = 0;
+    let mut single_pairs = 0;
     for ((a, b), routes) in &pair_segments {
         let count = routes.len();
+        let to_country = countries.contains(a) || countries.contains(b);
+        let doubles = routes.iter().filter(|rt| rt.double).count();
         if count > MAX_PARALLEL_LANES {
             r.err(format!(
                 "Coppia {}–{}: {} rotte (max {})",
                 a, b, count, MAX_PARALLEL_LANES
             ));
         }
-        if count >= 2 && !routes.iter().all(|rt| rt.double) {
+        if count >= 2 && doubles != 0 && doubles != count {
+            r.err(format!(
+                "Coppia {}–{}: {} rotte, mix di double e non double",
+                a, b, count
+            ));
+        } else if count >= 2 && doubles == 0 && !to_country {
             r.err(format!(
                 "Coppia {}–{}: {} rotte ma non tutte double=true",
                 a, b, count
@@ -212,10 +232,36 @@ fn check_double_routes(r: &mut Report, map: &MapData) -> (usize, usize, usize) {
                 routes[0].id, a, b
             ));
         }
+        if doubles >= 2 {
+            groups += 1;
+        } else {
+            single_pairs += 1;
+        }
     }
-    let groups = pair_segments.values().filter(|v| v.len() >= 2).count();
-    let single_pairs = pair_segments.values().filter(|v| v.len() == 1).count();
     (map.routes.len(), groups, single_pairs)
+}
+
+/// `flag` (codice ISO 3166-1 alpha-2 maiuscolo) solo sui Paesi; un Paese senza `flag` è un avviso.
+fn check_flags(r: &mut Report, map: &MapData) {
+    for c in &map.cities {
+        match (&c.flag, c.country) {
+            (Some(f), true) => {
+                let b = f.as_bytes();
+                if b.len() != 2 || !b.iter().all(u8::is_ascii_uppercase) {
+                    r.err(format!(
+                        "Città {}: flag '{}' non è un codice ISO alpha-2 maiuscolo",
+                        c.id, f
+                    ));
+                }
+            }
+            (Some(f), false) => r.err(format!(
+                "Città {}: flag '{}' su una città che non è un Paese",
+                c.id, f
+            )),
+            (None, true) => r.warn(format!("Paese {}: manca flag", c.id)),
+            (None, false) => {}
+        }
+    }
 }
 
 fn main() {

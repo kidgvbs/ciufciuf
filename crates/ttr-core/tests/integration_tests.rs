@@ -48,6 +48,7 @@ fn city(id: &str) -> City {
         id: id.into(),
         name: id.into(),
         country: false,
+        flag: None,
     }
 }
 

@@ -5,7 +5,8 @@
       "name": "Białoruś",
       "lat": 52.5,
       "lon": 23.8,
-      "country": true
+      "country": true,
+      "flag": "BY"
     },
     {
       "id": "bialystok",
@@ -30,7 +31,8 @@
       "name": "Czechy",
       "lat": 50.3,
       "lon": 15.8,
-      "country": true
+      "country": true,
+      "flag": "CZ"
     },
     {
       "id": "czestochowa",
@@ -91,7 +93,8 @@
       "name": "Litwa",
       "lat": 54.3,
       "lon": 23.4,
-      "country": true
+      "country": true,
+      "flag": "LT"
     },
     {
       "id": "lodz",
@@ -110,7 +113,8 @@
       "name": "Niemcy",
       "lat": 52.6,
       "lon": 14.3,
-      "country": true
+      "country": true,
+      "flag": "DE"
     },
     {
       "id": "olsztyn",
@@ -153,7 +157,8 @@
       "name": "Rosja",
       "lat": 54.4,
       "lon": 20.6,
-      "country": true
+      "country": true,
+      "flag": "RU"
     },
     {
       "id": "rzeszow",
@@ -172,7 +177,8 @@
       "name": "Słowacja",
       "lat": 49.25,
       "lon": 19.2,
-      "country": true
+      "country": true,
+      "flag": "SK"
     },
     {
       "id": "suwalki",
@@ -191,7 +197,8 @@
       "name": "Ukraina",
       "lat": 49.6,
       "lon": 23.3,
-      "country": true
+      "country": true,
+      "flag": "UA"
     },
     {
       "id": "warszawa",

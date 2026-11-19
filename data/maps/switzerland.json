@@ -59,14 +59,16 @@
       "name": "Deutschland",
       "lat": 47.85,
       "lon": 8.6,
-      "country": true
+      "country": true,
+      "flag": "DE"
     },
     {
       "id": "france",
       "name": "France",
       "lat": 46.6,
       "lon": 5.9,
-      "country": true
+      "country": true,
+      "flag": "FR"
     },
     {
       "id": "fribourg",
@@ -91,7 +93,8 @@
       "name": "Italia",
       "lat": 45.85,
       "lon": 9.1,
-      "country": true
+      "country": true,
+      "flag": "IT"
     },
     {
       "id": "kreuzlingen",
@@ -152,7 +155,8 @@
       "name": "Österreich",
       "lat": 47.2,
       "lon": 10.05,
-      "country": true
+      "country": true,
+      "flag": "AT"
     },
     {
       "id": "pfaffikon",
@@ -590,10 +594,9 @@
       "to": "kreuzlingen",
       "len": 1,
       "color": "White",
-      "double": true,
+      "double": false,
       "tunnel": false,
-      "ferries": 0,
-      "alwaysOpen": true
+      "ferries": 0
     },
     {
       "id": "deutschland_kreuzlingen_2",
@@ -601,10 +604,9 @@
       "to": "kreuzlingen",
       "len": 1,
       "color": "Orange",
-      "double": true,
+      "double": false,
       "tunnel": false,
-      "ferries": 0,
-      "alwaysOpen": true
+      "ferries": 0
     },
     {
       "id": "deutschland_schaffhausen_1",

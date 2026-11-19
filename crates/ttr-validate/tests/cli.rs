@@ -569,3 +569,85 @@ fn ttr_validate_rejects_inconsistent_new_rules() {
         "serve 'czechy_wroclaw_2'",
     );
 }
+
+const SWITZERLAND: (&str, &str) = (
+    "../../data/maps/switzerland.json",
+    "../../data/rulesets/switzerland.json",
+);
+
+/// Clona la rotta `id` con un nuovo id e la aggiunge alla mappa.
+fn push_route_copy(map: &mut Value, id: &str, new_id: &str) {
+    let routes = map["routes"].as_array_mut().unwrap();
+    let mut copy = routes.iter().find(|r| r["id"] == id).unwrap().clone();
+    copy["id"] = Value::from(new_id);
+    routes.push(copy);
+}
+
+fn set_city_field(map: &mut Value, city_id: &str, field: &str, value: Value) {
+    let cities = map["cities"].as_array_mut().unwrap();
+    let city = cities.iter_mut().find(|c| c["id"] == city_id).unwrap();
+    city[field] = value;
+}
+
+/// Più rotte non `double` sulla stessa coppia sono ammesse solo se un estremo è un Paese
+/// (ogni rotta è un varco di confine); `flag` solo sui Paesi, in formato ISO alpha-2.
+#[test]
+fn ttr_validate_checks_border_crossings_and_flags() {
+    let output = run(Path::new(SWITZERLAND.0), Path::new(SWITZERLAND.1));
+    assert!(output.status.success(), "{}", stdout(&output));
+    assert!(
+        !stdout(&output).contains("manca flag"),
+        "{}",
+        stdout(&output)
+    );
+
+    // (a) Un terzo varco non double verso la Germania è accettato.
+    let dir = TempDir::new("third-crossing");
+    let mut map = load(SWITZERLAND.0);
+    push_route_copy(
+        &mut map,
+        "deutschland_kreuzlingen_1",
+        "deutschland_kreuzlingen_3",
+    );
+    let output = run(
+        &dir.write("map.json", &map),
+        &dir.write("ruleset.json", &load(SWITZERLAND.1)),
+    );
+    assert!(output.status.success(), "{}", stdout(&output));
+
+    // (b) Senza Paese due rotte non double sulla stessa coppia sono un errore.
+    expect_rejected(
+        SWITZERLAND,
+        "two-single-routes-without-country",
+        |map, _| push_route_copy(map, "baden_basel_1", "baden_basel_2"),
+        "Coppia baden–basel: 2 rotte ma non tutte double=true",
+    );
+    // (c) Mix di double e non double sulla stessa coppia con Paese.
+    expect_rejected(
+        SWITZERLAND,
+        "mixed-double-with-country",
+        |map, _| {
+            let routes = map["routes"].as_array_mut().unwrap();
+            let lane = routes
+                .iter_mut()
+                .find(|r| r["id"] == "deutschland_kreuzlingen_1")
+                .unwrap();
+            lane["double"] = Value::from(true);
+        },
+        "Coppia deutschland–kreuzlingen: 2 rotte, mix di double e non double",
+    );
+    // (d) flag malformato.
+    expect_rejected(
+        SWITZERLAND,
+        "flag-lowercase",
+        |map, _| set_city_field(map, "deutschland", "flag", Value::from("de")),
+        "Città deutschland: flag 'de' non è un codice ISO alpha-2 maiuscolo",
+    );
+    // (e) flag su una città che non è un Paese.
+    expect_rejected(
+        SWITZERLAND,
+        "flag-on-plain-city",
+        |map, _| set_city_field(map, "bern", "flag", Value::from("CH")),
+        "Città bern: flag 'CH' su una città che non è un Paese",
+    );
+}

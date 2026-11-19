@@ -63,7 +63,7 @@
     "Le rotte verso Deutschland, France, Italia e Österreich sono vicoli ciechi: due rotte che entrano nello stesso Paese non collegano tra loro le città di partenza.",
     "Biglietti con più destinazioni (città verso Paesi, Paese verso altri Paesi): a fine partita valgono i punti della destinazione collegata che ne dà di più, mentre se non ne hai collegata nessuna perdi il valore più basso del biglietto. Un biglietto è completato se ne hai collegata almeno una.",
     "Biglietti: 5 iniziali (tieni almeno 2); pescandone altri ne vedi 3 e ne tieni almeno 1. I biglietti scartati escono dal gioco, anche a inizio partita, quindi il mazzo può finire.",
-    "Rotte doppie: in 2 giocatori, preso un binario l'altro si chiude; in 3 giocatori si possono usare entrambi (ma mai due binari dello stesso gruppo dallo stesso giocatore). I due binari Kreuzlingen–Deutschland sono due varchi distinti: restano aperti anche in 2 giocatori, uno per giocatore.",
+    "Rotte doppie: in 2 giocatori, preso un binario l'altro si chiude; in 3 giocatori si possono usare entrambi (ma mai due binari dello stesso gruppo dallo stesso giocatore). Ogni bandierina è un varco a sé verso il suo Paese: le due di Kreuzlingen (bianca e arancione) non sono una rotta doppia, restano aperte anche in 2 giocatori e lo stesso giocatore può prenderle entrambe.",
     "Bonus del percorso più lungo: +10 punti."
   ],
   "doubleRouteMinPlayers": 3,

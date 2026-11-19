@@ -27,7 +27,7 @@ function isTicketData(t: Record<string, unknown>): boolean {
   );
 }
 
-/** `true` se `v` ha la forma minima di `MapData`: città con `name`, rotte con `len` 1–12 (e `tunnel`/`ferries`/`alwaysOpen` opzionali coerenti, `country` booleano sulle città), biglietti con `id` testuale e destinazioni coerenti. */
+/** `true` se `v` ha la forma minima di `MapData`: città con `name` (`country` booleano e `flag` testuale opzionali), rotte con `len` 1–12 (e `tunnel`/`ferries`/`alwaysOpen` opzionali coerenti), biglietti con `id` testuale e destinazioni coerenti. */
 export function isMapData(v: unknown): v is MapData {
   if (!isRecord(v)) return false;
   const { cities, routes, tickets } = v;
@@ -37,7 +37,10 @@ export function isMapData(v: unknown): v is MapData {
     isArrayOfRecords(tickets) &&
     [...cities, ...routes, ...tickets].every((x) => typeof x.id === 'string') &&
     cities.every(
-      (c) => typeof c.name === 'string' && (c.country === undefined || typeof c.country === 'boolean'),
+      (c) =>
+        typeof c.name === 'string' &&
+        (c.country === undefined || typeof c.country === 'boolean') &&
+        (c.flag === undefined || typeof c.flag === 'string'),
     ) &&
     routes.every(
       (r) =>
