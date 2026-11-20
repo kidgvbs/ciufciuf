@@ -37,6 +37,8 @@ pub enum GameEvent {
     DeckReshuffled,
     /// Turno di pesca completato.
     DrawTurnComplete { player_index: usize },
+    /// Carta Traghetto pescata dal mazzetto (Italy); chiude il turno.
+    FerryCardDrawn { player_index: usize },
     /// Biglietti offerti a un giocatore.
     TicketsOffered {
         player_index: usize,
@@ -135,6 +137,13 @@ pub struct FinalScore {
     /// Città della rete più grande del giocatore (0 senza il bonus `largest_network`).
     #[serde(default)]
     pub largest_network: u32,
+    /// Bonus delle Regioni collegate (modalità con `regions`).
+    #[serde(default)]
+    pub regions_bonus: i32,
+    /// Regioni contate in ciascuna rete di rotte del giocatore (doppie comprese), in ordine
+    /// decrescente; vuoto senza il bonus `regions`.
+    #[serde(default)]
+    pub region_networks: Vec<u32>,
     pub total: i32,
     /// Punti delle stazioni non costruite (Europe).
     #[serde(default)]

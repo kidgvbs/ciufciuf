@@ -155,6 +155,7 @@ pub fn decide(
                         route_id: rid.clone(),
                         cards_discarded: payment,
                         passengers: passenger_picks(public, map, rid),
+                        ferry_cards: None,
                         client_seq: None,
                     },
                 )));

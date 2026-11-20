@@ -1,7 +1,7 @@
 # CiufCiuf! — Piano completo — Gioco stile Ticket to Ride su LAN
 
 **Versione:** 1.3 — 3 novembre 2026 *(supera la v1.2: integra D22 Svelte + D23 repo GitHub privato/RECAP)*
-**Stato (aggiornato 19/11/2026):** Fasi 0–4 completate; 17 ruleset su 9 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland, India, Legendary Asia — §3.4, §3.5, §3.6); prossime mappe in ordine: Italy, Japan (§3.6), poi la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D48) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
+**Stato (aggiornato 19/11/2026):** Fasi 0–4 completate; 18 ruleset su 10 mappe (USA, Europe e loro modalità; Germany, Poland, Basilicata, Nordic Countries, Switzerland, India, Legendary Asia, Italy — §3.4, §3.5, §3.6, §3.7); prossima mappa: Japan (§3.6), poi la Fase 5. §14 chiuso. Le decisioni successive a D23 (D24–D49) sono registrate in `RECAP.md` §4; la cronaca dei giri in `docs/history.md`. Casa del progetto: `~/Rust/ciufciuf` (repo GitHub privato `kidgvbs/ciufciuf`, D23)
 **Fonti:** ricerca web (Wikipedia, BGA, Marmalade/Steam, Days of Wonder), studio preliminare, GDD esterno revisionato dall'utente, decisioni prese in sessione, revisione esterna del piano v1.1 (verificata), risposte definitive dell'utente del 3/11/2026 (12 punti — integrate come D8/D19/D20/D21 e in §14) e conferme successive dello stesso giorno (**D22**: Svelte; **D23**: repo GitHub privato + `RECAP.md`).
 
 > Questo documento **supera** lo studio preliminare. Regola dell'ultimo giro: chi innesca la fine **gioca** l'ultimo turno
@@ -223,6 +223,27 @@ Convenzioni dei dati: `docs/data-conventions.md`; fonti per mappa: `docs/data-so
 2. **Treni scartati e bonus**: i treni scartati per le montagne non sono rotte: non contano nella rete dell'Asian Explorer né nei biglietti (lettura letterale del regolamento).
 
 **Criterio di accettazione.** `ttr-validate` verde sui dati riconciliati (rotte, X, biglietti, lunghezze → punti dalla legenda del tabellone); test del motore su montagne (costo in treni, rifiuto con riserva insufficiente, +2 per treno, ultimo giro), Asian Explorer (rami, anelli, parità) e spareggio; `Game::LegendaryAsia` nei proptest; golden invariati; layout con tutti i gate del generatore a 0 e le altre mappe byte-identiche; TV e punteggi finali verificati a vista.
+
+### 3.7 Italy (piano e giro del 19/11/2026 — fatto)
+
+**Fonti.** Regolamento EN e IT 2019 (`720132-T2RMC7-Rules_Italy_en.pdf`, `720632-T2RMC7-Rules_Italy_it.pdf`, CDN Asmodee/DoW) letti il 19/11; legenda del tabellone (immagine del tabellone di BGA, `img/italy/map.webp`): punti per lunghezza 1–7 → 1/2/4/7/10/15/**18**, tabella Regioni 5→1, 6→2, 7→4, 8→7, 9→11, 10→16, 11→22, 12→29, 13→37, 14→46, **15+→56** (sotto 5 nessuna voce). Dati: implementazione BGA `thoun/tickettoride` (`modules/maps/italy`) e wiki di fan (`Italy: Cities and Routes`, `List of Italy Destination Tickets`) coincidono per script su tutti i 128 binari (coppia, lunghezza, colore, onde) e i 56 biglietti; colori e onde controllati campionando i pixel del tabellone sugli spazi di BGA, valori dei biglietti letti sulle carte (`img/italy/destinations-1-0.jpg`).
+
+**Regole (vincolanti).**
+- 2–5 giocatori, 45 treni, mazzo 12×8 + 14 locomotive; 34 città in 17 Regioni + 5 zone confinanti (Francia, Svizzera, Austria, Croazia, Monaco) come Paesi (`country: true`, vicoli ciechi, un nodo privato per rotta, D46); 85 rotte / 128 binari, doppie e **triple** (Roma–Napoli) con tutti i binari solo in 4–5 giocatori (`doubleRouteMinPlayers: 4`), mai due binari dello stesso gruppo allo stesso giocatore.
+- Biglietti: 56 in un mazzo; mano iniziale 5, tieni ≥3, scarti mescolati in fondo al mazzo (`setupDiscards: "reshuffleBottom"`); pesca 4, tieni ≥1, scarti in fondo.
+- **Linee traghetto**: tutte le grigie (21 binari). Gli spazi con l'onda (`ferries: k`, 1–4) si pagano con una locomotiva o con una **carta Traghetto**, gli altri come una grigia normale (un colore + locomotive). Una carta Traghetto copre **1 o 2** spazi onda a scelta (D49), una locomotiva uno; niente carte Traghetto su rotte senza onde o sugli spazi senza onda.
+- **Azione nuova «Pesca 1 carta Traghetto»** (un turno intero): ammessa solo con meno di 2 carte Traghetto in mano. Le carte usate tornano nel mazzetto (D49): 10 carte ≥ 2 × 5 giocatori, quindi il mazzetto non finisce mai.
+- **Bonus Regioni** a fine partita: per ogni rete distinta di rotte proprie, numero di Regioni con almeno una città nella rete; Sardegna, Sicilia e Puglia valgono **2** se tutte le loro città sono nella rete; punti dalla tabella (sotto 5 → 0, oltre 15 → 56), reti sommate. Niente percorso più lungo né Globetrotter. Spareggio: biglietti completati (regola base).
+
+**Decisioni (D49, utente 19/11).** 1. Carte Traghetto usate di nuovo nel mazzetto. 2. Una carta copre 1 o 2 onde a scelta (lettura letterale di «fino a 2»: due carte su due onde è ammesso). 3. Regioni anche dal vivo sulla TV (reti e bonus attuale per giocatore, dato pubblico calcolato dal motore); niente nome della Regione sulla mappa.
+
+**Modello (dati prima del motore; campi tutti opzionali, `RULES_VERSION` resta 3 se i golden restano uguali).**
+- Mappa: `City.region` (id snake_case, es. `emilia_romagna`; assente sui Paesi e sulle altre mappe, serializzazione saltata). Rotte: `ferries: k` = spazi onda.
+- Ruleset: `ferryCards: { "count": 10, "maxInHand": 2, "wavesPerCard": 2 }`; bonus `{ "type": "regions", "label": "Regioni", "points": 56, "minRegions": 5, "table": [1, 2, 4, 7, 11, 16, 22, 29, 37, 46, 56], "doubleRegions": ["puglia", "sardegna", "sicilia"] }` (punti = `table[k − minRegions]`, saturato sull'ultimo valore; `points` = ultimo valore); `tieBreakers: ["completedTickets"]`.
+- Motore: `PlayerState.ferry_cards`; `Action::DrawFerryCard` (solo in `PLAYER_TURN`, chiude il turno, anche nell'ultimo giro); `ClaimRoute.ferry_cards` (default 0, non serializzato a 0) validato in `payment.rs` con la regola «tutte le carte dichiarate si assegnano agli spazi» (D43); `LegalMoves.can_draw_ferry_card`; rotte reclamabili calcolate anche con le carte Traghetto. Bonus calcolato sulle componenti delle rotte proprie (Paesi nodi privati, come `largest_network`): `FinalScore.regions_bonus` (fuori dall'hash golden a zero) e `region_networks` (Regioni per rete).
+- Proto/server/client: `PlayerSummary.ferry_cards`, Regioni dal vivo per giocatore; azione `DRAW_FERRY_CARD`, `ClaimRoutePayload.ferry_cards`, mossa recente; catalogo con la configurazione delle carte Traghetto; onde disegnate sugli spazi traghetto della TV; `ClaimDialog` con la scelta delle carte Traghetto; colonna Regioni nei punteggi finali; `specialRules` in italiano; bandiere `FR`, `CH`, `AT`, `HR`, `MC`.
+
+**Criterio di accettazione.** `ttr-validate` verde (34 città + 5 Paesi, 128 binari, 56 biglietti, punti 1–7 dalla legenda); test del motore su carte Traghetto (pesca, limite 2, ritorno nel mazzetto, pagamenti con 1/2 onde per carta, rifiuti) e bonus Regioni (reti separate, Regioni doppie complete e incomplete, soglie 5 e 15+, Paesi); `Game::Italy` nei proptest; golden invariati; layout con tutti i gate del generatore a 0 e le altre mappe byte-identiche; TV, controller e punteggi finali verificati a vista.
 
 ---
 
@@ -465,7 +486,7 @@ Le dimensioni del GDD sono **proporzioni di riferimento** (unità relative, non 
 
 **Traguardi**: giocabile con amici a fine Fase 3 (~20–35 giornate); "per intero" (USA+Europe+AI) a fine Fase 5.
 
-**Stato al 19/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`); mappe oltre USA/Europe: Germany, Poland, Basilicata, Nordic, Switzerland, India, Legendary Asia. **Prossime mappe: Italy, poi Japan (§3.6)**. Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
+**Stato al 19/11/2026**: Fasi 0–4 completate e verificate (dettagli in `docs/history.md`); mappe oltre USA/Europe: Germany, Poland, Basilicata, Nordic, Switzerland, India, Legendary Asia, Italy. **Prossima mappa: Japan (§3.6)**. Restano da confermare il criterio di accettazione della Fase 3 con 2–5 telefoni veri via QR e i prossimi fix in `RECAP.md` §2; poi Fase 5.
 
 Ordine deliberato: **motore prima della UI, dati prima del motore**. La Fase 3 è il rischio maggiore (rendering mappa = la voce più sottovalutata del piano); la Fase 4 è dove si smette di faticare e si gioca.
 

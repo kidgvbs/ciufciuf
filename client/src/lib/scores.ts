@@ -30,6 +30,15 @@ export function largestNetworkWinners(scores: FinalScoreInfo[], players: PlayerS
   return `${names.join(', ')} (${first.largestNetwork} città)`;
 }
 
+/**
+ * Bonus Regioni di un giocatore: «+6 (7 + 6 Regioni)» (punti e Regioni di ogni rete, in ordine
+ * decrescente come dal server) oppure «0 (4 Regioni)» sotto la soglia; `null` senza reti.
+ */
+export function regionsText(bonus: number, networks: readonly number[]): string | null {
+  if (networks.length === 0) return null;
+  return `${bonus > 0 ? `+${bonus}` : '0'} (${networks.join(' + ')} Regioni)`;
+}
+
 /** `true` se la partita ha le stazioni (Europe): qualcuno ne ha ancora o ne è già stata costruita una. */
 export function rulesetHasStations(players: PlayerSummary[], stations: StationPlacement[]): boolean {
   return stations.length > 0 || players.some((p) => p.stations_remaining > 0);

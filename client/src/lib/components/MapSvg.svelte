@@ -31,7 +31,7 @@
 {:else if data && layout}
   {#key data}
     <svelte:boundary>
-      <MapBoard {...props} mapData={data} {layout} bigCities={rulesetCatalog.bigCities(gameMap.rulesetId)} />
+      <MapBoard {...props} mapData={data} {layout} bigCities={rulesetCatalog.bigCities(gameMap.rulesetId)} waveFerries={rulesetCatalog.ferryCards(gameMap.rulesetId) !== null} />
       {#snippet failed(_error, reset)}
         <div class="map-status" role="alert">
           <p>Mappa non disponibile</p>

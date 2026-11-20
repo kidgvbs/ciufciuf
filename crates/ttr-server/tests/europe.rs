@@ -182,6 +182,7 @@ fn decide_europe(
                     route_id: route.id.clone(),
                     cards_discarded: cards,
                     passengers: None,
+                    ferry_cards: None,
                     client_seq: None,
                 }));
             }
@@ -418,6 +419,7 @@ async fn europe_save_with_pending_tunnel_resumes_and_accepts_the_decision() {
                         route_id: r.id.clone(),
                         cards_discarded,
                         passengers: Default::default(),
+                        ferry_cards: 0,
                     })
                 })
                 .find(|claim| {

@@ -31,6 +31,10 @@ pub struct City {
     /// solo per i Paesi; è solo presentazione, il motore lo ignora.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flag: Option<String>,
+    /// Regione italiana della città (Italy): id snake_case; solo sulle città, mai sui Paesi
+    /// (`country`). Alimenta il bonus `regions`; assente sulle altre mappe.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,7 +73,7 @@ pub struct Route {
     pub mountains: u32,
 }
 
-fn is_zero(n: &u32) -> bool {
+pub(crate) fn is_zero(n: &u32) -> bool {
     *n == 0
 }
 
@@ -212,6 +216,14 @@ pub struct Ruleset {
     /// Rotte di montagna (Legendary Asia); obbligatorio se la mappa ha rotte con `mountains`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mountains: Option<MountainsConfig>,
+    /// Carte Traghetto (Italy): mazzetto comune, azione di pesca e pagamento delle onde;
+    /// la mappa deve avere rotte con `ferries`.
+    #[serde(
+        rename = "ferryCards",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub ferry_cards: Option<FerryCardsConfig>,
 }
 
 /// Regole delle rotte di montagna: valore dei treni scartati per le X.
@@ -220,6 +232,21 @@ pub struct MountainsConfig {
     /// Punti immediati per ogni treno scartato.
     #[serde(rename = "pointsPerTrain")]
     pub points_per_train: u32,
+}
+
+/// Carte Traghetto (Italy): un mazzetto condiviso di `count` carte, al più `maxInHand` per
+/// giocatore; una carta paga da 1 a `wavesPerCard` spazi onda di una rotta con `ferries`.
+/// Le carte usate tornano nel mazzetto.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FerryCardsConfig {
+    /// Carte del mazzetto; almeno `maxInHand × players.max`, così non finisce mai.
+    pub count: u32,
+    /// Massimo di carte Traghetto in mano a un giocatore.
+    #[serde(rename = "maxInHand")]
+    pub max_in_hand: u32,
+    /// Spazi onda che una carta può coprire (da 1 a questo numero, a scelta del giocatore).
+    #[serde(rename = "wavesPerCard")]
+    pub waves_per_card: u32,
 }
 
 /// Stazioni per giocatore: `costs[i]` è il costo in carte della stazione `i`-esima.
@@ -356,6 +383,22 @@ pub struct Bonus {
     /// Non vuoto, non decrescente, con `points` uguale all'ultimo valore.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub table: Vec<u32>,
+    /// Solo `regions`: numero minimo di Regioni (con almeno una città nella rete) perché
+    /// una rete dia punti; `table[min(k - minRegions, len - 1)]` con k Regioni. `table` è
+    /// non vuota, non decrescente, con `points` uguale all'ultimo valore.
+    #[serde(
+        rename = "minRegions",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub min_regions: Option<u32>,
+    /// Solo `regions`: Regioni che valgono 2 se tutte le loro città sono nella rete.
+    #[serde(
+        rename = "doubleRegions",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub double_regions: Vec<String>,
 }
 
 /// Regola di scelta del draft iniziale per un deck: biglietti distribuiti a ogni
@@ -415,6 +458,14 @@ impl Ruleset {
             .map(|b| b.points)
     }
 
+    /// Bonus `regions`, se il ruleset lo prevede.
+    #[must_use]
+    pub fn regions_bonus(&self) -> Option<&Bonus> {
+        self.bonuses
+            .iter()
+            .find(|b| b.bonus_type == REGIONS_BONUS_TYPE)
+    }
+
     /// Tabella cumulativa del bonus `mandala`, se il ruleset lo prevede.
     #[must_use]
     pub fn mandala_table(&self) -> Option<&[u32]> {
@@ -465,6 +516,9 @@ pub struct PlayerState {
     /// Parte di `score` data dai treni scartati sulle rotte di montagna.
     #[serde(default)]
     pub mountain_points: i32,
+    /// Carte Traghetto in mano (Italy); 0 senza `ferryCards`.
+    #[serde(default)]
+    pub ferry_cards: u32,
     /// Se il giocatore ha già scelto in INITIAL_DRAFT.
     pub initial_draft_done: bool,
     /// Città con una stazione del giocatore, in ordine di costruzione.
@@ -577,6 +631,9 @@ pub const GLOBETROTTER_BONUS_TYPE: &str = "globetrotter";
 /// Valore di `Bonus::bonus_type` per il bonus dei biglietti con due percorsi distinti
 /// (Grand Tour / Mandala, India).
 pub const MANDALA_BONUS_TYPE: &str = "mandala";
+
+/// Valore di `Bonus::bonus_type` per il bonus delle Regioni collegate (Italy).
+pub const REGIONS_BONUS_TYPE: &str = "regions";
 
 /// Valore di `Bonus::bonus_type` per il bonus della rete di città più grande
 /// (Asian Explorer, Legendary Asia).

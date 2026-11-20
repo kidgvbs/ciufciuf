@@ -118,6 +118,10 @@ struct RulesetListItem {
         skip_serializing_if = "Option::is_none"
     )]
     mountain_points_per_train: Option<u32>,
+    /// Carte Traghetto (Italy): dimensione del mazzetto, massimo in mano e onde per carta;
+    /// `null` se il ruleset non le prevede.
+    #[serde(rename = "ferryCards", skip_serializing_if = "Option::is_none")]
+    ferry_cards: Option<ttr_core::types::FerryCardsConfig>,
 }
 
 #[derive(Debug, Serialize)]
@@ -162,6 +166,7 @@ pub async fn list_rulesets(State(state): State<AppState>) -> impl IntoResponse {
                     .and_then(|l| l.usable_on.clone()),
                 ferry_any_cards: ruleset.ferries.as_ref().map(|f| f.any_cards_per_locomotive),
                 mountain_points_per_train: ruleset.mountains.as_ref().map(|m| m.points_per_train),
+                ferry_cards: ruleset.ferry_cards.clone(),
             })
         })
         .collect();
@@ -943,6 +948,9 @@ pub(crate) fn inbound_to_core_action(
             }
         }
         ttr_proto::InboundAction::DrawTickets(_) => ttr_core::Action::DrawTickets { player_index },
+        ttr_proto::InboundAction::DrawFerryCard(_) => {
+            ttr_core::Action::DrawFerryCard { player_index }
+        }
         ttr_proto::InboundAction::ChooseTickets(p) => ttr_core::Action::ChooseTickets {
             player_index,
             keep: p.keep.clone(),
@@ -958,6 +966,7 @@ pub(crate) fn inbound_to_core_action(
                 .flatten()
                 .map(|pick| (pick.city_id.clone(), pick.color.clone()))
                 .collect(),
+            ferry_cards: p.ferry_cards.unwrap_or(0),
         },
         ttr_proto::InboundAction::BuildStation(p) => ttr_core::Action::BuildStation {
             player_index,

@@ -17,7 +17,9 @@
     PLAIN_CARD_COLORS,
     countCards,
     findRoutePayment,
+    findRoutePaymentWithFerry,
     locoBounds,
+    maxFerryCards,
     maxGroups,
     mostCommonColor,
     routeColorToCard,
@@ -25,6 +27,7 @@
     routePaymentCards,
     routePaymentRules,
     routePaymentValid,
+    rulesWithFerryCards,
     suggestRoutePayment,
     type RulesetPayment,
   } from '../payment';
@@ -38,6 +41,7 @@
     ruleset = null,
     mountainPointsPerTrain = null,
     passengerChoiceList = [],
+    ferryOwned = 0,
     onConfirm,
     onCancel,
   }: {
@@ -52,7 +56,9 @@
     mountainPointsPerTrain?: number | null;
     /** Estremi con passeggeri di più colori (Germany 2017). */
     passengerChoiceList?: Array<{ cityId: string; passengers: PassengerCount[] }>;
-    onConfirm: (cards: CardColor[], passengers: PassengerPick[] | undefined) => void;
+    /** Carte Traghetto in mano (Italy): ognuna copre uno o più spazi onda della rotta. */
+    ferryOwned?: number;
+    onConfirm: (cards: CardColor[], passengers: PassengerPick[] | undefined, ferryCards: number) => void;
     onCancel: () => void;
   } = $props();
 
@@ -61,20 +67,21 @@
   const routeCard = $derived(routeColorToCard(route.color));
   const isGray = $derived(routeCard === null);
   const rules = $derived(routePaymentRules(route, ruleset));
-  /** Locomotive obbligatorie (traghetto); 0 sulle rotte normali. */
+  /** Spazi onda / locomotive obbligatorie (traghetto) prima delle carte Traghetto; 0 sulle rotte normali. */
   const ferries = $derived(rules.ferries);
   /** Carte qualsiasi che pagano uno spazio (gruppo); `null` = nessuna sostituzione. */
   const groupSize = $derived(rules.groupSize);
   /** «⛰ −k treni, +2k punti» sulle rotte di montagna; `null` sulle altre. */
   const mountainNote = $derived(mountainClaimNote(route, mountainPointsPerTrain));
   const locoInHand = $derived(countCards(hand, 'LOCOMOTIVE'));
-  const bounds = $derived(locoBounds(rules, locoInHand));
-  const groupLimit = $derived(maxGroups(rules, hand));
+  /** Carte Traghetto che si possono giocare su questa rotta (una per onda al massimo). */
+  const maxFerry = $derived(maxFerryCards(rules, ferryOwned));
 
   // Scelte dell'utente; finché non tocca nulla valgono i default calcolati qui sotto.
   let colorPick = $state<CardColor | null>(null);
   let locosPick = $state<number | null>(null);
   let groupsPick = $state<number | null>(null);
+  let ferryPick = $state<number | null>(null);
   let passengerPicked = $state<Record<string, string>>({});
 
   // Colore preselezionato: quello della carta toccata in mano se paga questa rotta, altrimenti il più
@@ -83,47 +90,69 @@
     const preferred =
       selectedColor !== null &&
       selectedColor !== 'LOCOMOTIVE' &&
-      routePayableWith(route, hand, selectedColor, ruleset)
+      routePayableWith(route, hand, selectedColor, ruleset, ferryOwned)
         ? selectedColor
         : mostCommonColor(hand);
-    if (preferred === null || findRoutePayment(rules, hand, preferred) !== null) return preferred;
+    if (preferred === null || findRoutePaymentWithFerry(rules, hand, preferred, ferryOwned) !== null) {
+      return preferred;
+    }
     return (
-      PLAIN_CARD_COLORS.find((c) => countCards(hand, c) > 0 && findRoutePayment(rules, hand, c) !== null) ??
-      preferred
+      PLAIN_CARD_COLORS.find(
+        (c) => countCards(hand, c) > 0 && findRoutePaymentWithFerry(rules, hand, c, ferryOwned) !== null,
+      ) ?? preferred
     );
   });
   const payColor = $derived<CardColor | null>(routeCard ?? colorPick ?? preferredColor);
   // Toccato il jolly in mano (e nessun colore scelto dopo): si parte pagando con sole locomotive.
-  const allLocosPayment = $derived(
-    selectedColor === 'LOCOMOTIVE' && colorPick === null ? findRoutePayment(rules, hand, null) : null,
+  const allLocosStart = $derived(selectedColor === 'LOCOMOTIVE' && colorPick === null);
+  // Carte Traghetto proposte: il minimo che rende pagabile la rotta con il colore scelto.
+  const defaultFerry = $derived(
+    findRoutePaymentWithFerry(rules, hand, allLocosStart ? null : payColor, ferryOwned)?.ferryCards ?? 0,
   );
-  const suggestion = $derived(allLocosPayment ?? suggestRoutePayment(rules, hand, payColor));
+  const payFerry = $derived(Math.min(ferryPick ?? defaultFerry, maxFerry));
+  // Regole per le carte treno una volta coperte le onde dalle carte Traghetto.
+  const payRules = $derived(rulesWithFerryCards(rules, payFerry));
+  const bounds = $derived(locoBounds(payRules, locoInHand));
+  const groupLimit = $derived(maxGroups(payRules, hand));
+  const allLocosPayment = $derived(allLocosStart ? findRoutePayment(payRules, hand, null) : null);
+  const suggestion = $derived(allLocosPayment ?? suggestRoutePayment(payRules, hand, payColor));
   const payLocos = $derived(locosPick ?? suggestion.locos);
   const payGroups = $derived(groupsPick ?? suggestion.groups);
-  const coloredNeeded = $derived(route.len - payLocos - payGroups);
+  const coloredNeeded = $derived(payRules.len - payLocos - payGroups);
   const payValid = $derived(
-    routePaymentValid(rules, hand, payColor, { locos: payLocos, groups: payGroups }),
+    routePaymentValid(payRules, hand, payColor, { locos: payLocos, groups: payGroups }),
   );
   const summaryText = $derived.by(() => {
     const parts: string[] = [];
     if (coloredNeeded > 0 && payColor) parts.push(`${coloredNeeded}× ${CARD_COLOR_NAME[payColor]}`);
     if (payLocos > 0) parts.push(`${payLocos}× ${CARD_COLOR_NAME.LOCOMOTIVE}`);
     if (payGroups > 0) parts.push(`${payGroups}× ${groupSize} carte qualsiasi`);
+    if (payFerry > 0) parts.push(`${payFerry}× ${payFerry === 1 ? 'carta Traghetto' : 'carte Traghetto'}`);
     return parts.length > 0 ? parts.join(' + ') : '—';
+  });
+  const invalidText = $derived.by(() => {
+    if (payRules.ferries > locoInHand && groupSize === null) {
+      return maxFerry > 0
+        ? `Servono locomotive o carte Traghetto per ${payRules.ferries} ${payRules.ferries === 1 ? 'onda' : 'onde'} (hai ${locoInHand} locomotive)`
+        : `Servono almeno ${payRules.ferries} locomotive (ne hai ${locoInHand})`;
+    }
+    return 'Carte insufficienti per questa combinazione';
   });
 
   function pickColor(c: CardColor) {
     colorPick = c;
-    // Locomotive e gruppi tornano al default per il nuovo colore.
+    // Locomotive, gruppi e carte Traghetto tornano al default per il nuovo colore.
     locosPick = null;
     groupsPick = null;
+    ferryPick = null;
   }
 
   function confirm() {
     if (!payValid) return;
     onConfirm(
-      routePaymentCards(rules, hand, payColor, { locos: payLocos, groups: payGroups }),
+      routePaymentCards(payRules, hand, payColor, { locos: payLocos, groups: payGroups }),
       passengerPicks(passengerChoiceList, passengerPicked),
+      payFerry,
     );
   }
 
@@ -181,6 +210,11 @@
       <p class="cd-note">
         Ogni spazio si può pagare con {route.anyCardsPerSpace} carte qualsiasi (locomotive comprese).
       </p>
+    {:else if ferries > 0 && (rules.ferryCardWaves ?? 0) > 0}
+      <p class="cd-note">
+        🌊 {ferries} {ferries === 1 ? 'onda' : 'onde'}: ognuna si paga con una locomotiva o con una carta Traghetto
+        (una carta ne copre fino a {rules.ferryCardWaves}).
+      </p>
     {:else if ferries > 0 && groupSize !== null}
       <p class="cd-note">
         ⛴ Traghetto: servono {ferries} locomotive, ognuna sostituibile da {groupSize} carte qualsiasi.
@@ -222,6 +256,28 @@
           </p>
         {/if}
 
+        {#if maxFerry > 0}
+          <div class="cd-locos">
+            <span class="cd-label">🌊 Carte Traghetto (hai {ferryOwned}):</span>
+            <div class="cd-stepper">
+              <button
+                type="button"
+                class="btn"
+                onclick={() => { ferryPick = Math.max(0, payFerry - 1); locosPick = null; groupsPick = null; }}
+                aria-label="Meno carte Traghetto"
+                disabled={payFerry <= 0}
+              >−</button>
+              <span class="cd-locos-value">{payFerry}</span>
+              <button
+                type="button"
+                class="btn"
+                onclick={() => { ferryPick = Math.min(maxFerry, payFerry + 1); locosPick = null; groupsPick = null; }}
+                aria-label="Più carte Traghetto"
+                disabled={payFerry >= maxFerry}
+              >+</button>
+            </div>
+          </div>
+        {/if}
         {#if rules.singleLoco || ferries > 0}
           <div class="cd-locos">
             <span class="cd-label">Jolly (hai {locoInHand}):</span>
@@ -271,9 +327,7 @@
         <p class="cd-summary">Paghi: {summaryText}</p>
         {#if !payValid}
           <p class="cd-invalid">
-            {ferries > locoInHand && groupSize === null
-              ? `Servono almeno ${ferries} locomotive (ne hai ${locoInHand})`
-              : 'Carte insufficienti per questa combinazione'}
+            {invalidText}
           </p>
         {/if}
       </section>

@@ -436,6 +436,7 @@ impl Default for PlayerView {
                 draw_face_up: Vec::new(),
                 can_draw_deck: false,
                 can_draw_tickets: false,
+                can_draw_ferry_card: false,
                 station_cities: Vec::new(),
                 station_cost: 0,
                 tunnel: None,

@@ -50,6 +50,7 @@
     onCityTap,
     bigCities = [],
     focusClaim = null,
+    waveFerries = false,
   }: {
     /** Mappa già caricata; il wrapper `MapSvg` rimonta il componente se cambia. */
     mapData: MapDataType;
@@ -73,6 +74,8 @@
     bigCities?: string[];
     /** TV: tratta appena occupata su cui zoomare (non mostra nulla se `compact`). */
     focusClaim?: { seq: number; routeId: string } | null;
+    /** Italy: gli spazi traghetto sono onde (carta Traghetto o locomotiva) invece del simbolo locomotiva. */
+    waveFerries?: boolean;
   } = $props();
   // Id unici per istanza: nel dialog biglietti due mappe coesistono (quella di sfondo
   // può essere `display:none`, e i gradienti lì dentro non vengono risolti).
@@ -778,18 +781,25 @@
                     stroke-dasharray="{4 * swFactor} {2.5 * swFactor}" class="tunnel-outline" />
                 {/if}
                 {#if i < ferries}
-                  <!-- Traghetto: locomotiva (disegno nostro) sui primi slot, sempre dritta -->
+                  <!-- Traghetto: locomotiva (disegno nostro) oppure onda (Italy) sui primi slot, sempre dritta -->
                   {@const k = Math.min((g.slotL - 3 * swFactor) / 48, (g.sw * 0.82) / 22)}
                   <g transform="rotate({s.deg > 90 || s.deg <= -90 ? 180 : 0}) scale({k}) translate(-24 -11)"
                     class="ferry-glyph">
-                    <rect x="2" y="8" width="41" height="7" rx="2.6" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.6" />
-                    <rect x="5.5" y="2.5" width="6" height="5.5" rx="1.4" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.2" />
-                    <circle cx="16" cy="8" r="3" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.2" />
-                    <rect x="3" y="15" width="39" height="2.4" rx="1.2" fill="#2a1d0c" />
-                    <circle cx="9" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
-                    <circle cx="19" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
-                    <circle cx="29" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
-                    <circle cx="39" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                    {#if waveFerries}
+                      <path d="M 4 7 q 5 -6 10 0 t 10 0 t 10 0 t 10 0 M 4 15 q 5 -6 10 0 t 10 0 t 10 0 t 10 0"
+                        fill="none" stroke="#fdf7e6" stroke-width="5.4" stroke-linecap="round" />
+                      <path d="M 4 7 q 5 -6 10 0 t 10 0 t 10 0 t 10 0 M 4 15 q 5 -6 10 0 t 10 0 t 10 0 t 10 0"
+                        fill="none" stroke="#1d150c" stroke-width="2.8" stroke-linecap="round" />
+                    {:else}
+                      <rect x="2" y="8" width="41" height="7" rx="2.6" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.6" />
+                      <rect x="5.5" y="2.5" width="6" height="5.5" rx="1.4" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.2" />
+                      <circle cx="16" cy="8" r="3" fill="#2a1d0c" stroke="#fdf7e6" stroke-width="1.2" />
+                      <rect x="3" y="15" width="39" height="2.4" rx="1.2" fill="#2a1d0c" />
+                      <circle cx="9" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                      <circle cx="19" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                      <circle cx="29" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                      <circle cx="39" cy="18.5" r="2.7" fill="#fdf7e6" stroke="#2a1d0c" stroke-width="1" />
+                    {/if}
                   </g>
                 {/if}
                 {#if i >= g.slots.length - mountains}

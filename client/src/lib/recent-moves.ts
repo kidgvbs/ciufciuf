@@ -74,6 +74,8 @@ export function describeMove(move: RecentMove, ctx: MoveContext): MoveLine {
           ? ' sceglie i biglietti…'
           : ` prende ${move.kept} ${move.kept === 1 ? 'biglietto' : 'biglietti'}`,
       );
+    case 'DRAW_FERRY_CARD':
+      return line(' pesca una carta Traghetto');
     case 'CLAIM_ROUTE':
       return line(`: ${route(move.route_id)} (+${move.points})`);
     case 'TUNNEL': {

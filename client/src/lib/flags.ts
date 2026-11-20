@@ -103,6 +103,19 @@ const FLAGS: Readonly<Record<string, readonly FlagShape[]>> = {
     rect(0, 0, 3.6, FLAG_H, WHITE),
     path('M 1.8 1.2 L 3.1 3.8 L 0.5 6.4 L 3.1 9 L 0.5 11.6 L 3.1 14.2 L 0.5 16.8 L 1.8 18.8', 'none', '#cf101a', 1.1),
   ],
+  // Croazia: rosso, bianco, blu con scudo semplificato (scacchiera rosso-bianca 3×3) al centro.
+  HR: [
+    ...horizontal('#ff0000', WHITE, '#171796'),
+    path('M 11.5 6 H 18.5 V 12 Q 18.5 14.5 15 15.5 Q 11.5 14.5 11.5 12 Z', WHITE),
+    rect(11.5, 6, 7 / 3, 2, '#ff0000'),
+    rect(11.5 + (7 * 2) / 3, 6, 7 / 3, 2, '#ff0000'),
+    rect(11.5 + 7 / 3, 8, 7 / 3, 2, '#ff0000'),
+    rect(11.5, 10, 7 / 3, 2, '#ff0000'),
+    rect(11.5 + (7 * 2) / 3, 10, 7 / 3, 2, '#ff0000'),
+    path('M 11.5 6 H 18.5 V 12 Q 18.5 14.5 15 15.5 Q 11.5 14.5 11.5 12 Z', 'none', '#ff0000', 0.6),
+  ],
+  // Monaco: rosso sopra bianco.
+  MC: horizontal('#ce1126', WHITE),
 };
 
 /** Disegno della bandiera `code`, o `undefined` se il codice è assente o sconosciuto. */

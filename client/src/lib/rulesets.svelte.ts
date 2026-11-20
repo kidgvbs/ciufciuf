@@ -2,19 +2,23 @@
 
 import {
   bigCities,
+  ferryCardsConfig,
   globetrotterLabel,
   largestNetworkLabel,
   mandalaLabel,
   hasGlobetrotter,
   hasLargestNetwork,
   hasMandala,
+  hasRegions,
   hasLongestPath,
   loadRulesets,
   longestPathLabel,
+  regionsLabel,
   mountainPointsPerTrain,
   rulesetTitleById,
   rulesetPayment,
   specialRules,
+  type FerryCardsInfo,
   type RulesetInfo,
 } from './rulesets';
 import type { RulesetPayment } from './payment';
@@ -91,6 +95,21 @@ class RulesetCatalogStore {
   /** Punti per treno scartato sulle rotte di montagna (`null` se il ruleset non ha montagne o catalogo non pronto). */
   mountainPointsPerTrain(rulesetId: string | null | undefined): number | null {
     return mountainPointsPerTrain(this.items, rulesetId);
+  }
+
+  /** Configurazione delle carte Traghetto (`null` se il ruleset non le ha o catalogo non pronto). */
+  ferryCards(rulesetId: string | null | undefined): FerryCardsInfo | null {
+    return ferryCardsConfig(this.items, rulesetId);
+  }
+
+  /** Nome del bonus delle Regioni per `rulesetId` ('Regioni' se il catalogo non lo conosce). */
+  regionsLabel(rulesetId: string | null | undefined): string {
+    return regionsLabel(this.items, rulesetId);
+  }
+
+  /** Il ruleset prevede il bonus delle Regioni. */
+  hasRegions(rulesetId: string | null | undefined): boolean {
+    return hasRegions(this.items, rulesetId);
   }
 
   /** Ids delle grandi città del ruleset (vuoto se nessuna o ruleset ignoto). */

@@ -10,9 +10,9 @@ use crate::error::{EngineError, GamePhase};
 use crate::event::{FinalScore, GameEvent};
 use crate::payment::{PaymentError, PaymentSpec, check_declared_colors};
 use crate::scoring::{
-    LongestPathRules, MandalaGraph, TicketSpec, UnionFind, compute_final_scores, evaluate_tickets,
-    globetrotter_winners, largest_network_size, largest_network_winners, mandala_points,
-    passenger_majority_points,
+    LongestPathRules, MandalaGraph, RegionStanding, TicketSpec, UnionFind, compute_final_scores,
+    evaluate_tickets, globetrotter_winners, largest_network_size, largest_network_winners,
+    mandala_points, passenger_majority_points,
 };
 use crate::types::{
     CityId, ClaimedRouteInfo, ClaimedRouteRecord, LARGEST_NETWORK_BONUS_TYPE,
@@ -26,6 +26,7 @@ impl Engine {
         route_id: &str,
         cards_discarded: &[CardColor],
         passengers: &BTreeMap<CityId, String>,
+        ferry_cards: u32,
     ) -> Result<Vec<GameEvent>, EngineError> {
         match self.phase {
             GamePhase::PlayerTurn | GamePhase::LastRound => {}
@@ -74,11 +75,30 @@ impl Engine {
             route_id: route_id.to_string(),
             needed: len,
         };
-        let spec = PaymentSpec::new(&route, route_color, &self.ruleset);
-        // Senza sostituzioni le carte dichiarate sono esattamente `len`; con le
-        // sostituzioni la lista può essere più lunga e decide `spec.verify`.
-        if !spec.has_groups() && cards_discarded.len() != len as usize {
-            return Err(insufficient_cards());
+        if ferry_cards > 0 {
+            if self.ruleset.ferry_cards.is_none() {
+                return Err(EngineError::FerryCardsDisabled);
+            }
+            if ferry_cards > self.players[player_index].ferry_cards {
+                return Err(insufficient_cards());
+            }
+        }
+        let spec = PaymentSpec::new(&route, route_color, &self.ruleset)
+            .with_ferry_cards(ferry_cards as usize);
+        // Senza gruppi di carte qualsiasi le carte dichiarate sono `len` meno le onde coperte
+        // dalle carte Traghetto; con i gruppi la lista può essere più lunga e decide
+        // `spec.verify`.
+        if !spec.has_groups() {
+            let Some(range) = spec.regular_card_range() else {
+                return Err(EngineError::InvalidPayload {
+                    reason: "carte Traghetto non ammesse su questa rotta o più delle onde da \
+                             coprire"
+                        .to_string(),
+                });
+            };
+            if !range.contains(&cards_discarded.len()) {
+                return Err(insufficient_cards());
+            }
         }
 
         // Le carte dichiarate escono dalla mano; se mancano, al loro posto una
@@ -121,7 +141,10 @@ impl Engine {
             return Ok(self.start_tunnel(player_index, &route, hand, removed, taken));
         }
 
-        self.players[player_index].hand = hand;
+        let player = &mut self.players[player_index];
+        player.hand = hand;
+        // Le carte Traghetto usate tornano nel mazzetto.
+        player.ferry_cards -= ferry_cards;
         self.train_discards.extend_from_slice(&removed);
 
         let mut events = Vec::new();
@@ -677,6 +700,16 @@ impl Engine {
             .ruleset
             .bonus_points(LARGEST_NETWORK_BONUS_TYPE)
             .map_or(0, points_to_score);
+        // Bonus Regioni (Italy): reti e punti per giocatore (vuoti e 0 senza il bonus).
+        let region_standings: Vec<RegionStanding> = match &self.region_rules {
+            Some(rules) => routes_per_player
+                .iter()
+                .map(|claimed| {
+                    rules.standing(claimed, &self.routes_by_id, self.connectivity.countries())
+                })
+                .collect(),
+            None => vec![RegionStanding::default(); self.players.len()],
+        };
         // Spareggio `mountainRoutes`: rotte con simboli di montagna reclamate.
         let mountain_routes: Vec<i64> = routes_per_player
             .iter()
@@ -715,6 +748,7 @@ impl Engine {
                 } else {
                     0
                 };
+                let regions_bonus = region_standings[i].bonus;
                 let station_points = self.unbuilt_station_points(i);
                 let country_points = points_to_score(
                     p.country_cards
@@ -731,6 +765,7 @@ impl Engine {
                     .saturating_add(globetrotter_bonus)
                     .saturating_add(mandala_bonus)
                     .saturating_add(largest_network_bonus)
+                    .saturating_add(regions_bonus)
                     .saturating_add(station_points)
                     .saturating_add(country_points)
                     .saturating_add(passenger_points);
@@ -745,6 +780,8 @@ impl Engine {
                     mountain_points: p.mountain_points,
                     largest_network_bonus,
                     largest_network: network_sizes[i],
+                    regions_bonus,
+                    region_networks: region_standings[i].networks.clone(),
                     total,
                     station_points,
                     borrowed_routes: s.borrowed_routes.clone(),

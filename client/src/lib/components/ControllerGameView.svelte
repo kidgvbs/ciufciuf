@@ -70,6 +70,8 @@
     publicStore.playersSummary.find((p) => p.player_id === playerId),
   );
   const hand = $derived(privateStore.hand);
+  // Carte Traghetto in mano (Italy): pubbliche, dal riepilogo del giocatore.
+  const ferryOwned = $derived(mySummary?.ferry_cards ?? 0);
   const tickets = $derived(privateStore.tickets);
   const offered = $derived(privateStore.offeredTickets);
   const legalMoves = $derived(privateStore.legalMoves);
@@ -314,6 +316,15 @@
     );
   }
 
+  // Pesca carta Traghetto (Italy): azione intera del turno, ammessa solo se il server la elenca.
+  function drawFerryCard() {
+    sendAction({
+      actionType: 'DRAW_FERRY_CARD',
+      player_id: playerId,
+      client_seq: nextClientSeq(playerId),
+    });
+  }
+
   // ── Pagamento rotta ────────────────────────────────────────────
   // Tap su una rotta evidenziata → popup (ClaimDialog) dove si sceglie colore, locomotive e
   // passeggeri; il server valida il pagamento (errore mostrato come banner).
@@ -337,7 +348,7 @@
     payingRouteId = null;
   }
 
-  function confirmClaim(cards: CardColor[], passengers: PassengerPick[] | undefined) {
+  function confirmClaim(cards: CardColor[], passengers: PassengerPick[] | undefined, ferryCards: number) {
     const route = payingRoute;
     if (!route) return;
     // Tunnel: le carte giocate escono dalla mano già al claim ma tornano se si rinuncia, quindi
@@ -349,6 +360,7 @@
       route_id: route.id,
       cards_discarded: cards,
       passengers,
+      ferry_cards: ferryCards > 0 ? ferryCards : undefined,
       client_seq: nextClientSeq(playerId),
     });
     // Se l'azione non è partita il popup resta aperto per riprovare.
@@ -532,7 +544,7 @@
   // nella mano, o tutte senza selezione. `payableRouteIds` è solo una guardia di UX.
   const claimableRouteIds = $derived(
     canAct && legalMoves && !buildingStation
-      ? payableRouteIds(legalMoves.routes, routeMap, hand, selectedColor, paymentRules)
+      ? payableRouteIds(legalMoves.routes, routeMap, hand, selectedColor, paymentRules, ferryOwned)
       : [],
   );
 
@@ -655,11 +667,21 @@
       />
 
   <!-- Actions -->
-  {#if canAct && legalMoves && (legalMoves.routes.length > 0 || stationCities.length > 0)}
+  {#if canAct && legalMoves && (legalMoves.routes.length > 0 || stationCities.length > 0 || legalMoves.can_draw_ferry_card)}
     <div class="section actions">
       <h3>Azioni</h3>
       {#if legalMoves.routes.length > 0 && stationCities.length === 0}
         <p class="actions-hint">Tocca una carta, poi una rotta evidenziata.</p>
+      {/if}
+      {#if legalMoves.can_draw_ferry_card}
+        <button
+          onclick={drawFerryCard}
+          class="btn action-btn ferry-draw"
+          disabled={drawBusy}
+          aria-label="Pesca carta Traghetto"
+        >
+          🌊 Pesca carta Traghetto
+        </button>
       {/if}
       {#if stationCities.length > 0}
         {#if !buildingStation}
@@ -731,6 +753,14 @@
       {:else}
         <p class="empty">Nessuna carta in mano</p>
       {/if}
+    {/if}
+    {#if ferryOwned > 0}
+      <div class="ferry-hand" aria-label="Carte Traghetto: {ferryOwned} in mano">
+        {#each Array.from({ length: ferryOwned }) as _, i (i)}
+          <span class="ferry-card" title="Carta Traghetto">🌊</span>
+        {/each}
+        <span class="ferry-hand-label">Traghetto ×{ferryOwned}</span>
+      </div>
     {/if}
   </div>
 
@@ -812,6 +842,7 @@
       ruleset={paymentRules}
       mountainPointsPerTrain={mountainPoints}
       {passengerChoiceList}
+      {ferryOwned}
       onConfirm={confirmClaim}
       onCancel={cancelPayment}
     />
@@ -1407,6 +1438,27 @@
       top: 4.5rem;
       bottom: auto;
     }
+  }
+
+  /* Carte Traghetto in mano (Italy) */
+  .ferry-hand {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.3rem;
+    font-size: 0.8rem;
+    color: var(--chrome-muted);
+  }
+  .ferry-card {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 42px;
+    border-radius: 6px;
+    background: linear-gradient(160deg, #2f7fb0, #1b4f73);
+    border: 2px solid #fdf7e6;
+    font-size: 1.1rem;
   }
 
   /* Stazioni (Europe) */

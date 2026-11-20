@@ -11,12 +11,23 @@ import type { RulesetPayment } from './payment';
 
 /** Bonus di fine partita del ruleset (tipi sconosciuti ammessi: i consumatori li ignorano). */
 export interface RulesetBonus {
-  /** `longest_path`, `globetrotter`, `mandala` o `largest_network` (altri tipi futuri sono ignorati). */
+  /** `longest_path`, `globetrotter`, `mandala`, `largest_network` o `regions` (altri tipi futuri sono ignorati). */
   type: string;
   label: string;
   points: number;
   /** Solo `mandala`: bonus cumulativo per numero di biglietti qualificati (`points` è il massimo). */
   table?: number[];
+  /** Solo `regions`: Regioni minime di una rete perché dia punti. */
+  minRegions?: number;
+  /** Solo `regions`: Regioni che valgono 2 se tutte le loro città sono nella rete. */
+  doubleRegions?: string[];
+}
+
+/** Carte Traghetto del ruleset (Italy): mazzetto, massimo in mano e onde coperte da una carta. */
+export interface FerryCardsInfo {
+  count: number;
+  maxInHand: number;
+  wavesPerCard: number;
 }
 
 export interface RulesetInfo {
@@ -66,6 +77,8 @@ export interface RulesetInfo {
   ferryAnyCards?: number;
   /** Rotte di montagna: punti per ogni treno scartato sulle rotte con X; assente = nessuna montagna. */
   mountainPointsPerTrain?: number;
+  /** Carte Traghetto (Italy); `null` o assente = nessuna carta Traghetto. */
+  ferryCards?: FerryCardsInfo | null;
 }
 
 /** Mappa con le sue modalità (ruleset) ordinate per `modeOrder`. */
@@ -81,6 +94,7 @@ const LONGEST_PATH = 'longest_path';
 const GLOBETROTTER = 'globetrotter';
 const MANDALA = 'mandala';
 const LARGEST_NETWORK = 'largest_network';
+const REGIONS = 'regions';
 const STANDARD_MODE = 'Standard';
 
 /** Nome del bonus percorso più lungo quando il catalogo non lo conosce. */
@@ -95,6 +109,9 @@ export const FALLBACK_MANDALA_LABEL = 'Grand Tour';
 /** Nome del bonus della rete più grande (Asian Explorer) quando il catalogo non lo conosce. */
 export const FALLBACK_LARGEST_NETWORK_LABEL = 'Rete più grande';
 
+/** Nome del bonus delle Regioni collegate (Italy) quando il catalogo non lo conosce. */
+export const FALLBACK_REGIONS_LABEL = 'Regioni';
+
 const UNEXPECTED_RESPONSE = 'Risposta inattesa dal server';
 
 function isNonEmptyString(v: unknown): v is string {
@@ -105,6 +122,13 @@ function isCount(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 0;
 }
 
+function isFerryCardsInfo(v: unknown): v is FerryCardsInfo {
+  return (
+    isRecord(v) &&
+    [v.count, v.maxInHand, v.wavesPerCard].every((n) => isCount(n) && n >= 1)
+  );
+}
+
 function isRulesetBonus(v: unknown): v is RulesetBonus {
   return (
     isRecord(v) &&
@@ -112,7 +136,10 @@ function isRulesetBonus(v: unknown): v is RulesetBonus {
     isNonEmptyString(v.label) &&
     typeof v.points === 'number' &&
     Number.isInteger(v.points) &&
-    (v.table === undefined || (Array.isArray(v.table) && v.table.every(isCount)))
+    (v.table === undefined || (Array.isArray(v.table) && v.table.every(isCount))) &&
+    (v.minRegions === undefined || (isCount(v.minRegions) && v.minRegions >= 1)) &&
+    (v.doubleRegions === undefined ||
+      (Array.isArray(v.doubleRegions) && v.doubleRegions.every(isNonEmptyString)))
   );
 }
 
@@ -154,7 +181,8 @@ export function isRulesetInfo(v: unknown): v is RulesetInfo {
         v.locomotivesUsableOn.every(isNonEmptyString))) &&
     (v.ferryAnyCards === undefined || (isCount(v.ferryAnyCards) && v.ferryAnyCards >= 2)) &&
     (v.mountainPointsPerTrain === undefined ||
-      (isCount(v.mountainPointsPerTrain) && v.mountainPointsPerTrain >= 1))
+      (isCount(v.mountainPointsPerTrain) && v.mountainPointsPerTrain >= 1)) &&
+    (v.ferryCards === undefined || v.ferryCards === null || isFerryCardsInfo(v.ferryCards))
   );
 }
 
@@ -181,6 +209,7 @@ export function rulesetBlurb(r: RulesetInfo): string {
   if (r.tunnels) features.push('tunnel');
   if (r.ferries) features.push('traghetti');
   if (r.mountainPointsPerTrain !== undefined) features.push('montagne');
+  if (r.ferryCards) features.push('carte Traghetto');
   if (r.stations) features.push('stazioni');
   const base = `${r.cities} città, ${r.routes} rotte`;
   if (features.length === 0) return base;
@@ -261,6 +290,30 @@ export function hasMandala(
   return bonusOf(catalog, rulesetId, MANDALA) !== null;
 }
 
+/** Nome del bonus delle Regioni per `rulesetId`; 'Regioni' se assente dal catalogo o non previsto. */
+export function regionsLabel(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): string {
+  return bonusOf(catalog, rulesetId, REGIONS)?.label ?? FALLBACK_REGIONS_LABEL;
+}
+
+/** `true` se il ruleset prevede il bonus delle Regioni (ruleset ignoto → `false`). */
+export function hasRegions(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): boolean {
+  return bonusOf(catalog, rulesetId, REGIONS) !== null;
+}
+
+/** Configurazione delle carte Traghetto di `rulesetId`; `null` se non previste, ruleset ignoto o server vecchio. */
+export function ferryCardsConfig(
+  catalog: readonly RulesetInfo[],
+  rulesetId: string | null | undefined,
+): FerryCardsInfo | null {
+  return catalog.find((r) => r.id === rulesetId)?.ferryCards ?? null;
+}
+
 /** `true` se il ruleset prevede il bonus della rete più grande (ruleset ignoto → `false`). */
 export function hasLargestNetwork(
   catalog: readonly RulesetInfo[],
@@ -302,6 +355,7 @@ export function rulesetPayment(
   return {
     usableOn: ruleset?.locomotivesUsableOn ?? null,
     ferryAnyCards: ruleset?.ferryAnyCards ?? null,
+    ferryCardWaves: ruleset?.ferryCards?.wavesPerCard,
   };
 }
 
@@ -348,9 +402,15 @@ export function modeBlurb(r: RulesetInfo): string {
       b.type === LONGEST_PATH ||
       b.type === GLOBETROTTER ||
       b.type === MANDALA ||
-      b.type === LARGEST_NETWORK,
+      b.type === LARGEST_NETWORK ||
+      b.type === REGIONS,
   );
   if (known.length === 0) parts.push('nessun bonus');
-  else for (const b of known) parts.push(b.type === MANDALA ? `${b.label} fino a +${b.points}` : `${b.label} +${b.points}`);
+  else {
+    for (const b of known) {
+      const upTo = b.type === MANDALA || b.type === REGIONS;
+      parts.push(upTo ? `${b.label} fino a +${b.points}` : `${b.label} +${b.points}`);
+    }
+  }
   return parts.join(' · ');
 }

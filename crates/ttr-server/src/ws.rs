@@ -271,6 +271,7 @@ fn extract_client_seq(inbound: &ttr_proto::InboundAction) -> Option<u64> {
     match inbound {
         ttr_proto::InboundAction::DrawTrainCard(p) => p.client_seq,
         ttr_proto::InboundAction::DrawTickets(p) => p.client_seq,
+        ttr_proto::InboundAction::DrawFerryCard(p) => p.client_seq,
         ttr_proto::InboundAction::ChooseTickets(p) => p.client_seq,
         ttr_proto::InboundAction::ClaimRoute(p) => p.client_seq,
         ttr_proto::InboundAction::BuildStation(p) => p.client_seq,

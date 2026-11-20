@@ -15,4 +15,17 @@ country_cards: Array<CountryCards>,
 /**
  * Germany 2017: passeggeri raccolti per colore (pubblici); vuoto senza passeggeri.
  */
-passengers: Array<PassengerCount>, };
+passengers: Array<PassengerCount>, 
+/**
+ * Italy: carte Traghetto in mano (pubbliche); 0 senza carte Traghetto.
+ */
+ferry_cards: number, 
+/**
+ * Italy: Regioni contate in ogni rete di rotte del giocatore, in ordine decrescente;
+ * vuoto senza il bonus `regions`.
+ */
+region_networks: Array<number>, 
+/**
+ * Italy: punti attuali del bonus Regioni (somma sulle reti); 0 senza il bonus.
+ */
+regions_bonus: number, };

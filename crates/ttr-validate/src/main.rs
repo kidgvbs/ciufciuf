@@ -92,6 +92,18 @@ fn validate(map: &MapData, ruleset: &Ruleset) -> Report {
             check_mountains(r, map, ruleset);
         },
     );
+    r.check(
+        "Carte Traghetto: ferryCards coerente con le rotte con onde",
+        |r| {
+            check_ferry_cards(r, map, ruleset);
+        },
+    );
+    r.check(
+        "Regioni: ogni città ha una Regione, i Paesi no, bonus regions",
+        |r| {
+            check_regions(r, map, ruleset);
+        },
+    );
     r.check("Paesi: flag ISO alpha-2", |r| {
         check_flags(r, map);
     });
@@ -140,6 +152,109 @@ fn check_mountains(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
             symbols
         );
     }
+}
+
+/// Carte Traghetto (Italy): `count`, `maxInHand` e `wavesPerCard` almeno 1, mazzetto di almeno
+/// `maxInHand × players.max` carte e rotte con onde (`ferries`) nella mappa. Senza `ferryCards`
+/// le onde sono locomotive obbligatorie come sempre.
+fn check_ferry_cards(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
+    let wave_routes: Vec<&Route> = map.routes.iter().filter(|rt| rt.ferries > 0).collect();
+    let Some(config) = &ruleset.ferry_cards else {
+        return;
+    };
+    for (field, value) in [
+        ("count", config.count),
+        ("maxInHand", config.max_in_hand),
+        ("wavesPerCard", config.waves_per_card),
+    ] {
+        if value == 0 {
+            r.err(format!("ferryCards.{field} deve essere almeno 1"));
+        }
+    }
+    let needed = config.max_in_hand.saturating_mul(ruleset.players.max);
+    if config.count < needed {
+        r.err(format!(
+            "ferryCards.count {} non basta: servono almeno {needed} carte (maxInHand × giocatori massimi)",
+            config.count
+        ));
+    }
+    if wave_routes.is_empty() {
+        r.err("Il ruleset ha ferryCards ma la mappa non ha rotte con onde (ferries)".into());
+        return;
+    }
+    let waves: u32 = wave_routes.iter().map(|rt| rt.ferries).sum();
+    println!(
+        "  Carte Traghetto: {} in mazzetto, {} in mano al massimo, {} onde per carta; {} binari con onde, {} spazi onda",
+        config.count,
+        config.max_in_hand,
+        config.waves_per_card,
+        wave_routes.len(),
+        waves
+    );
+}
+
+/// Regioni (Italy): con il bonus `regions` ogni città non Paese ha una Regione e i Paesi non ne
+/// hanno; `minRegions` ≥ 1; `table` non vuota, non decrescente e con `points` pari all'ultimo
+/// valore; `doubleRegions` cita Regioni esistenti, senza ripetizioni. Senza il bonus nessuna
+/// città ha una Regione. Segnala ogni città fuori regola.
+fn check_regions(r: &mut Report, map: &MapData, ruleset: &Ruleset) {
+    let Some(bonus) = ruleset.regions_bonus() else {
+        for city in map.cities.iter().filter(|c| c.region.is_some()) {
+            r.err(format!(
+                "Città {}: ha una Regione ma il ruleset non ha il bonus regions",
+                city.id
+            ));
+        }
+        return;
+    };
+    if bonus.min_regions.is_none_or(|min| min == 0) {
+        r.err("Bonus regions: minRegions mancante o 0 (deve essere almeno 1)".into());
+    }
+    match bonus.table.last() {
+        None => r.err("Bonus regions: table vuota".into()),
+        Some(&last) => {
+            if bonus.table.windows(2).any(|pair| pair[1] < pair[0]) {
+                r.err("Bonus regions: table decrescente".into());
+            }
+            if bonus.points != last {
+                r.err(format!(
+                    "Bonus regions: points {} diverso dall'ultimo valore di table ({last})",
+                    bonus.points
+                ));
+            }
+        }
+    }
+    let mut per_region: BTreeMap<&str, usize> = BTreeMap::new();
+    for city in &map.cities {
+        match (city.country, city.region.as_deref()) {
+            (true, Some(region)) => r.err(format!(
+                "Paese {}: ha la Regione {region}, i Paesi non ne hanno",
+                city.id
+            )),
+            (false, None) => r.err(format!("Città {}: manca la Regione", city.id)),
+            (false, Some(region)) => *per_region.entry(region).or_default() += 1,
+            (true, None) => {}
+        }
+    }
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for region in &bonus.double_regions {
+        if !seen.insert(region.as_str()) {
+            r.err(format!(
+                "Bonus regions: la Regione {region} è ripetuta in doubleRegions"
+            ));
+        }
+        if !per_region.contains_key(region.as_str()) {
+            r.err(format!(
+                "Bonus regions: doubleRegions cita {region}, che nessuna città ha"
+            ));
+        }
+    }
+    println!(
+        "  Regioni: {} Regioni, {} doppie, {} città con Regione",
+        per_region.len(),
+        bonus.double_regions.len(),
+        per_region.values().sum::<usize>()
+    );
 }
 
 /// Avvisa delle lunghezze di `routePoints` che nessuna rotta usa.

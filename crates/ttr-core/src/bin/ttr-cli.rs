@@ -253,6 +253,7 @@ fn parse_replay_action(ra: &ReplayAction, engine: &Engine) -> Result<Action, Str
             route_id: ra.route_id.clone().unwrap_or_default(),
             cards_discarded: replay_cards(ra)?,
             passengers: Default::default(),
+            ferry_cards: 0,
         }),
         "BUILD_STATION" => Ok(Action::BuildStation {
             player_index: pi,
@@ -405,6 +406,7 @@ fn run_interactive(engine: &mut Engine) {
                             route_id: rid,
                             cards_discarded,
                             passengers: Default::default(),
+                            ferry_cards: 0,
                         }),
                         Err(reason) => Err(ttr_core::EngineError::InvalidPayload { reason }),
                     }

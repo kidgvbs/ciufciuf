@@ -9,6 +9,7 @@ export type { ClaimedRoute } from './ClaimedRoute';
 export type { ClaimRoutePayload } from './ClaimRoutePayload';
 export type { DrawCardPayload } from './DrawCardPayload';
 export type { DrawSource } from './DrawSource';
+export type { DrawFerryCardPayload } from './DrawFerryCardPayload';
 export type { DrawTicketsPayload } from './DrawTicketsPayload';
 export type { ErrorPayload } from './ErrorPayload';
 export type { ErrorReason } from './ErrorReason';

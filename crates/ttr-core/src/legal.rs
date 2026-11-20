@@ -16,6 +16,9 @@ pub struct LegalMoves {
     pub draw_face_up: Vec<usize>,
     pub can_draw_deck: bool,
     pub can_draw_tickets: bool,
+    /// Si può pescare una carta Traghetto (Italy): a inizio turno e con meno di `maxInHand`
+    /// carte in mano.
+    pub can_draw_ferry_card: bool,
     /// Città dove si può costruire ora la prossima stazione, per id crescente.
     pub station_cities: Vec<CityId>,
     /// Costo in carte della prossima stazione; 0 se non ce ne sono più.
@@ -64,6 +67,7 @@ impl LegalMoves {
             draw_face_up: vec![],
             can_draw_deck: false,
             can_draw_tickets: false,
+            can_draw_ferry_card: false,
             station_cities: vec![],
             station_cost: 0,
             tunnel: None,
@@ -166,6 +170,7 @@ impl Engine {
             draw_face_up,
             can_draw_deck: self.can_draw_from_deck(),
             can_draw_tickets: self.can_draw_tickets(),
+            can_draw_ferry_card: self.can_draw_ferry_card(player_index),
             station_cities: self.station_cities(player_index),
             station_cost: self.next_station_cost(player_index).unwrap_or(0),
             tunnel: None,
@@ -190,6 +195,7 @@ impl Engine {
             draw_face_up,
             can_draw_deck: self.can_draw_from_deck(),
             can_draw_tickets: false,
+            can_draw_ferry_card: false,
             station_cities: vec![],
             station_cost: 0,
             tunnel: None,
@@ -250,6 +256,7 @@ impl Engine {
     fn claimable_routes(&self, player_index: usize, hand: &[CardColor]) -> Vec<RouteId> {
         let mut result = Vec::new();
         let tally = Tally::of(hand);
+        let ferry_owned = self.players[player_index].ferry_cards as usize;
 
         for route in &self.map.routes {
             let Some(info) = self.route_info.get(&route.id) else {
@@ -260,7 +267,10 @@ impl Engine {
             }
             // Reclamabile se un sottoinsieme della mano paga la rotta (sostituzioni e
             // restrizioni sulle locomotive comprese).
-            if PaymentSpec::new(route, info.color, &self.ruleset).payable_from(&tally) {
+            if PaymentSpec::new(route, info.color, &self.ruleset)
+                .with_ferry_cards(ferry_owned)
+                .payable_from(&tally)
+            {
                 result.push(route.id.clone());
             }
         }
@@ -310,6 +320,13 @@ impl Engine {
             .get(&self.ruleset.ticket_draw.deck)
             .map_or(0, Vec::len);
         available >= self.min_tickets_to_draw()
+    }
+
+    fn can_draw_ferry_card(&self, player_index: usize) -> bool {
+        self.ruleset
+            .ferry_cards
+            .as_ref()
+            .is_some_and(|config| self.players[player_index].ferry_cards < config.max_in_hand)
     }
 }
 

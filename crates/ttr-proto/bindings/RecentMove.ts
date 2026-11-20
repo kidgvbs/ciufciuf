@@ -5,4 +5,4 @@ import type { TunnelOutcome } from "./TunnelOutcome";
 /**
  * Una mossa recente (un turno di un giocatore), visibile a tutti.
  */
-export type RecentMove = { "kind": "DRAW_CARDS", player_id: string, deck: number, face_up: Array<CardColor>, } | { "kind": "DRAW_TICKETS", player_id: string, kept: number | null, } | { "kind": "CLAIM_ROUTE", player_id: string, route_id: string, points: number, } | { "kind": "TUNNEL", player_id: string, route_id: string, revealed: Array<CardColor>, color: CardColor, extra_cost: number, outcome: TunnelOutcome, } | { "kind": "BUILD_STATION", player_id: string, city_id: string, };
+export type RecentMove = { "kind": "DRAW_CARDS", player_id: string, deck: number, face_up: Array<CardColor>, } | { "kind": "DRAW_TICKETS", player_id: string, kept: number | null, } | { "kind": "DRAW_FERRY_CARD", player_id: string, } | { "kind": "CLAIM_ROUTE", player_id: string, route_id: string, points: number, } | { "kind": "TUNNEL", player_id: string, route_id: string, revealed: Array<CardColor>, color: CardColor, extra_cost: number, outcome: TunnelOutcome, } | { "kind": "BUILD_STATION", player_id: string, city_id: string, };

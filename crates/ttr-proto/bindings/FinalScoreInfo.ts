@@ -28,6 +28,15 @@ largestNetworkBonus: number,
  */
 largestNetwork: number, 
 /**
+ * Modalità con `regions`: bonus delle Regioni collegate (Italy).
+ */
+regionsBonus: number, 
+/**
+ * Modalità con `regions`: Regioni contate in ogni rete del giocatore, in ordine
+ * decrescente.
+ */
+regionNetworks: Array<number>, 
+/**
  * Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
  */
 stationPoints: number, total: number, 

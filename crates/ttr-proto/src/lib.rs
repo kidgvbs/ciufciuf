@@ -92,6 +92,9 @@ pub enum InboundAction {
     /// Pescare nuovi biglietti mid-game (azione nº 3 del turno).
     #[serde(rename = "DRAW_TICKETS")]
     DrawTickets(DrawTicketsPayload),
+    /// Italy: pescare una carta Traghetto dal mazzetto (azione intera del turno).
+    #[serde(rename = "DRAW_FERRY_CARD")]
+    DrawFerryCard(DrawFerryCardPayload),
     /// Scegliere quali biglietti tenere (initial draft o mid-game).
     #[serde(rename = "CHOOSE_TICKETS")]
     ChooseTickets(ChooseTicketsPayload),
@@ -141,6 +144,15 @@ pub struct DrawTicketsPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
+pub struct DrawFerryCardPayload {
+    pub player_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub client_seq: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export)]
 pub struct ChooseTicketsPayload {
     pub player_id: String,
     /// Id dei biglietti da tenere (in ordine lessicografico).
@@ -162,6 +174,11 @@ pub struct ClaimRoutePayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub passengers: Option<Vec<PassengerPick>>,
+    /// Italy: carte Traghetto giocate; ognuna copre 1 o `wavesPerCard` spazi onda della
+    /// rotta, le altre onde si pagano con locomotive in `cards_discarded`. Assente = 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub ferry_cards: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub client_seq: Option<u64>,
@@ -303,6 +320,8 @@ pub enum RecentMove {
         player_id: String,
         kept: Option<u32>,
     },
+    /// Italy: carta Traghetto pescata dal mazzetto.
+    DrawFerryCard { player_id: String },
     /// Rotta reclamata (non tunnel).
     ClaimRoute {
         player_id: String,
@@ -363,6 +382,16 @@ pub struct PlayerSummary {
     /// Germany 2017: passeggeri raccolti per colore (pubblici); vuoto senza passeggeri.
     #[serde(default)]
     pub passengers: Vec<PassengerCount>,
+    /// Italy: carte Traghetto in mano (pubbliche); 0 senza carte Traghetto.
+    #[serde(default)]
+    pub ferry_cards: u32,
+    /// Italy: Regioni contate in ogni rete di rotte del giocatore, in ordine decrescente;
+    /// vuoto senza il bonus `regions`.
+    #[serde(default)]
+    pub region_networks: Vec<u32>,
+    /// Italy: punti attuali del bonus Regioni (somma sulle reti); 0 senza il bonus.
+    #[serde(default)]
+    pub regions_bonus: i32,
 }
 
 /// Europe: carte rivelate da un tentativo di tunnel in attesa della decisione
@@ -413,6 +442,13 @@ pub struct FinalScoreInfo {
     /// Modalità con `largest_network`: città della rete più grande del giocatore.
     #[serde(default)]
     pub largest_network: u32,
+    /// Modalità con `regions`: bonus delle Regioni collegate (Italy).
+    #[serde(default)]
+    pub regions_bonus: i32,
+    /// Modalità con `regions`: Regioni contate in ogni rete del giocatore, in ordine
+    /// decrescente.
+    #[serde(default)]
+    pub region_networks: Vec<u32>,
     /// Europe: punti delle stazioni non costruite (0 sulle mappe senza stazioni).
     #[serde(default)]
     pub station_points: i32,
@@ -504,6 +540,9 @@ pub struct LegalMoves {
     pub draw_face_up: Vec<usize>,
     pub can_draw_deck: bool,
     pub can_draw_tickets: bool,
+    /// Italy: si può pescare una carta Traghetto (a inizio turno, con meno di `maxInHand`).
+    #[serde(default)]
+    pub can_draw_ferry_card: bool,
     /// Europe: città dove il giocatore può costruire ora la prossima stazione
     /// (vuoto se non ne ha più, se non può pagarla o fuori dal suo turno principale).
     pub station_cities: Vec<CityId>,
@@ -737,6 +776,10 @@ mod tests {
                 source: DrawSource::Deck,
                 client_seq: None,
             }),
+            InboundAction::DrawFerryCard(DrawFerryCardPayload {
+                player_id: player_id.clone(),
+                client_seq: None,
+            }),
             InboundAction::DrawTickets(DrawTicketsPayload {
                 player_id: player_id.clone(),
                 client_seq: None,
@@ -751,6 +794,7 @@ mod tests {
                 route_id: "r".into(),
                 cards_discarded: vec![],
                 passengers: None,
+                ferry_cards: None,
                 client_seq: None,
             }),
             InboundAction::BuildStation(BuildStationPayload {
@@ -927,6 +971,8 @@ mod tests {
                 mountain_points: 12,
                 largest_network_bonus: 10,
                 largest_network: 9,
+                regions_bonus: 29,
+                region_networks: vec![9, 6],
                 station_points: 4,
                 country_points: 7,
                 passenger_points: 0,
@@ -961,6 +1007,8 @@ mod tests {
         assert_eq!(scores[0].mountain_points, 12);
         assert_eq!(scores[0].largest_network_bonus, 10);
         assert_eq!(scores[0].largest_network, 9);
+        assert_eq!(scores[0].regions_bonus, 29);
+        assert_eq!(scores[0].region_networks, [9, 6]);
         assert!(scores[0].tickets[0].mandala);
         assert_eq!(scores[0].station_points, 4);
         assert_eq!(scores[0].borrowed_routes[0].route_id, "dieppe_paris_1");
@@ -1018,6 +1066,7 @@ mod tests {
                 draw_face_up: vec![0, 2],
                 can_draw_deck: true,
                 can_draw_tickets: true,
+                can_draw_ferry_card: true,
                 station_cities: vec!["paris".into()],
                 station_cost: 2,
                 tunnel: Some(TunnelDecisionMoves {
@@ -1165,6 +1214,7 @@ mod tests {
                     draw_face_up: vec![],
                     can_draw_deck: false,
                     can_draw_tickets: false,
+                    can_draw_ferry_card: false,
                     station_cities: vec![],
                     station_cost: 0,
                     tunnel: None,

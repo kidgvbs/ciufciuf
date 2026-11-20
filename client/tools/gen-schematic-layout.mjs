@@ -23,13 +23,14 @@
 // Gate ratio: ≤1.6× standard, ≤1.7× per rotte ≥5 carte (eccezione documentata).
 //
 // Pipeline:
-//   0. (opt-in per mappa: MAP_TUNING[map].splitCountries, oggi solo Switzerland) Paesi → bandierine:
+//   0. (opt-in per mappa: MAP_TUNING[map].splitCountries, oggi Switzerland e Italy) Paesi → bandierine:
 //      ogni città `country: true` è sostituita da un nodo `<paese>#<id rotta>` di grado 1 per ogni
-//      rotta di confine (sul tabellone ogni bandierina ha UNA rotta). Le bandierine entrano nella
+//      rotta di confine (sul tabellone ogni bandierina ha UNA rotta; un gruppo `double` verso lo stesso Paese
+//      ne ha una sola, intitolata al suo primo binario). Le bandierine entrano nella
 //      simulazione e in tutti i controlli come «label» fisse col loro footprint 22×15 (+bordo); gli id
 //      pseudo restano fuori da cities/labels (solo estremi in routes). A fine pipeline il NOME di ogni
 //      Paese (cities/labels) è piazzato in un punto libero vicino alle sue bandierine («Nomi dei Paesi»).
-//      Seme: SWISS_SEED (città + bandierine). Le altre mappe non passano di qui: output byte-identico.
+//      Seme: SWISS_SEED / ITALY_SEED (città + bandierine). Le altre mappe non passano di qui: output byte-identico.
 //   1. d3-force (forceSimulation): nodi inizializzati alle coordinate
 //      geografiche proiettate su un canvas di lavoro grande (1400×900),
 //      forceLink(distanza = len*UNIT), forceManyBody(-90), forceCollide(25).
@@ -73,7 +74,7 @@
 //  11. Validazione + report (exit 1 se hidden, label-CORE, ownership,
 //      label >32px o incroci rotte). Output: anche font{} e doubleGap.
 //
-// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic|india|legendary_asia] [--svg OUT.svg]
+// Uso:  bun client/tools/gen-schematic-layout.mjs [--map usa|europe|basilicata|germany|poland|switzerland|nordic|india|legendary_asia|italy] [--svg OUT.svg]
 //   --map ID       (default usa) mappa: input data/maps/<ID>.json, output data/layouts/<ID>.json.
 //                  Le regolazioni manuali (LABEL_OVERRIDES, F2 shifts, pre-bend Phoenix) sono
 //                  per-mappa (MAP_TUNING): applicate SOLO alla mappa a cui appartengono.
@@ -203,6 +204,53 @@ const LASIA_SEED = {
   tehran: [312, 457], ulan_bator: [1165, 204], vladivostok: [1608, 292], xian: [1203, 476],
 };
 
+// Italy: seme ottimizzato (px, riquadro 1478×2297) per le 34 città e le 12 bandierine `<paese>#<id rotta>` (una per
+// rotta di confine; un gruppo parallelo verso lo stesso Paese ne ha una sola). Trovato con una ricottura simulata
+// (PRNG a seed fisso, in più riprese, strumento una tantum non nel repo, come per INDIA_SEED) partendo dai pixel del
+// tabellone di BGA (`thoun/tickettoride`, modules/maps/italy/cities.php, quadro 1125×2038; le bandierine dai punti
+// d'arrivo dei Paesi, ids 1001…5003) e minimizzando: rapporti di lunghezza fuori da ~0,97–1,3 (da 1 carta fino a
+// 1,38, da 5 in su 0,93–1,5) rispetto alla mediana, incroci e distanze rotta–rotta/città–rotta/città–città troppo
+// piccole, angoli tra rotte incidenti < 38° (+7° per binario parallelo in più; 72° tra due doppie traghetto nella
+// stessa città: Palermo, Genova), posto libero per il nome di ogni città, scostamento dalla forma del tabellone.
+// Ritocchi a mano: Messina e Siracusa allontanate da Catania (il triangolo Messina–Catania–Siracusa, 2 + 1 = 3, è
+// degenere) e la bandierina di Milano–Svizzera spostata a nord-est (diritta, la rotta usciva da Milano a 7 px dalla
+// doppia Milano–Torino e restava piegata). È dato (non si ricalcola a ogni run).
+const ITALY_SEED = {
+  agrigento: [325.3, 2086.1], ancona: [1017.7, 1019.7], bari: [1231.4, 1605.2], bergamo: [663.9, 411.1],
+  bologna: [744.5, 686.3], bolzano: [977.5, 327.5], cagliari: [283.4, 1380], catania: [534.2, 2122],
+  cosenza: [1017.0, 1925.8], firenze: [653.0, 786.9], foggia: [1006.1, 1503.2], genova: [400.3, 561.9],
+  grosseto: [589.3, 949.4], lecce: [1437.9, 1652.4], messina: [698.5, 2070.6], milano: [545.7, 385.5],
+  napoli: [782.3, 1504.7], olbia: [247.6, 1063.5], palermo: [429.3, 1859.5], parma: [626.7, 573.3],
+  perugia: [778.5, 987.9], pescara: [979.9, 1259.8], pisa: [529.7, 746], ravenna: [841.9, 757.8],
+  roma: [648.8, 1198.4], salerno: [857.4, 1602.7], sassari: [40.0, 1230.7], siracusa: [550.1, 2257],
+  taranto: [1288.7, 1728.7], tarvisio: [1260.0, 512.8], torino: [338.4, 288.7], trieste: [1291.1, 733.5],
+  venezia: [1051.2, 650.5], verona: [846.1, 547.4],
+  'austria#austria_bolzano_1': [1164.1, 311.4],
+  'austria#austria_tarvisio_1': [1350.4, 580.2],
+  'croazia#ancona_croazia_1': [1347.0, 973.3],
+  'croazia#bari_croazia_1': [1241.4, 1046.4],
+  'croazia#croazia_trieste_1': [1308.3, 910.1],
+  'francia#francia_torino_1': [166.2, 282.8],
+  'monaco#genova_monaco_1': [152.0, 597.8],
+  'monaco#monaco_torino_1': [200.2, 506.8],
+  'svizzera#bergamo_svizzera_1': [774.9, 263.6],
+  'svizzera#bolzano_svizzera_1': [994.5, 209.5],
+  'svizzera#milano_svizzera_1': [572.6, 129],
+  'svizzera#svizzera_torino_1': [305.7, 40],
+};
+
+// Italy: posizioni delle 34 città sul tabellone in % (x da sinistra, y dall'alto) della foto 1125×2038 (pixel BGA di
+// cities.php diviso per il quadro); cornice per portare sul layout le ancore dei nomi dei Paesi (countryNameHints).
+const ITALY_BOARD_PCT = {
+  agrigento: [14.8, 90.0], ancona: [67.6, 41.6], bari: [83.0, 72.3], bergamo: [50.0, 12.7], bologna: [53.9, 27.7],
+  bolzano: [72.4, 11.7], cagliari: [17.6, 58.6], catania: [32.4, 93.8], cosenza: [60.0, 84.1], firenze: [46.4, 32.5],
+  foggia: [70.8, 64.0], genova: [30.5, 19.7], grosseto: [36.6, 40.0], lecce: [92.3, 82.5], messina: [44.5, 90.3],
+  milano: [41.0, 12.7], napoli: [51.4, 64.7], olbia: [21.1, 43.0], palermo: [20.0, 82.0], parma: [46.0, 21.0],
+  perugia: [52.2, 41.1], pescara: [66.2, 53.0], pisa: [38.5, 29.3], ravenna: [62.1, 30.7], roma: [42.8, 51.1],
+  salerno: [56.0, 68.6], sassari: [6.9, 45.7], siracusa: [30.4, 98.3], taranto: [81.2, 77.9], tarvisio: [92.3, 19.6],
+  torino: [22.4, 9.8], trieste: [88.6, 27.1], venezia: [70.2, 23.4], verona: [58.0, 19.3],
+};
+
 // Posizioni iniziali della sim: bbox geografica (lat/lon) proiettata sul canvas di lavoro,
 // oppure (`image`) i pallini in pixel dell'immagine da cui è stata ricavata la mappa, quando
 // la geografia reale non rispetta le lunghezze delle rotte (Basilicata: Lecce a 4 vagoni da
@@ -280,6 +328,8 @@ const MAP_BOUNDS = {
   india: { anchor: 0.8, image: { w: 820, h: 1070, xy: INDIA_SEED } },
   // Legendary Asia: pixel del tabellone (LASIA_SEED).
   legendary_asia: { image: { w: 1760, h: 1150, xy: LASIA_SEED } },
+  // Italy: seme ottimizzato ITALY_SEED, ancora 0,8 come India (il seme rispetta già lunghezze e angoli).
+  italy: { anchor: 0.8, image: { w: 1478, h: 2297, xy: ITALY_SEED } },
 };
 if (!MAP_BOUNDS[MAP_ID]) { console.error(`--map sconosciuta: ${MAP_ID} (valide: ${Object.keys(MAP_BOUNDS).join(', ')})`); process.exit(2); }
 const BOUNDS = MAP_BOUNDS[MAP_ID];
@@ -439,6 +489,18 @@ const MAP_TUNING = {
     f2Shifts: [],
   },
   legendary_asia: { unit: 40, labelOverrides: {}, f2Shifts: [] },
+  // Italy: tabellone verticale e denso. Ogni rotta di confine ha la sua bandierina (D46); il nome di ogni Paese sta
+  // dove è stampato sul tabellone (% della foto 1125×2038): FRANCIA in alto a sinistra, SVIZZERA in alto, AUSTRIA in
+  // alto a destra, MONACO a ovest, CROAZIA a est. `unit: 46`: a 40 px per carta il nome di Catania (dentro il
+  // triangolo Messina–Catania–Siracusa) non trovava posto libero dal traghetto Messina–Siracusa.
+  italy: {
+    unit: 46,
+    splitCountries: true,
+    boardPct: ITALY_BOARD_PCT,
+    countryNameHints: { francia: [11.6, 5], svizzera: [51.8, 3.9], austria: [96, 10], monaco: [7.7, 20.6], croazia: [96.7, 41.7] },
+    labelOverrides: {},
+    f2Shifts: [],
+  },
 };
 const TUNING = MAP_TUNING[MAP_ID];
 
@@ -708,17 +770,27 @@ const SPLIT_ORIGINAL_ORDER = mapData.cities.map((c) => c.id);
 if (SPLIT) {
   const countryIds = new Set(mapData.cities.filter((c) => c.country).map((c) => c.id));
   const flagCities = [];
+  // Un gruppo di binari paralleli (`double`) verso lo stesso Paese condivide UNA bandierina (sul tabellone
+  // la doppia Torino–Francia arriva a una sola bandiera): il nodo è intitolato al primo binario del gruppo.
+  const flagOfRouteId = new Map();
   for (const c of mapData.cities) {
     if (!countryIds.has(c.id)) continue;
     countryCities.push(c);
+    const groupFlag = new Map(); // altro capo → pid del gruppo parallelo
     for (const r of mapData.routes) {
       if (r.from !== c.id && r.to !== c.id) continue;
-      const pid = `${c.id}#${r.id}`;
-      flagInfo.set(pid, { country: c.id, routeId: r.id });
-      flagCities.push({ id: pid, name: '', lat: c.lat, lon: c.lon });
+      const other = r.from === c.id ? r.to : r.from;
+      let pid = r.double ? groupFlag.get(other) : undefined;
+      if (pid === undefined) {
+        pid = `${c.id}#${r.id}`;
+        if (r.double) groupFlag.set(other, pid);
+        flagInfo.set(pid, { country: c.id, routeId: r.id });
+        flagCities.push({ id: pid, name: '', lat: c.lat, lon: c.lon });
+      }
+      flagOfRouteId.set(`${c.id}|${r.id}`, pid);
     }
   }
-  const flagOfRoute = (cid, rid) => `${cid}#${rid}`;
+  const flagOfRoute = (cid, rid) => flagOfRouteId.get(`${cid}|${rid}`);
   mapData.routes = mapData.routes.map((r) => ({
     ...r,
     from: countryIds.has(r.from) ? flagOfRoute(r.from, r.id) : r.from,

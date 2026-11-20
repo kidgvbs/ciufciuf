@@ -778,12 +778,14 @@ async function main() {
     for (const fs of finalPub.final_scores) {
       const nm = byId[fs.playerId]?.name || fs.playerId || '?';
       const borrowed = (fs.borrowedRoutes || []).map((b) => `${b.cityId}:${b.routeId}`).join(',') || '-';
-      console.log(`     ${nm}: routes=${fs.routePoints} tickets=${fs.ticketCompleted}/${fs.ticketFailed} longest=${fs.longestPathBonus} globetrotter=${fs.globetrotterBonus} stations=${fs.stationPoints} country=${fs.countryPoints} passengers=${fs.passengerPoints} borrowed=${borrowed} → ${fs.total}`);
+      const regions = fs.regionsBonus ? ` regions=${fs.regionsBonus} (${(fs.regionNetworks || []).join('+')})` : '';
+      console.log(`     ${nm}: routes=${fs.routePoints} tickets=${fs.ticketCompleted}/${fs.ticketFailed} longest=${fs.longestPathBonus} globetrotter=${fs.globetrotterBonus} stations=${fs.stationPoints} country=${fs.countryPoints} passengers=${fs.passengerPoints}${regions} borrowed=${borrowed} → ${fs.total}`);
       assert(Number.isInteger(fs.stationPoints), `${nm}: stationPoints mancante nei punteggi finali`);
       assert(Array.isArray(fs.borrowedRoutes), `${nm}: borrowedRoutes mancante nei punteggi finali`);
       assert(
         fs.total === fs.routePoints + fs.ticketCompleted + fs.ticketFailed + fs.longestPathBonus
-          + fs.globetrotterBonus + fs.stationPoints + (fs.countryPoints ?? 0) + (fs.passengerPoints ?? 0),
+          + fs.globetrotterBonus + fs.stationPoints + (fs.countryPoints ?? 0) + (fs.passengerPoints ?? 0)
+          + (fs.mandalaBonus ?? 0) + (fs.mountainPoints ?? 0) + (fs.largestNetworkBonus ?? 0) + (fs.regionsBonus ?? 0),
         `${nm}: totale incoerente`,
       );
       if (!EUROPE) assert(fs.stationPoints === 0 && fs.borrowedRoutes.length === 0, `${nm}: stazioni su una mappa senza stazioni`);

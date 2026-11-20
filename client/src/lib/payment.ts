@@ -85,6 +85,8 @@ export interface RulesetPayment {
   usableOn: readonly string[] | null;
   /** `ferries.anyCardsPerLocomotive`; `null` = nessuna sostituzione sui traghetti. */
   ferryAnyCards: number | null;
+  /** `ferryCards.wavesPerCard`: spazi onda che una carta Traghetto copre al massimo (Italy); assente = nessuna carta Traghetto. */
+  ferryCardWaves?: number;
 }
 
 /** Regole di pagamento di una rotta, risolte da rotta e ruleset (specchio di `PaymentSpec` del motore). */
@@ -96,6 +98,8 @@ export interface RoutePaymentRules {
   singleLoco: boolean;
   /** Carte qualsiasi (locomotive comprese) che pagano uno spazio; `null` = nessuna sostituzione. */
   groupSize: number | null;
+  /** Spazi onda che una carta Traghetto copre al massimo su questa rotta; assente = carte Traghetto non ammesse. */
+  ferryCardWaves?: number;
 }
 
 /**
@@ -113,7 +117,14 @@ export function routePaymentRules(
     (route.tunnel === true && usableOn.includes('tunnel')) ||
     (ferries > 0 && usableOn.includes('ferry'));
   const ferryAny = ferries > 0 ? (ruleset?.ferryAnyCards ?? null) : null;
-  return { len: route.len, ferries, singleLoco, groupSize: route.anyCardsPerSpace ?? ferryAny };
+  const ferryCardWaves = ferries > 0 ? (ruleset?.ferryCardWaves ?? 0) : 0;
+  return {
+    len: route.len,
+    ferries,
+    singleLoco,
+    groupSize: route.anyCardsPerSpace ?? ferryAny,
+    ...(ferryCardWaves > 0 ? { ferryCardWaves } : {}),
+  };
 }
 
 /**
@@ -159,6 +170,48 @@ export function findRoutePayment(
     for (let locos = 0; locos + groups <= rules.len; locos++) {
       if (routePaymentValid(rules, hand, color, { locos, groups })) return { locos, groups };
     }
+  }
+  return null;
+}
+
+/** Carte Traghetto giocabili su una rotta con le `owned` in mano: al più una per spazio onda (ognuna ne copre almeno uno). */
+export function maxFerryCards(rules: RoutePaymentRules, owned: number): number {
+  if ((rules.ferryCardWaves ?? 0) <= 0) return 0;
+  return Math.max(0, Math.min(owned, rules.ferries));
+}
+
+/**
+ * Onde coperte da `ferryCards` carte Traghetto: fino a `ferryCardWaves` a carta, mai più delle onde
+ * della rotta. Il giocatore potrebbe sceglierne di meno, ma coprirne il più possibile costa meno carte.
+ */
+export function ferryCoveredWaves(rules: RoutePaymentRules, ferryCards: number): number {
+  if (ferryCards <= 0) return 0;
+  return Math.min(ferryCards * (rules.ferryCardWaves ?? 0), rules.ferries);
+}
+
+/**
+ * Regole per le carte treno quando `ferryCards` carte Traghetto coprono le onde: la rotta ha tante
+ * carte e tanti spazi onda (locomotive) in meno quante sono le onde coperte.
+ */
+export function rulesWithFerryCards(rules: RoutePaymentRules, ferryCards: number): RoutePaymentRules {
+  const covered = ferryCoveredWaves(rules, ferryCards);
+  return { ...rules, len: rules.len - covered, ferries: rules.ferries - covered };
+}
+
+/**
+ * Primo pagamento valido col colore dato usando il minimo di carte Traghetto (al più `owned`); `null`
+ * se la mano non basta nemmeno con tutte. Il pagamento riguarda le carte treno, con le regole di
+ * `rulesWithFerryCards`.
+ */
+export function findRoutePaymentWithFerry(
+  rules: RoutePaymentRules,
+  hand: readonly CardColor[],
+  color: CardColor | null,
+  owned: number,
+): (RoutePayment & { ferryCards: number }) | null {
+  for (let ferryCards = 0; ferryCards <= maxFerryCards(rules, owned); ferryCards++) {
+    const found = findRoutePayment(rulesWithFerryCards(rules, ferryCards), hand, color);
+    if (found) return { ...found, ferryCards };
   }
   return null;
 }
@@ -213,13 +266,14 @@ export function routePayableWith(
   hand: readonly CardColor[],
   selected: CardColor | null,
   ruleset: RulesetPayment | null = null,
+  ferryOwned = 0,
 ): boolean {
   if (selected === null) return true;
   const rules = routePaymentRules(route, ruleset);
-  if (selected === 'LOCOMOTIVE') return findRoutePayment(rules, hand, null) !== null;
+  if (selected === 'LOCOMOTIVE') return findRoutePaymentWithFerry(rules, hand, null, ferryOwned) !== null;
   const routeColor = routeColorToCard(route.color);
   if (routeColor !== null && routeColor !== selected) return false;
-  return findRoutePayment(rules, hand, selected) !== null;
+  return findRoutePaymentWithFerry(rules, hand, selected, ferryOwned) !== null;
 }
 
 /**
@@ -232,11 +286,12 @@ export function payableRouteIds(
   hand: readonly CardColor[],
   selected: CardColor | null,
   ruleset: RulesetPayment | null = null,
+  ferryOwned = 0,
 ): string[] {
   if (selected === null) return [...routeIds];
   return routeIds.filter((id) => {
     const route = routes.get(id);
-    return route !== undefined && routePayableWith(route, hand, selected, ruleset);
+    return route !== undefined && routePayableWith(route, hand, selected, ruleset, ferryOwned);
   });
 }
 

@@ -11,7 +11,7 @@ use crate::engine_deck::{build_train_deck, check_and_reset_loco_threshold};
 use crate::error::{EngineError, EngineInitError, GamePhase};
 use crate::event::GameEvent;
 use crate::rng::SeededRng;
-use crate::scoring::PlayerConnectivity;
+use crate::scoring::{PlayerConnectivity, RegionRules, RegionStanding};
 use crate::setup::{pair_key, parallel_groups};
 use crate::types::{
     CityId, ClaimedRouteInfo, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
@@ -92,6 +92,8 @@ pub struct Engine {
     pub(crate) longest_path_bonus_points: Option<u32>,
     /// Punti del bonus globetrotter (più biglietti completati); `None` se assente.
     pub(crate) globetrotter_bonus_points: Option<u32>,
+    /// Regole del bonus Regioni (Italy); `None` se il ruleset non lo prevede.
+    pub(crate) region_rules: Option<RegionRules>,
     /// Giocatori il cui percorso più lungo non è esatto (budget di ricerca esaurito),
     /// calcolati a fine partita; vuoto sulle mappe validate.
     pub(crate) longest_path_inexact: Vec<usize>,
@@ -274,6 +276,7 @@ impl Engine {
                 claimed_routes: BTreeMap::new(),
                 score: 0,
                 mountain_points: 0,
+                ferry_cards: 0,
                 initial_draft_done: false,
                 stations: Vec::new(),
                 country_cards: BTreeMap::new(),
@@ -320,6 +323,7 @@ impl Engine {
             .filter(|c| c.country)
             .map(|c| c.id.clone())
             .collect();
+        let region_rules = RegionRules::new(&ruleset, &map);
         let country_stacks = ruleset.country_cards.clone();
         let tickets_by_id: BTreeMap<TicketId, TicketDef> = map
             .tickets
@@ -352,6 +356,7 @@ impl Engine {
             tickets_by_id,
             longest_path_bonus_points,
             globetrotter_bonus_points,
+            region_rules,
             longest_path_inexact: Vec::new(),
             longest_path_routes: Vec::new(),
             final_ticket_results: Vec::new(),
@@ -375,6 +380,7 @@ impl Engine {
                 source,
             } => self.handle_draw_train_card(*player_index, *source)?,
             Action::DrawTickets { player_index } => self.handle_draw_tickets(*player_index)?,
+            Action::DrawFerryCard { player_index } => self.handle_draw_ferry_card(*player_index)?,
             Action::ChooseTickets { player_index, keep } => {
                 self.handle_choose_tickets(*player_index, keep)?
             }
@@ -383,7 +389,14 @@ impl Engine {
                 route_id,
                 cards_discarded,
                 passengers,
-            } => self.handle_claim_route(*player_index, route_id, cards_discarded, passengers)?,
+                ferry_cards,
+            } => self.handle_claim_route(
+                *player_index,
+                route_id,
+                cards_discarded,
+                passengers,
+                *ferry_cards,
+            )?,
             Action::BuildStation {
                 player_index,
                 city_id,
@@ -544,6 +557,36 @@ impl Engine {
         self.ruleset.trains_per_player
     }
 
+    /// Carte Traghetto nel mazzetto: quelle del ruleset meno quelle in mano ai giocatori;
+    /// 0 senza `ferryCards`.
+    #[must_use]
+    pub fn ferry_pile_size(&self) -> u32 {
+        let held: u32 = self.players.iter().map(|p| p.ferry_cards).sum();
+        self.ruleset
+            .ferry_cards
+            .as_ref()
+            .map_or(0, |c| c.count.saturating_sub(held))
+    }
+
+    /// Reti di rotte e bonus Regioni attuali del giocatore (dato pubblico); vuoto e 0
+    /// senza il bonus `regions` o per un indice sconosciuto.
+    #[must_use]
+    pub fn region_standing(&self, index: usize) -> RegionStanding {
+        let Some(rules) = &self.region_rules else {
+            return RegionStanding::default();
+        };
+        if index >= self.players.len() {
+            return RegionStanding::default();
+        }
+        let claimed: Vec<ClaimedRouteInfo> = self
+            .claimed_routes
+            .values()
+            .filter(|c| c.claimed_by == index)
+            .cloned()
+            .collect();
+        rules.standing(&claimed, &self.routes_by_id, self.connectivity.countries())
+    }
+
     /// Pile delle carte Paese, per Paese i valori rimasti dall'alto in basso (pubbliche).
     #[must_use]
     pub fn country_stacks(&self) -> &BTreeMap<CityId, Vec<u32>> {
@@ -637,6 +680,14 @@ impl Engine {
     pub fn set_player_hand(&mut self, index: usize, hand: Vec<CardColor>) {
         if let Some(p) = self.players.get_mut(index) {
             p.hand = hand;
+        }
+    }
+
+    /// Imposta le carte Traghetto in mano a un giocatore.
+    #[cfg(any(test, feature = "test-helpers"))]
+    pub fn set_player_ferry_cards(&mut self, index: usize, ferry_cards: u32) {
+        if let Some(p) = self.players.get_mut(index) {
+            p.ferry_cards = ferry_cards;
         }
     }
 
@@ -766,6 +817,9 @@ struct SerializablePlayer {
     stations: Vec<CityId>,
     country_cards: BTreeMap<CityId, Vec<u32>>,
     passengers: BTreeMap<String, u32>,
+    /// Carte Traghetto in mano; omesso a 0 per non cambiare lo stato delle altre mappe.
+    #[serde(skip_serializing_if = "crate::types::is_zero")]
+    ferry_cards: u32,
 }
 
 impl From<&Engine> for SerializableState {
@@ -788,6 +842,7 @@ impl From<&Engine> for SerializableState {
                         stations: p.stations.clone(),
                         country_cards: p.country_cards.clone(),
                         passengers: p.passengers.clone(),
+                        ferry_cards: p.ferry_cards,
                     }
                 })
                 .collect(),

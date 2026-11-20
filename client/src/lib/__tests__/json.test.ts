@@ -85,6 +85,7 @@ describe('round-trip', () => {
             draw_face_up: [0],
             can_draw_deck: true,
             can_draw_tickets: false,
+            can_draw_ferry_card: false,
           },
         },
       },

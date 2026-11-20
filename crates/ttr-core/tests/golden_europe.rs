@@ -63,6 +63,7 @@ fn claim(
         route_id: route.into(),
         cards_discarded: cards.to_vec(),
         passengers: Default::default(),
+        ferry_cards: 0,
     })
 }
 

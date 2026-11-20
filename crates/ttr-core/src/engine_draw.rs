@@ -126,4 +126,38 @@ impl Engine {
 
         Ok(events)
     }
+
+    /// Pesca una carta Traghetto dal mazzetto (Italy): un turno intero, ammessa solo con
+    /// meno di `maxInHand` carte in mano. Come la pesca dei biglietti: solo a inizio turno,
+    /// anche nell'ultimo giro. Il mazzetto non finisce mai (`count >= maxInHand × giocatori`).
+    pub(crate) fn handle_draw_ferry_card(
+        &mut self,
+        player_index: usize,
+    ) -> Result<Vec<GameEvent>, EngineError> {
+        match self.phase {
+            GamePhase::PlayerTurn | GamePhase::LastRound => {}
+            _ => return Err(EngineError::WrongState { state: self.phase }),
+        }
+
+        if player_index != self.current_player_index {
+            return Err(EngineError::NotYourTurn {
+                player_index,
+                current_player: self.current_player_index,
+            });
+        }
+
+        let Some(config) = &self.ruleset.ferry_cards else {
+            return Err(EngineError::FerryCardsDisabled);
+        };
+        if self.players[player_index].ferry_cards >= config.max_in_hand {
+            return Err(EngineError::FerryCardsHandFull {
+                max: config.max_in_hand,
+            });
+        }
+
+        self.players[player_index].ferry_cards += 1;
+        let mut events = vec![GameEvent::FerryCardDrawn { player_index }];
+        self.advance_turn(&mut events);
+        Ok(events)
+    }
 }

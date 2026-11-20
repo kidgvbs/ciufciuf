@@ -93,6 +93,12 @@ pub enum EngineError {
         city_id: String,
         color: String,
     },
+
+    #[error("il ruleset non prevede le carte Traghetto")]
+    FerryCardsDisabled,
+
+    #[error("hai già {max} carte Traghetto in mano: non puoi pescarne altre")]
+    FerryCardsHandFull { max: u32 },
 }
 
 /// Errore di configurazione: ruleset, mappa o giocatori incoerenti.
@@ -413,6 +419,47 @@ pub enum EngineInitError {
 
     #[error("rotta '{route_id}': anyCardsPerSpace deve essere almeno 2, è {value}")]
     RouteAnyCardsPerSpaceTooSmall { route_id: String, value: u32 },
+
+    #[error("ferryCards.{field} deve essere almeno 1")]
+    FerryCardsFieldZero { field: &'static str },
+
+    #[error(
+        "ferryCards.count {count} non basta: servono almeno {needed} carte (maxInHand × giocatori massimi)"
+    )]
+    FerryCardsPoolTooSmall { count: u32, needed: u32 },
+
+    #[error("il ruleset ha ferryCards ma la mappa non ha rotte con onde (ferries)")]
+    FerryCardsUnused,
+
+    #[error("bonus regions: minRegions mancante o 0 (deve essere almeno 1)")]
+    RegionsMinRegionsInvalid,
+
+    #[error("bonus regions: table vuota")]
+    RegionsTableEmpty,
+
+    #[error("bonus regions: table decrescente alla posizione {index}")]
+    RegionsTableDecreasing { index: usize },
+
+    #[error("bonus regions: points {points} diverso dall'ultimo valore di table ({last})")]
+    RegionsPointsMismatch { points: u32, last: u32 },
+
+    #[error("bonus regions: la regione '{region}' è ripetuta in doubleRegions")]
+    RegionsDoubleDuplicate { region: String },
+
+    #[error("bonus regions: doubleRegions cita la regione '{region}', che nessuna città ha")]
+    RegionsDoubleUnknown { region: String },
+
+    #[error("bonus '{bonus_type}': minRegions e doubleRegions non sono ammessi per questo tipo")]
+    RegionsFieldsNotAllowed { bonus_type: String },
+
+    #[error("bonus regions: la città '{city_id}' non ha una regione")]
+    CityRegionMissing { city_id: String },
+
+    #[error("la città '{city_id}' è un Paese e non può avere una regione")]
+    CountryHasRegion { city_id: String },
+
+    #[error("la città '{city_id}' ha una regione ma il ruleset non ha il bonus regions")]
+    CityRegionUnused { city_id: String },
 }
 
 /// Fase di gioco (macchina a stati interna).

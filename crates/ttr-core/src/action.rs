@@ -27,6 +27,8 @@ pub enum Action {
     },
     /// Pescare nuovi biglietti a metà partita.
     DrawTickets { player_index: usize },
+    /// Pescare una carta Traghetto dal mazzetto (Italy): un turno intero.
+    DrawFerryCard { player_index: usize },
     /// Scegliere quali biglietti tenere (draft iniziale o mid-game).
     ChooseTickets {
         player_index: usize,
@@ -42,6 +44,10 @@ pub enum Action {
         /// la città ha passeggeri di più colori. Vuoto nei save precedenti.
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         passengers: BTreeMap<CityId, String>,
+        /// Carte Traghetto giocate (Italy): ognuna copre 1 o `wavesPerCard` spazi onda.
+        /// 0 nei save precedenti e sulle mappe senza `ferryCards`.
+        #[serde(default, skip_serializing_if = "crate::types::is_zero")]
+        ferry_cards: u32,
     },
     /// Costruire una stazione in una città (Europe).
     BuildStation {
@@ -66,6 +72,7 @@ impl Action {
             Action::DrawTrainCard { player_index, .. }
             | Action::DrawTickets { player_index, .. }
             | Action::ChooseTickets { player_index, .. }
+            | Action::DrawFerryCard { player_index, .. }
             | Action::ClaimRoute { player_index, .. }
             | Action::BuildStation { player_index, .. }
             | Action::TunnelDecision { player_index, .. } => *player_index,

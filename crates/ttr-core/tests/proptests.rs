@@ -1,7 +1,7 @@
 //! Test property-based sul motore: conservazione, azioni fallite,
 //! legal-vs-apply e replay, su partite casuali sulle mappe USA, Europe, Germany, Poland,
-//! Nordic, Switzerland, India e Legendary Asia reali (sull'Asia rotte di montagna e Asian
-//! Explorer).
+//! Nordic, Switzerland, India, Legendary Asia e Italy reali (sull'Asia rotte di montagna e
+//! Asian Explorer, sull'Italy carte Traghetto e bonus Regioni).
 //!
 //! Sull'Europe i bot costruiscono anche stazioni e pagano o rifiutano i tunnel; sulla
 //! Germany scelgono i biglietti rispettando minimi e massimi per mazzo. I pagamenti delle
@@ -62,6 +62,9 @@ enum Game {
     /// Legendary Asia: rotte di montagna (treni scartati, +2 punti ciascuno), traghetti,
     /// bonus Asian Explorer, spareggio per rotte di montagna.
     LegendaryAsia,
+    /// Italy: carte Traghetto (pesca, 1 o 2 onde per carta), traghetti grigi, triple, Paesi e
+    /// bonus Regioni.
+    Italy,
 }
 
 static USA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("usa_v2", "usa"));
@@ -82,6 +85,7 @@ static SWITZERLAND: LazyLock<(Ruleset, MapData)> =
 static INDIA: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("india", "india"));
 static LEGENDARY_ASIA: LazyLock<(Ruleset, MapData)> =
     LazyLock::new(|| load("legendary_asia", "legendary_asia"));
+static ITALY: LazyLock<(Ruleset, MapData)> = LazyLock::new(|| load("italy", "italy"));
 
 fn load(ruleset: &str, map: &str) -> (Ruleset, MapData) {
     let ruleset = std::fs::read_to_string(format!("../../data/rulesets/{ruleset}.json")).unwrap();
@@ -107,6 +111,7 @@ fn data(game: Game) -> &'static (Ruleset, MapData) {
         Game::Switzerland => &SWITZERLAND,
         Game::India => &INDIA,
         Game::LegendaryAsia => &LEGENDARY_ASIA,
+        Game::Italy => &ITALY,
     }
 }
 
@@ -205,6 +210,16 @@ impl PayRules {
     fn has_groups(&self) -> bool {
         self.loco_group.is_some() || !self.color_groups.is_empty()
     }
+    /// Le stesse regole con `waves` spazi onda già coperti da carte Traghetto.
+    fn without_waves(&self, waves: usize) -> Self {
+        Self {
+            len: self.len - waves,
+            ferries: self.ferries - waves,
+            single_loco: self.single_loco,
+            loco_group: self.loco_group,
+            color_groups: self.color_groups.clone(),
+        }
+    }
 }
 
 /// Tutti i pagamenti strutturati di una rotta con la mano data. Gli spazi locomotiva del
@@ -298,19 +313,18 @@ fn push_distinct(out: &mut Vec<Vec<CardColor>>, cards: &[CardColor]) {
     }
 }
 
-/// Pagamenti validi per la rotta con la mano del giocatore (vuoto se non esiste): quello
-/// con più carte singole, quello con più carte in tutto e, dove ci sono gruppi, uno con le
-/// locomotive nei gruppi.
-fn route_payments(game: Game, eng: &Engine, player: usize, route_id: &str) -> Vec<Vec<CardColor>> {
-    let (ruleset, _) = data(game);
-    let (Some(route), Some(hand)) = (eng.get_route(route_id), eng.player_hand(player)) else {
-        return Vec::new();
-    };
-    let Some(color) = RouteColor::parse(&route.color) else {
-        return Vec::new();
-    };
-    let rules = PayRules::of(ruleset, route);
-    let plain = payment_candidates(hand, &rules, color, false);
+/// Un pagamento: carte treno (locomotive comprese) e carte Traghetto giocate.
+type Payment = (Vec<CardColor>, u32);
+
+/// Pagamenti validi per le regole date con la mano del giocatore (vuoto se non esiste):
+/// quello con più carte singole, quello con più carte in tutto e, dove ci sono gruppi, uno
+/// con le locomotive nei gruppi.
+fn payments_for_rules(
+    hand: &[CardColor],
+    rules: &PayRules,
+    color: RouteColor,
+) -> Vec<Vec<CardColor>> {
+    let plain = payment_candidates(hand, rules, color, false);
     let mut out = Vec::new();
     if let Some(first) = plain.first() {
         push_distinct(&mut out, first);
@@ -319,7 +333,7 @@ fn route_payments(game: Game, eng: &Engine, player: usize, route_id: &str) -> Ve
         push_distinct(&mut out, longest);
     }
     if rules.has_groups() {
-        let with_locos = payment_candidates(hand, &rules, color, true);
+        let with_locos = payment_candidates(hand, rules, color, true);
         if let Some(longest) = with_locos.iter().max_by_key(|c| c.len()) {
             push_distinct(&mut out, longest);
         }
@@ -327,12 +341,47 @@ fn route_payments(game: Game, eng: &Engine, player: usize, route_id: &str) -> Ve
     out
 }
 
-fn route_payment(
-    game: Game,
-    eng: &Engine,
-    player: usize,
-    route_id: &str,
-) -> Option<Vec<CardColor>> {
+/// Pagamenti validi per la rotta con la mano e le carte Traghetto del giocatore (vuoto se non
+/// ne esiste): prima quelli senza carte Traghetto, poi per ogni numero di carte Traghetto
+/// giocabili e ogni numero di onde che coprono (da una per carta a `wavesPerCard`).
+fn route_payments(game: Game, eng: &Engine, player: usize, route_id: &str) -> Vec<Payment> {
+    let (ruleset, _) = data(game);
+    let (Some(route), Some(hand)) = (eng.get_route(route_id), eng.player_hand(player)) else {
+        return Vec::new();
+    };
+    let Some(color) = RouteColor::parse(&route.color) else {
+        return Vec::new();
+    };
+    let rules = PayRules::of(ruleset, route);
+    let owned = eng.player(player).map_or(0, |p| p.ferry_cards as usize);
+    let waves_per_card = ruleset
+        .ferry_cards
+        .as_ref()
+        .map_or(0, |c| c.waves_per_card as usize);
+    let mut out: Vec<Payment> = Vec::new();
+    for played in 0..=owned.min(rules.ferries) {
+        let covered = if played == 0 {
+            0..=0
+        } else {
+            played..=(played * waves_per_card).min(rules.ferries)
+        };
+        let played = u32::try_from(played).unwrap();
+        for waves in covered {
+            for cards in payments_for_rules(hand, &rules.without_waves(waves), color) {
+                let counts = card_counts(&cards);
+                if !out
+                    .iter()
+                    .any(|(c, f)| *f == played && card_counts(c) == counts)
+                {
+                    out.push((cards, played));
+                }
+            }
+        }
+    }
+    out
+}
+
+fn route_payment(game: Game, eng: &Engine, player: usize, route_id: &str) -> Option<Payment> {
     route_payments(game, eng, player, route_id)
         .into_iter()
         .next()
@@ -543,12 +592,13 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
             for route_id in &legal.routes {
                 let payments = route_payments(game, eng, pi, route_id);
                 assert!(!payments.is_empty(), "rotta legale non pagabile");
-                for cards in payments {
+                for (cards, ferry_cards) in payments {
                     actions.push(Action::ClaimRoute {
                         player_index: pi,
                         route_id: route_id.clone(),
                         cards_discarded: cards,
                         passengers: passenger_picks(eng, route_id),
+                        ferry_cards,
                     });
                 }
             }
@@ -585,6 +635,9 @@ fn progress_actions(game: Game, eng: &Engine) -> Vec<Action> {
                 });
             }
             actions.extend(draw_ticket_actions(pi, legal.can_draw_tickets));
+            if legal.can_draw_ferry_card {
+                actions.push(Action::DrawFerryCard { player_index: pi });
+            }
             for city in &legal.station_cities {
                 let cards = station_payment(eng, pi, legal.station_cost as usize)
                     .expect("stazione elencata ma non pagabile");
@@ -622,6 +675,9 @@ fn pick(actions: Vec<Action>, choice: u16) -> Option<Action> {
 fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
     let (_, map) = data(game);
     let player_index = usize::from(picks[0]) % (eng.num_players() + 1);
+    if data(game).0.ferry_cards.is_some() && picks[1] % 13 == 12 {
+        return Action::DrawFerryCard { player_index };
+    }
     match picks[1] % 6 {
         0 => Action::DrawTrainCard {
             player_index,
@@ -654,15 +710,17 @@ fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
             let route_id = route.map_or("rotta_inesistente".to_string(), |r| r.id.clone());
             let len = route.map_or(1, |r| r.len as usize);
             let hand = eng.player_hand(player_index).unwrap_or_default();
-            let mut cards: Vec<CardColor> = if picks[3].is_multiple_of(2) {
+            let (mut cards, ferry_cards): (Vec<CardColor>, u32) = if picks[3].is_multiple_of(2) {
                 route_payment(game, eng, player_index, &route_id).unwrap_or_default()
             } else {
-                hand.iter()
+                let cards = hand
+                    .iter()
                     .cycle()
                     .skip(usize::from(picks[3]) % hand.len().max(1))
                     .take(len)
                     .copied()
-                    .collect()
+                    .collect();
+                (cards, 0)
             };
             if picks[3].is_multiple_of(5) {
                 cards.pop();
@@ -672,6 +730,7 @@ fn arbitrary_action(game: Game, eng: &Engine, picks: [u16; 4]) -> Action {
                 route_id,
                 cards_discarded: cards,
                 passengers: Default::default(),
+                ferry_cards: ferry_cards + u32::from(picks[3].is_multiple_of(7)),
             }
         }
         4 => {
@@ -911,6 +970,27 @@ fn check_conservation(
             let bag = config.per_color * config.colors.len() as u32;
             prop_assert_eq!(on_cities + held, bag, "passeggeri persi o creati");
         }
+
+        // Le carte Traghetto: mai più di `maxInHand` in mano, mazzetto = carte − in mano;
+        // senza `ferryCards` nessuno ne ha.
+        let held: u32 = (0..eng.num_players())
+            .map(|p| eng.player(p).unwrap().ferry_cards)
+            .sum();
+        match &ruleset.ferry_cards {
+            Some(config) => {
+                for p in 0..eng.num_players() {
+                    prop_assert!(
+                        eng.player(p).unwrap().ferry_cards <= config.max_in_hand,
+                        "troppe carte Traghetto"
+                    );
+                }
+                prop_assert_eq!(eng.ferry_pile_size(), config.count - held);
+            }
+            None => {
+                prop_assert_eq!(held, 0);
+                prop_assert_eq!(eng.ferry_pile_size(), 0);
+            }
+        }
         Ok(())
     })?;
     Ok(())
@@ -1028,14 +1108,28 @@ fn check_legal_moves_agree_with_apply(
             }
             let rules = PayRules::of(&data(game).0, route);
             let hand = eng.player_hand(pi).unwrap().to_vec();
-            let invalid = invalid_payments(&rules, &hand, &payments[0]);
+            // Le varianti rifiutate si derivano da un pagamento senza carte Traghetto.
+            let mut invalid: Vec<Payment> = if payments[0].1 == 0 {
+                invalid_payments(&rules, &hand, &payments[0].0)
+                    .into_iter()
+                    .map(|cards| (cards, 0))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            // Più carte Traghetto delle onde della rotta (nessuna su una rotta senza onde):
+            // mai ammesse, anche se la mano le avesse.
+            if data(game).0.ferry_cards.is_some() {
+                let too_many = u32::try_from(rules.ferries).unwrap() + 1;
+                invalid.push((payments[0].0.clone(), too_many));
+            }
             // Le mosse elencate si provano su una copia: al più 3 pagamenti a passo, a
             // rotazione tra le varianti della rotta.
             if listed {
                 let shift = usize::from(window[1]) % payments.len();
                 payments.rotate_left(shift);
             }
-            for cards in payments {
+            for (cards, ferry_cards) in payments {
                 if listed {
                     if listed_checked == 3 {
                         break;
@@ -1047,15 +1141,17 @@ fn check_legal_moves_agree_with_apply(
                     route_id: route.id.clone(),
                     cards_discarded: cards,
                     passengers: passenger_picks(eng, &route.id),
+                    ferry_cards,
                 };
                 check(eng, action, listed, &format!("rotta {}", route.id))?;
             }
-            for cards in invalid {
+            for (cards, ferry_cards) in invalid {
                 let action = Action::ClaimRoute {
                     player_index: pi,
                     route_id: route.id.clone(),
                     cards_discarded: cards,
                     passengers: passenger_picks(eng, &route.id),
+                    ferry_cards,
                 };
                 check(
                     eng,
@@ -1084,6 +1180,13 @@ fn check_legal_moves_agree_with_apply(
         check(eng, deck, lm.can_draw_deck, "pesca dal mazzo")?;
         let tickets = Action::DrawTickets { player_index: pi };
         check(eng, tickets, lm.can_draw_tickets, "pesca biglietti")?;
+        let ferry_draw = Action::DrawFerryCard { player_index: pi };
+        check(
+            eng,
+            ferry_draw,
+            lm.can_draw_ferry_card,
+            "pesca carta Traghetto",
+        )?;
 
         // Stazioni: elencate solo in città libere e pagabili; il costo è quello della prossima.
         let in_turn = matches!(eng.phase(), GamePhase::PlayerTurn | GamePhase::LastRound);
@@ -1447,6 +1550,74 @@ fn naive_network_size(game: Game, eng: &Engine, player: usize) -> u32 {
     best
 }
 
+/// Reti di rotte proprie del giocatore (Regioni per rete, in ordine decrescente) e punti del
+/// bonus `regions`, da una visita in ampiezza indipendente dal motore: i Paesi sono nodi
+/// privati per rotta e non hanno una Regione. Vuoto e 0 senza il bonus.
+fn naive_regions(game: Game, eng: &Engine, player: usize) -> (Vec<u32>, i32) {
+    let (ruleset, map) = data(game);
+    let Some(bonus) = ruleset.regions_bonus() else {
+        return (Vec::new(), 0);
+    };
+    let region_of = |city: &str| {
+        map.cities
+            .iter()
+            .find(|c| c.id == city)
+            .and_then(|c| c.region.as_deref())
+    };
+    let is_country = |city: &str| map.cities.iter().any(|c| c.id == city && c.country);
+    let node = |route: &Route, city: &str| {
+        if is_country(city) {
+            format!("{city}#{}", route.id)
+        } else {
+            city.to_string()
+        }
+    };
+    let mut adjacent: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for id in eng.player(player).unwrap().claimed_routes.keys() {
+        let route = eng.get_route(id).unwrap();
+        let (a, b) = (node(route, &route.from), node(route, &route.to));
+        adjacent.entry(a.clone()).or_default().push(b.clone());
+        adjacent.entry(b).or_default().push(a);
+    }
+    let mut seen: BTreeSet<String> = BTreeSet::new();
+    let mut counts: Vec<u32> = Vec::new();
+    for start in adjacent.keys() {
+        if !seen.insert(start.clone()) {
+            continue;
+        }
+        let mut cities: BTreeSet<String> = BTreeSet::new();
+        let mut stack = vec![start.clone()];
+        while let Some(at) = stack.pop() {
+            cities.insert(at.split('#').next().unwrap().to_string());
+            for next in &adjacent[&at] {
+                if seen.insert(next.clone()) {
+                    stack.push(next.clone());
+                }
+            }
+        }
+        let regions: BTreeSet<&str> = cities.iter().filter_map(|c| region_of(c)).collect();
+        let complete = bonus
+            .double_regions
+            .iter()
+            .filter(|region| {
+                map.cities
+                    .iter()
+                    .filter(|c| c.region.as_deref() == Some(region.as_str()))
+                    .all(|c| cities.contains(&c.id))
+            })
+            .count();
+        counts.push(u32::try_from(regions.len() + complete).unwrap());
+    }
+    counts.sort_unstable_by(|a, b| b.cmp(a));
+    let min = bonus.min_regions.unwrap();
+    let points: u32 = counts
+        .iter()
+        .filter(|&&k| k >= min)
+        .map(|&k| bonus.table[((k - min) as usize).min(bonus.table.len() - 1)])
+        .sum();
+    (counts, i32::try_from(points).unwrap())
+}
+
 /// Una partita completa chiude il giro finale, assegna i punti e ha un vincitore.
 fn check_full_game_invariants(
     game: Game,
@@ -1625,6 +1796,12 @@ fn check_full_game_invariants(
             _ => 0,
         };
         prop_assert_eq!(fs.largest_network_bonus, explorer_bonus);
+        // Regioni: reti e punti da una visita indipendente; vuoti senza il bonus.
+        let (networks, region_points) = naive_regions(game, &eng, fs.player_index);
+        prop_assert_eq!(&fs.region_networks, &networks);
+        prop_assert_eq!(fs.regions_bonus, region_points);
+        prop_assert_eq!(eng.region_standing(fs.player_index).bonus, region_points);
+        prop_assert_eq!(eng.region_standing(fs.player_index).networks, networks);
         prop_assert_eq!(
             fs.total,
             fs.route_points
@@ -1635,6 +1812,7 @@ fn check_full_game_invariants(
                 + fs.globetrotter_bonus
                 + fs.mandala_bonus
                 + fs.largest_network_bonus
+                + fs.regions_bonus
                 + fs.station_points
                 + fs.country_points
                 + fs.passenger_points
@@ -1765,6 +1943,15 @@ proptest! {
     ) {
         check_full_game_invariants(Game::LegendaryAsia, seed, players, &choices)?;
     }
+
+    #[test]
+    fn italy_full_game_invariants(
+        seed in any::<u64>(),
+        players in 2usize..=5,
+        choices in prop::collection::vec(any::<u16>(), 64..256),
+    ) {
+        check_full_game_invariants(Game::Italy, seed, players, &choices)?;
+    }
 }
 
 proptest! {
@@ -1858,6 +2045,26 @@ proptest! {
     #[test]
     fn legendary_asia_replay_reproduces_state((seed, players, choices) in game_inputs()) {
         check_replay_reproduces_state(Game::LegendaryAsia, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn italy_cards_and_tickets_are_conserved((seed, players, choices) in game_inputs()) {
+        check_conservation(Game::Italy, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn italy_failed_action_leaves_state_identical((seed, players, choices) in game_inputs()) {
+        check_failed_action_leaves_state_identical(Game::Italy, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn italy_legal_moves_agree_with_apply((seed, players, choices) in game_inputs()) {
+        check_legal_moves_agree_with_apply(Game::Italy, seed, players, &choices)?;
+    }
+
+    #[test]
+    fn italy_replay_reproduces_state((seed, players, choices) in game_inputs()) {
+        check_replay_reproduces_state(Game::Italy, seed, players, &choices)?;
     }
 }
 
@@ -2430,6 +2637,7 @@ fn india_two_disjoint_paths_earn_the_mandala_bonus() {
             route_id: route.id.clone(),
             cards_discarded: cards,
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     }
@@ -2488,13 +2696,17 @@ fn nordic_long_route_is_paid_with_groups_of_any_cards() {
     eng.set_player_hand(pi, hand);
     assert!(eng.legal_moves(pi).routes.contains(&route_id.to_string()));
     let payments = route_payments(Game::Nordic, &eng, pi, route_id);
-    assert!(payments.iter().all(|p| p.len() == 15), "{payments:?}");
-    for cards in payments {
+    assert!(
+        payments.iter().all(|(p, f)| p.len() == 15 && *f == 0),
+        "{payments:?}"
+    );
+    for (cards, _) in payments {
         let action = Action::ClaimRoute {
             player_index: pi,
             route_id: route_id.into(),
             cards_discarded: cards,
             passengers: BTreeMap::new(),
+            ferry_cards: 0,
         };
         eng.clone().apply(action).unwrap();
     }
@@ -2502,4 +2714,42 @@ fn nordic_long_route_is_paid_with_groups_of_any_cards() {
     eng.set_player_hand(pi, vec![CardColor::Locomotive; 9]);
     assert!(route_payments(Game::Nordic, &eng, pi, route_id).is_empty());
     assert!(!eng.legal_moves(pi).routes.contains(&route_id.to_string()));
+}
+
+/// I bot Italy pescano carte Traghetto e le giocano sulle onde (anche una carta su più onde);
+/// il bonus Regioni di fine partita coincide con quello di una visita indipendente (verificato
+/// da `check_full_game_invariants`).
+#[test]
+fn italy_bots_draw_and_play_ferry_cards() {
+    let (mut draws, mut played, mut multi_wave, mut with_bonus) = (0, 0, 0, 0);
+    for seed in 0..40u64 {
+        let players = 2 + seed as usize % 4;
+        let (eng, finished) =
+            play_to_game_over(Game::Italy, seed, players, &seeded_choices(seed)).unwrap();
+        for record in eng.action_log() {
+            match &record.action {
+                Action::DrawFerryCard { .. } => draws += 1,
+                Action::ClaimRoute {
+                    route_id,
+                    cards_discarded,
+                    ferry_cards,
+                    ..
+                } if *ferry_cards > 0 => {
+                    played += 1;
+                    let len = eng.get_route(route_id).unwrap().len as usize;
+                    if cards_discarded.len() + *ferry_cards as usize != len {
+                        multi_wave += 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if finished.final_scores.iter().any(|fs| fs.regions_bonus > 0) {
+            with_bonus += 1;
+        }
+    }
+    eprintln!(
+        "carte Traghetto pescate {draws}, giocate {played}, su più onde {multi_wave}, partite con bonus Regioni {with_bonus}"
+    );
+    assert!(draws > 0 && played > 0);
 }

@@ -81,6 +81,7 @@ fn next_action(eng: &Engine, step: usize, keep_initial: usize, keep_draw: usize)
                         route_id: route.id.clone(),
                         cards_discarded: cards,
                         passengers: Default::default(),
+                        ferry_cards: 0,
                     };
                 }
             }
@@ -133,9 +134,9 @@ fn golden_hash(seed: u64, players: usize) -> u64 {
         let action = next_action(&eng, step, keep_initial, keep_draw);
         let events = eng.apply(action).expect("azione scriptata rifiutata");
         // I campi Europe di `FinalScore` sono sempre vuoti sulla USA e `globetrotter_bonus`,
-        // `mandala_bonus`, `mountain_points`, `largest_network_bonus` e `largest_network` sono
-        // 0 senza il bonus: non entrano nell'hash, che resta quello catturato prima della loro
-        // introduzione.
+        // `mandala_bonus`, `mountain_points`, `largest_network_bonus`, `largest_network`,
+        // `regions_bonus` e `region_networks` sono 0 o vuoti senza il bonus: non entrano
+        // nell'hash, che resta quello catturato prima della loro introduzione.
         feed(
             &format!("{events:?}")
                 .replace(", globetrotter_bonus: 0", "")
@@ -143,6 +144,7 @@ fn golden_hash(seed: u64, players: usize) -> u64 {
                 .replace(", mountain_points: 0", "")
                 .replace(", largest_network_bonus: 0", "")
                 .replace(", largest_network: 0", "")
+                .replace(", regions_bonus: 0, region_networks: []", "")
                 .replace(", station_points: 0, borrowed_routes: []", "")
                 .replace(", country_points: 0, passenger_points: 0", ""),
         );

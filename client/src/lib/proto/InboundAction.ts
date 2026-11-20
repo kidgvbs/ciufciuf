@@ -3,6 +3,7 @@ import type { BuildStationPayload } from "./BuildStationPayload";
 import type { ChooseTicketsPayload } from "./ChooseTicketsPayload";
 import type { ClaimRoutePayload } from "./ClaimRoutePayload";
 import type { DrawCardPayload } from "./DrawCardPayload";
+import type { DrawFerryCardPayload } from "./DrawFerryCardPayload";
 import type { DrawTicketsPayload } from "./DrawTicketsPayload";
 import type { RequestSnapshotPayload } from "./RequestSnapshotPayload";
 import type { TunnelDecisionPayload } from "./TunnelDecisionPayload";
@@ -10,4 +11,4 @@ import type { TunnelDecisionPayload } from "./TunnelDecisionPayload";
 /**
  * Azione inbound (client → server). Messaggio inviato su `game/{gameId}/action`.
  */
-export type InboundAction = { "actionType": "DRAW_TRAIN_CARD" } & DrawCardPayload | { "actionType": "DRAW_TICKETS" } & DrawTicketsPayload | { "actionType": "CHOOSE_TICKETS" } & ChooseTicketsPayload | { "actionType": "CLAIM_ROUTE" } & ClaimRoutePayload | { "actionType": "REQUEST_SNAPSHOT" } & RequestSnapshotPayload | { "actionType": "BUILD_STATION" } & BuildStationPayload | { "actionType": "TUNNEL_DECISION" } & TunnelDecisionPayload;
+export type InboundAction = { "actionType": "DRAW_TRAIN_CARD" } & DrawCardPayload | { "actionType": "DRAW_TICKETS" } & DrawTicketsPayload | { "actionType": "DRAW_FERRY_CARD" } & DrawFerryCardPayload | { "actionType": "CHOOSE_TICKETS" } & ChooseTicketsPayload | { "actionType": "CLAIM_ROUTE" } & ClaimRoutePayload | { "actionType": "REQUEST_SNAPSHOT" } & RequestSnapshotPayload | { "actionType": "BUILD_STATION" } & BuildStationPayload | { "actionType": "TUNNEL_DECISION" } & TunnelDecisionPayload;

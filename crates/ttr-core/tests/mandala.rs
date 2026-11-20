@@ -121,6 +121,7 @@ fn claim(eng: &mut Engine, pi: usize, route_id: &str) {
         route_id: route_id.into(),
         cards_discarded: cards,
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 }

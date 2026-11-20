@@ -4,7 +4,7 @@
   // prestito) e chi ha il bonus del percorso più lungo. Solo dati del server.
   import type { Snippet } from 'svelte';
   import { PLAYER_COLOR_CSS } from '../colors';
-  import { rankedScores, winnerNames, borrowedRouteLabel, ticketResultLabel, largestNetworkWinners } from '../scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel, ticketResultLabel, largestNetworkWinners, regionsText } from '../scores';
   import type { MapData } from '../map-utils';
   import type { FinalScoreInfo, PlayerSummary } from '../proto';
 
@@ -60,6 +60,7 @@
         {#if (fs.mandalaBonus ?? 0) > 0} · 🪷 +{fs.mandalaBonus}{/if}
         {#if (fs.mountainPoints ?? 0) > 0} · ⛰ +{fs.mountainPoints}{/if}
         {#if (fs.largestNetworkBonus ?? 0) > 0} · 🧭 +{fs.largestNetworkBonus}{/if}
+        {#if regionsText(fs.regionsBonus ?? 0, fs.regionNetworks ?? []) !== null} · 🗺 Regioni {regionsText(fs.regionsBonus ?? 0, fs.regionNetworks ?? [])}{/if}
         {#if (fs.stationPoints ?? 0) > 0} · 🏠 +{fs.stationPoints}{/if}
         {#if (fs.countryPoints ?? 0) > 0} · Carte Paese +{fs.countryPoints}{/if}
         {#if (fs.passengerPoints ?? 0) > 0} · Passeggeri +{fs.passengerPoints}{/if}

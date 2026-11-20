@@ -50,6 +50,7 @@ fn city(id: &str) -> City {
         name: id.into(),
         country: false,
         flag: None,
+        region: None,
     }
 }
 
@@ -115,6 +116,7 @@ fn mini_ruleset() -> Ruleset {
     Ruleset {
         tie_breakers: None,
         passengers: None,
+        ferry_cards: None,
         special_rules: vec![],
         locomotives: None,
         ferries: None,
@@ -155,6 +157,8 @@ fn mini_ruleset() -> Ruleset {
             label: "Longest Path".into(),
             points: 10,
             table: vec![],
+            min_regions: None,
+            double_regions: vec![],
         }],
         big_cities: vec![],
         double_route_min_players: 4,
@@ -369,6 +373,7 @@ fn golden_double_route_blocked_2p() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -378,6 +383,7 @@ fn golden_double_route_blocked_2p() {
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Blue, CardColor::Blue],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(matches!(r, Err(EngineError::RouteBlockedDouble { .. })));
 }
@@ -392,6 +398,7 @@ fn blocked_route_ids_lists_closed_free_lanes_only_when_few_players() {
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red, CardColor::Red],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     };
@@ -463,6 +470,7 @@ fn golden_double_route_free_4p() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -472,6 +480,7 @@ fn golden_double_route_free_4p() {
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Blue, CardColor::Blue],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(r.is_ok(), "doppia rotta libera a 4p: {:?}", r.err());
 }
@@ -497,6 +506,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -506,6 +516,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
         route_id: "B_C_1".into(),
         cards_discarded: vec![CardColor::Blue],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -515,6 +526,7 @@ fn golden_same_player_cannot_claim_both_doubles() {
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Green, CardColor::Green],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(matches!(r, Err(EngineError::SamePlayerDouble { .. })));
 }
@@ -533,6 +545,7 @@ fn golden_last_round_includes_trigger() {
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
 
@@ -605,6 +618,7 @@ fn golden_last_round_trigger_is_last_player() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     assert_eq!(eng.current_player(), 1, "dopo P0 tocca a P1");
@@ -618,6 +632,7 @@ fn golden_last_round_trigger_is_last_player() {
             route_id: "B_C_1".into(),
             cards_discarded: vec![CardColor::Blue, CardColor::Blue],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
 
@@ -711,6 +726,7 @@ fn golden_route_point_table() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     assert_eq!(eng.player(0).unwrap().score, 1);
@@ -721,6 +737,7 @@ fn golden_route_point_table() {
         route_id: "B_C_1".into(),
         cards_discarded: vec![CardColor::Blue, CardColor::Blue],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     assert_eq!(eng.player(1).unwrap().score, 2);
@@ -731,6 +748,7 @@ fn golden_route_point_table() {
         route_id: "A_E_1".into(),
         cards_discarded: vec![CardColor::Green, CardColor::Green],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     assert_eq!(eng.player(0).unwrap().score, 3);
@@ -744,6 +762,7 @@ fn golden_route_point_table() {
         route_id: "C_D_1".into(),
         cards_discarded: vec![CardColor::Yellow, CardColor::Yellow, CardColor::Yellow],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     assert_eq!(eng.player(1).unwrap().score, 6);
@@ -754,6 +773,7 @@ fn golden_route_point_table() {
         route_id: "A_F_1".into(),
         cards_discarded: vec![CardColor::Red; 6],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     assert_eq!(eng.player(0).unwrap().score, 18);
@@ -804,6 +824,7 @@ fn golden_route_not_found_error() {
         route_id: "nonexistent".into(),
         cards_discarded: vec![CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(matches!(r, Err(EngineError::RouteNotFound { .. })));
 }
@@ -819,6 +840,7 @@ fn golden_insufficient_cards_for_route() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(matches!(r, Err(EngineError::InsufficientCards { .. })));
 }
@@ -836,6 +858,7 @@ fn golden_wrong_color_for_route() {
         route_id: "D_E_1".into(),
         cards_discarded: vec![CardColor::Green],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(r.is_err());
 }
@@ -856,6 +879,7 @@ fn golden_game_over_marks_winner_by_total() {
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     while eng.phase() != GamePhase::GameOver {
@@ -940,6 +964,7 @@ fn golden_mid_game_ticket_completed_not_none() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -1073,6 +1098,7 @@ fn golden_legal_moves_only_for_current_player() {
         route_id: "A_B_1".into(),
         cards_discarded: eng.player(1).unwrap().hand[..1].to_vec(),
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(matches!(claim, Err(EngineError::NotYourTurn { .. })));
     let draw = eng.apply(Action::DrawTrainCard {
@@ -1137,6 +1163,7 @@ fn golden_total_deck_exhaustion_no_turn_loss() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(
         ev.is_ok(),
@@ -1194,6 +1221,7 @@ fn golden_double_route_blocked_3p() {
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red, CardColor::Red],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -1204,6 +1232,7 @@ fn golden_double_route_blocked_3p() {
         route_id: "B_C_1".into(),
         cards_discarded: vec![CardColor::Blue],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
 
@@ -1214,6 +1243,7 @@ fn golden_double_route_blocked_3p() {
         route_id: "A_B_2".into(),
         cards_discarded: vec![CardColor::Green, CardColor::Green],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(
         matches!(r, Err(EngineError::RouteBlockedDouble { .. })),
@@ -1683,6 +1713,7 @@ fn play_fuzz_game(
                             route_id,
                             cards_discarded,
                             passengers: Default::default(),
+                            ferry_cards: 0,
                         }
                     }
                 }
@@ -2211,6 +2242,7 @@ fn no_routes_left_fixture(extra_train_player: Option<usize>) -> (Engine, Vec<Gam
         route_id: "A_B_1".into(),
         cards_discarded: vec![CardColor::Red; 2],
         passengers: Default::default(),
+        ferry_cards: 0,
     })
     .unwrap();
     eng.set_player_hand(1, vec![CardColor::Blue]);
@@ -2220,6 +2252,7 @@ fn no_routes_left_fixture(extra_train_player: Option<usize>) -> (Engine, Vec<Gam
             route_id: "B_C_1".into(),
             cards_discarded: vec![CardColor::Blue],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     (eng, events)
@@ -2346,6 +2379,7 @@ fn claim_c_d(eng: &mut Engine, hand: Vec<CardColor>, declared: Vec<CardColor>) -
             route_id: "C_D_1".into(),
             cards_discarded: declared,
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     events
@@ -2833,6 +2867,7 @@ fn legal_and_apply_agree_on_gray() {
             route_id: "C_D_1".into(),
             cards_discarded: cards,
             passengers: Default::default(),
+            ferry_cards: 0,
         })
     };
     let route_is_legal = |eng: &Engine| eng.legal_moves(0).routes.iter().any(|r| r == "C_D_1");
@@ -2871,12 +2906,16 @@ fn longest_path_bonus_is_found_by_type() {
             label: "Globetrotter".into(),
             points: 99,
             table: vec![],
+            min_regions: None,
+            double_regions: vec![],
         },
         Bonus {
             bonus_type: "longest_path".into(),
             label: "Longest Path".into(),
             points: 7,
             table: vec![],
+            min_regions: None,
+            double_regions: vec![],
         },
     ];
     let (ids, names, colors) = two_players();
@@ -2890,6 +2929,7 @@ fn longest_path_bonus_is_found_by_type() {
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     while eng.phase() != GamePhase::GameOver {
@@ -3786,6 +3826,7 @@ fn finish_game(rs: Ruleset, tickets: [&[&str]; 2]) -> GameEvent {
             route_id: "A_B_1".into(),
             cards_discarded: vec![CardColor::Red],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     events.extend(
@@ -3794,6 +3835,7 @@ fn finish_game(rs: Ruleset, tickets: [&[&str]; 2]) -> GameEvent {
             route_id: "B_C_1".into(),
             cards_discarded: vec![CardColor::Blue, CardColor::Blue],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap(),
     );
@@ -3813,6 +3855,8 @@ fn globetrotter_ruleset(with_longest_path: bool) -> Ruleset {
         label: "Globetrotter".into(),
         points: 15,
         table: vec![],
+        min_regions: None,
+        double_regions: vec![],
     }];
     if with_longest_path {
         rs.bonuses.push(Bonus {
@@ -3820,6 +3864,8 @@ fn globetrotter_ruleset(with_longest_path: bool) -> Ruleset {
             label: "Longest Path".into(),
             points: 10,
             table: vec![],
+            min_regions: None,
+            double_regions: vec![],
         });
     }
     rs

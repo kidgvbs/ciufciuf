@@ -66,6 +66,7 @@ fn claim(eng: &mut Engine, pi: usize, route_id: &str) -> Result<Vec<GameEvent>, 
         route_id: route_id.into(),
         cards_discarded: cards,
         passengers: Default::default(),
+        ferry_cards: 0,
     })
 }
 
@@ -1151,6 +1152,7 @@ fn claiming_takes_one_passenger_per_end_and_asks_only_for_mixed_cities() {
             player_index: 0,
             route_id: route_id.into(),
             cards_discarded: vec![CardColor::Red; 3],
+            ferry_cards: 0,
             passengers: picks
                 .iter()
                 .map(|(c, col)| (c.to_string(), col.to_string()))
@@ -1218,6 +1220,7 @@ fn claiming_takes_one_passenger_per_end_and_asks_only_for_mixed_cities() {
         route_id: "leipzig_magdeburg_1".into(),
         cards_discarded: vec![CardColor::Yellow; 2],
         passengers: pick,
+        ferry_cards: 0,
     })
     .unwrap();
     let leipzig_after: u32 = eng
@@ -1281,6 +1284,7 @@ fn passenger_majorities_are_added_to_the_final_total() {
         route_id: "berlin_magdeburg_1".into(),
         cards_discarded: vec![CardColor::Red; 3],
         passengers: [("berlin".to_string(), chosen)].into_iter().collect(),
+        ferry_cards: 0,
     })
     .unwrap();
     let scores = finish_game(&mut eng);

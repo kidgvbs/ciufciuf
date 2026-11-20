@@ -722,6 +722,7 @@ async fn r1_resume_inverted_rejoin_keeps_route_owner() {
                 route_id,
                 cards_discarded,
                 passengers: Default::default(),
+                ferry_cards: 0,
             },
             None => Action::DrawTrainCard {
                 player_index,
@@ -1539,4 +1540,54 @@ async fn reassigned_token_survives_restart() {
     assert_eq!(old.0, 401, "il token vecchio non vale più: {}", old.1);
     let back = join_game_resume(&server.base_url, &rid2, "Alice", &new_token).await;
     assert_eq!(back.player_id, pa.player_id);
+}
+
+/// Italy: una pesca di carta Traghetto nel log si riproduce e il giocatore conserva la carta,
+/// anche dopo il giro nel JSON del save.
+#[test]
+fn replay_keeps_ferry_cards() {
+    let read = |sub: &str| std::fs::read_to_string(data_dir().join(sub)).unwrap();
+    let map: ttr_core::MapData = serde_json::from_str(&read("maps/italy.json")).unwrap();
+    let ruleset: ttr_core::Ruleset = serde_json::from_str(&read("rulesets/italy.json")).unwrap();
+    let mut engine = ttr_core::Engine::new(
+        7,
+        ruleset.clone(),
+        map.clone(),
+        vec!["p1".into(), "p2".into()],
+        vec!["Alice".into(), "Bob".into()],
+        ttr_core::default_player_colors(2),
+        0,
+    )
+    .unwrap();
+    for pi in 0..2 {
+        let keep: Vec<String> = engine.initial_tickets_for(pi).unwrap()[..3].to_vec();
+        engine
+            .apply(ttr_core::Action::ChooseTickets {
+                player_index: pi,
+                keep,
+            })
+            .unwrap();
+    }
+    engine
+        .apply(ttr_core::Action::DrawFerryCard { player_index: 0 })
+        .unwrap();
+    assert_eq!(engine.player(0).unwrap().ferry_cards, 1);
+
+    let mut save = valid_save();
+    save.map_id = "italy".into();
+    save.ruleset_id = "italy".into();
+    save.seed = 7;
+    save.actions = engine
+        .action_log()
+        .iter()
+        .map(|r| ttr_server::save::SaveActionRecord {
+            action: r.action.clone(),
+        })
+        .collect();
+    let save: ttr_server::save::SaveData =
+        serde_json::from_str(&serde_json::to_string(&save).unwrap()).unwrap();
+    let replayed = ttr_server::save::replay_engine(&save, &map, &ruleset).unwrap();
+    assert_eq!(replayed.player(0).unwrap().ferry_cards, 1);
+    assert_eq!(replayed.player(1).unwrap().ferry_cards, 0);
+    assert_eq!(replayed.serialize_state(), engine.serialize_state());
 }

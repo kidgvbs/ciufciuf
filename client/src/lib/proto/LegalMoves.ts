@@ -4,6 +4,10 @@ import type { TunnelDecisionMoves } from "./TunnelDecisionMoves";
 
 export type LegalMoves = { routes: Array<string>, draw_face_up: Array<number>, can_draw_deck: boolean, can_draw_tickets: boolean, 
 /**
+ * Italy: si può pescare una carta Traghetto (a inizio turno, con meno di `maxInHand`).
+ */
+can_draw_ferry_card: boolean, 
+/**
  * Europe: città dove il giocatore può costruire ora la prossima stazione
  * (vuoto se non ne ha più, se non può pagarla o fuori dal suo turno principale).
  */

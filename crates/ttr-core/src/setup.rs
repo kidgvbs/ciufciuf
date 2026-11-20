@@ -11,8 +11,8 @@ use crate::scoring::MAX_CYCLOMATIC_NUMBER;
 use crate::types::{
     Bonus, COLOR_COUNT, FACE_UP_COUNT, GLOBETROTTER_BONUS_TYPE, INITIAL_HAND_SIZE,
     LARGEST_NETWORK_BONUS_TYPE, LOCO_RESET_THRESHOLD, LONGEST_PATH_BONUS_TYPE, MANDALA_BONUS_TYPE,
-    MAX_PARALLEL_LANES, MapData, Route, RouteColor, Ruleset, SetupDiscards, TicketDef, TieBreaker,
-    route_lane,
+    MAX_PARALLEL_LANES, MapData, REGIONS_BONUS_TYPE, Route, RouteColor, Ruleset, SetupDiscards,
+    TicketDef, TieBreaker, route_lane,
 };
 
 /// Un biglietto ha `to` + `points` (una destinazione) oppure `destinations` (almeno 2),
@@ -38,10 +38,19 @@ fn check_ticket_form(ticket: &TicketDef) -> Result<(), EngineInitError> {
     }
 }
 
-/// `table` solo sul bonus `mandala`, dove è obbligatoria: non vuota, non decrescente e con
-/// `points` uguale all'ultimo valore.
+/// `table` sui bonus `mandala` e `regions`, dove è obbligatoria: non vuota, non decrescente
+/// e con `points` uguale all'ultimo valore. `minRegions` e `doubleRegions` solo su `regions`.
 fn check_bonus_table(bonus: &Bonus) -> Result<(), EngineInitError> {
-    if bonus.bonus_type != MANDALA_BONUS_TYPE {
+    if bonus.bonus_type != REGIONS_BONUS_TYPE
+        && (bonus.min_regions.is_some() || !bonus.double_regions.is_empty())
+    {
+        return Err(EngineInitError::RegionsFieldsNotAllowed {
+            bonus_type: bonus.bonus_type.clone(),
+        });
+    }
+    let is_mandala = bonus.bonus_type == MANDALA_BONUS_TYPE;
+    let is_regions = bonus.bonus_type == REGIONS_BONUS_TYPE;
+    if !is_mandala && !is_regions {
         return if bonus.table.is_empty() {
             Ok(())
         } else {
@@ -51,15 +60,30 @@ fn check_bonus_table(bonus: &Bonus) -> Result<(), EngineInitError> {
         };
     }
     let Some(&last) = bonus.table.last() else {
-        return Err(EngineInitError::MandalaTableEmpty);
+        return Err(if is_mandala {
+            EngineInitError::MandalaTableEmpty
+        } else {
+            EngineInitError::RegionsTableEmpty
+        });
     };
     if let Some(index) = bonus.table.windows(2).position(|pair| pair[1] < pair[0]) {
-        return Err(EngineInitError::MandalaTableDecreasing { index: index + 1 });
+        return Err(if is_mandala {
+            EngineInitError::MandalaTableDecreasing { index: index + 1 }
+        } else {
+            EngineInitError::RegionsTableDecreasing { index: index + 1 }
+        });
     }
     if bonus.points != last {
-        return Err(EngineInitError::MandalaPointsMismatch {
-            points: bonus.points,
-            last,
+        return Err(if is_mandala {
+            EngineInitError::MandalaPointsMismatch {
+                points: bonus.points,
+                last,
+            }
+        } else {
+            EngineInitError::RegionsPointsMismatch {
+                points: bonus.points,
+                last,
+            }
         });
     }
     Ok(())
@@ -190,6 +214,8 @@ impl Ruleset {
         self.check_big_cities(map)?;
         self.check_special_rules()?;
         self.check_payment_rules(map)?;
+        self.check_ferry_cards(map)?;
+        self.check_regions(map)?;
         self.check_train_deck(num_players)?;
         self.check_ticket_decks(map, num_players)?;
         self.check_tie_breakers()?;
@@ -213,6 +239,7 @@ impl Ruleset {
                 GLOBETROTTER_BONUS_TYPE,
                 MANDALA_BONUS_TYPE,
                 LARGEST_NETWORK_BONUS_TYPE,
+                REGIONS_BONUS_TYPE,
             ];
             if !known.contains(&bonus.bonus_type.as_str()) {
                 return Err(EngineInitError::UnknownBonusType {
@@ -225,6 +252,84 @@ impl Ruleset {
                 });
             }
             check_bonus_table(bonus)?;
+        }
+        Ok(())
+    }
+
+    /// `ferryCards`: `count`, `maxInHand` e `wavesPerCard` almeno 1, mazzetto che basta a
+    /// `maxInHand` carte per ogni giocatore (di `players.max`), mappa con rotte con onde.
+    fn check_ferry_cards(&self, map: &MapData) -> Result<(), EngineInitError> {
+        let Some(config) = &self.ferry_cards else {
+            return Ok(());
+        };
+        for (field, value) in [
+            ("count", config.count),
+            ("maxInHand", config.max_in_hand),
+            ("wavesPerCard", config.waves_per_card),
+        ] {
+            if value == 0 {
+                return Err(EngineInitError::FerryCardsFieldZero { field });
+            }
+        }
+        let needed = config.max_in_hand.saturating_mul(self.players.max);
+        if config.count < needed {
+            return Err(EngineInitError::FerryCardsPoolTooSmall {
+                count: config.count,
+                needed,
+            });
+        }
+        if map.routes.iter().all(|r| r.ferries == 0) {
+            return Err(EngineInitError::FerryCardsUnused);
+        }
+        Ok(())
+    }
+
+    /// Regioni: con il bonus `regions` ogni città (non Paese) ha una Regione, i Paesi non ne
+    /// hanno, `minRegions` è almeno 1 e `doubleRegions` cita Regioni esistenti, senza
+    /// ripetizioni. Senza il bonus nessuna città ha una Regione.
+    fn check_regions(&self, map: &MapData) -> Result<(), EngineInitError> {
+        let Some(bonus) = self.regions_bonus() else {
+            return match map.cities.iter().find(|c| c.region.is_some()) {
+                Some(city) => Err(EngineInitError::CityRegionUnused {
+                    city_id: city.id.clone(),
+                }),
+                None => Ok(()),
+            };
+        };
+        if bonus.min_regions.is_none_or(|min| min == 0) {
+            return Err(EngineInitError::RegionsMinRegionsInvalid);
+        }
+        for city in &map.cities {
+            match (city.country, &city.region) {
+                (true, Some(_)) => {
+                    return Err(EngineInitError::CountryHasRegion {
+                        city_id: city.id.clone(),
+                    });
+                }
+                (false, None) => {
+                    return Err(EngineInitError::CityRegionMissing {
+                        city_id: city.id.clone(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        for region in &bonus.double_regions {
+            if !seen.insert(region.as_str()) {
+                return Err(EngineInitError::RegionsDoubleDuplicate {
+                    region: region.clone(),
+                });
+            }
+            if !map
+                .cities
+                .iter()
+                .any(|c| c.region.as_deref() == Some(region.as_str()))
+            {
+                return Err(EngineInitError::RegionsDoubleUnknown {
+                    region: region.clone(),
+                });
+            }
         }
         Ok(())
     }

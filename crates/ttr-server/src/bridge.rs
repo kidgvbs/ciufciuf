@@ -276,6 +276,7 @@ fn recent_moves_from_log<'a>(
                 player_id,
                 kept: None,
             }),
+            Action::DrawFerryCard { .. } => moves.push(RecentMove::DrawFerryCard { player_id }),
             Action::ChooseTickets { .. } => {
                 // Solo la scelta mid-game completa una voce `DRAW_TICKETS`; quelle del
                 // draft iniziale non hanno una voce pendente.
@@ -417,6 +418,17 @@ fn build_players_summary(
                     (max_trains, 0, 0, 0)
                 };
 
+            let ferry_cards = session
+                .engine
+                .as_ref()
+                .and_then(|engine| engine.player(engine_idx))
+                .map_or(0, |pl| pl.ferry_cards);
+            let standing = session
+                .engine
+                .as_ref()
+                .map(|engine| engine.region_standing(engine_idx))
+                .unwrap_or_default();
+
             PlayerSummary {
                 player_id: pid.clone(),
                 name: p.name.clone(),
@@ -432,6 +444,9 @@ fn build_players_summary(
                 connected: connected_player_ids.contains(pid),
                 country_cards: engine_player_country_cards(session, engine_idx),
                 passengers: engine_player_passengers(session, engine_idx),
+                ferry_cards,
+                region_networks: standing.networks,
+                regions_bonus: standing.bonus,
             }
         })
         .collect()
@@ -520,6 +535,7 @@ pub(crate) fn build_private_state(
             draw_face_up: lm.draw_face_up,
             can_draw_deck: lm.can_draw_deck,
             can_draw_tickets: lm.can_draw_tickets,
+            can_draw_ferry_card: lm.can_draw_ferry_card,
             station_cities: lm.station_cities,
             station_cost: lm.station_cost,
             tunnel: lm.tunnel.map(|t| TunnelDecisionMoves {
@@ -645,6 +661,8 @@ pub(crate) fn build_final_scores(
                 mountain_points: fs.mountain_points,
                 largest_network_bonus: fs.largest_network_bonus,
                 largest_network: fs.largest_network,
+                regions_bonus: fs.regions_bonus,
+                region_networks: fs.region_networks.clone(),
                 station_points: fs.station_points,
                 total: fs.total,
                 winner: fs.winner,
@@ -701,6 +719,8 @@ pub(crate) fn engine_error_to_reason(err: &EngineError) -> ErrorReason {
         | EngineError::StationCityOccupied { .. }
         | EngineError::NoStationsLeft
         | EngineError::InvalidPayload { .. }
+        | EngineError::FerryCardsDisabled
+        | EngineError::FerryCardsHandFull { .. }
         | EngineError::DraftNotComplete => ErrorReason::InvalidAction,
         // Errori futuri del motore: azione rifiutata senza una ragione dedicata.
         _ => ErrorReason::InvalidAction,
@@ -734,6 +754,9 @@ pub(crate) fn error_action_ref(err: &EngineError) -> Option<String> {
         | EngineError::TicketChoiceTooMany { .. }
         | EngineError::TicketChoiceAboveDeckMax { .. }
         | EngineError::TicketNotOffered { .. } => Some("CHOOSE_TICKETS".into()),
+        EngineError::FerryCardsDisabled | EngineError::FerryCardsHandFull { .. } => {
+            Some("DRAW_FERRY_CARD".into())
+        }
         _ => None,
     }
 }
@@ -955,6 +978,7 @@ mod tests {
                 route_id: route.into(),
                 cards_discarded: vec![],
                 passengers: Default::default(),
+                ferry_cards: 0,
             },
             events,
         )
@@ -1031,6 +1055,20 @@ mod tests {
                 player_id: "p0".into(),
                 deck: 1,
                 face_up: vec![],
+            }]
+        );
+    }
+
+    #[test]
+    fn recent_moves_ferry_draw() {
+        let draw = ActionRecord {
+            action: Action::DrawFerryCard { player_index: 1 },
+            events: vec![GameEvent::FerryCardDrawn { player_index: 1 }],
+        };
+        assert_eq!(
+            recent_moves_from_log(&[draw], |i| Some(if i == 1 { "p1" } else { "p0" })),
+            vec![RecentMove::DrawFerryCard {
+                player_id: "p1".into()
             }]
         );
     }

@@ -144,6 +144,11 @@ pub(crate) struct PaymentSpec {
     loco_group: Option<usize>,
     /// Dimensioni dei gruppi di carte qualsiasi per uno spazio colore, ordinate.
     color_groups: Vec<usize>,
+    /// Spazi onda che una carta Traghetto copre al massimo su questa rotta (`wavesPerCard`);
+    /// 0 se il ruleset non ha carte Traghetto o la rotta non ha onde.
+    waves_per_ferry_card: usize,
+    /// Carte Traghetto giocate (per `verify`) o in mano (per `payable_from`); 0 di default.
+    ferry_cards: usize,
 }
 
 impl PaymentSpec {
@@ -156,14 +161,20 @@ impl PaymentSpec {
         } else {
             None
         };
-        Self::from_parts(
+        let mut spec = Self::from_parts(
             route.len as usize,
             route.ferries as usize,
             color,
             ruleset.locomotive_usable_on(route),
             ferry_any,
             route.any_cards_per_space.map(|v| v as usize),
-        )
+        );
+        if route.ferries > 0
+            && let Some(config) = &ruleset.ferry_cards
+        {
+            spec.waves_per_ferry_card = config.waves_per_card as usize;
+        }
+        spec
     }
 
     fn from_parts(
@@ -184,7 +195,39 @@ impl PaymentSpec {
             single_loco,
             loco_group: ferry_any,
             color_groups,
+            waves_per_ferry_card: 0,
+            ferry_cards: 0,
         }
+    }
+
+    /// Imposta le carte Traghetto giocate (`verify`) o in mano (`payable_from`): ognuna
+    /// copre da 1 a `wavesPerCard` spazi onda, gli altri spazi onda vogliono locomotive.
+    pub(crate) fn with_ferry_cards(mut self, ferry_cards: usize) -> Self {
+        self.ferry_cards = ferry_cards;
+        self
+    }
+
+    /// La rotta senza gli `waves` spazi onda coperti da carte Traghetto.
+    fn without_waves(&self, waves: usize) -> Self {
+        Self {
+            len: self.len - waves,
+            ferries: self.ferries - waves,
+            ..self.clone()
+        }
+    }
+
+    /// Spazi onda che le carte Traghetto possono coprire: da uno per carta fino a
+    /// `wavesPerCard` a carta, mai più delle onde della rotta. L'intervallo è vuoto
+    /// (`start > end`) se le carte non sono ammesse o sono più delle onde.
+    fn covered_waves(&self) -> std::ops::RangeInclusive<usize> {
+        if self.ferry_cards == 0 {
+            return 0..=0;
+        }
+        self.ferry_cards
+            ..=self
+                .ferry_cards
+                .saturating_mul(self.waves_per_ferry_card)
+                .min(self.ferries)
     }
 
     /// Vero se la rotta ammette gruppi di carte qualsiasi (il pagamento può avere più
@@ -198,16 +241,39 @@ impl PaymentSpec {
         self.single_loco
     }
 
-    /// Verifica che tutte le carte si assegnino esattamente agli spazi.
+    /// Numero di carte non Traghetto (locomotive comprese) che pagano la rotta senza
+    /// gruppi di carte qualsiasi, con le carte Traghetto impostate; `None` se queste non
+    /// sono ammesse o sono più delle onde.
+    pub(crate) fn regular_card_range(&self) -> Option<std::ops::RangeInclusive<usize>> {
+        let waves = self.covered_waves();
+        (waves.start() <= waves.end()).then(|| self.len - waves.end()..=self.len - waves.start())
+    }
+
+    /// Verifica che tutte le carte e le carte Traghetto impostate si assegnino
+    /// esattamente agli spazi.
     pub(crate) fn verify(&self, cards: &[CardColor]) -> Result<(), PaymentError> {
         let tally = Tally::of(cards);
-        if self.assignable(&tally, true) {
+        let waves = self.covered_waves();
+        if waves.start() > waves.end() {
+            return Err(PaymentError::Invalid(
+                "carte Traghetto non ammesse su questa rotta o più delle onde da coprire"
+                    .to_string(),
+            ));
+        }
+        if waves
+            .clone()
+            .any(|covered| self.without_waves(covered).assignable(&tally, true))
+        {
             return Ok(());
         }
-        if cards.len() < self.len || (!self.has_groups() && tally.locomotives < self.ferries) {
+        let most_covered = self.without_waves(*waves.end());
+        if cards.len() < most_covered.len
+            || (!self.has_groups() && tally.locomotives < most_covered.ferries)
+        {
             return Err(PaymentError::NotEnough);
         }
-        if !self.has_groups() && !self.single_loco && tally.locomotives > self.ferries {
+        let least_covered = self.without_waves(*waves.start());
+        if !self.has_groups() && !self.single_loco && tally.locomotives > least_covered.ferries {
             return Err(PaymentError::Invalid(
                 "locomotive non ammesse su questa rotta".to_string(),
             ));
@@ -217,8 +283,19 @@ impl PaymentSpec {
         ))
     }
 
-    /// Vero se, tra le carte della mano, esiste un sottoinsieme che paga la rotta.
+    /// Vero se, tra le carte della mano e le carte Traghetto in mano impostate, esiste un
+    /// sottoinsieme che paga la rotta. Più carte Traghetto coprono più onde, quindi
+    /// conviene sempre usarle tutte (al massimo quante sono le onde).
     pub(crate) fn payable_from(&self, hand: &Tally) -> bool {
+        let usable = self
+            .clone()
+            .with_ferry_cards(self.ferry_cards.min(self.ferries));
+        let covered = *usable.covered_waves().end();
+        usable.without_waves(covered).payable_from_plain(hand)
+    }
+
+    /// `payable_from` senza carte Traghetto.
+    fn payable_from_plain(&self, hand: &Tally) -> bool {
         if self.has_groups() {
             return self.assignable(hand, false);
         }

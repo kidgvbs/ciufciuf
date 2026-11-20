@@ -137,6 +137,7 @@ fn claim(
         route_id: route_id.into(),
         cards_discarded: paid,
         passengers: Default::default(),
+        ferry_cards: 0,
     })
 }
 

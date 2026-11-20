@@ -11,4 +11,9 @@ cards_discarded: Array<CardColor>,
  * Germany 2017: colore del passeggero scelto negli estremi con passeggeri di più colori
  * (negli altri è automatico). Assente senza passeggeri.
  */
-passengers?: Array<PassengerPick>, client_seq?: bigint, };
+passengers?: Array<PassengerPick>, 
+/**
+ * Italy: carte Traghetto giocate; ognuna copre 1 o `wavesPerCard` spazi onda della
+ * rotta, le altre onde si pagano con locomotive in `cards_discarded`. Assente = 0.
+ */
+ferry_cards?: number, client_seq?: bigint, };

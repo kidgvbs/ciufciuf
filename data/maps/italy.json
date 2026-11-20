@@ -1,0 +1,2126 @@
+{
+  "cities": [
+    {
+      "id": "agrigento",
+      "name": "Agrigento",
+      "lat": 37.31,
+      "lon": 13.58,
+      "region": "sicilia"
+    },
+    {
+      "id": "ancona",
+      "name": "Ancona",
+      "lat": 43.62,
+      "lon": 13.52,
+      "region": "marche"
+    },
+    {
+      "id": "austria",
+      "name": "Austria",
+      "lat": 46.9,
+      "lon": 12.2,
+      "country": true,
+      "flag": "AT"
+    },
+    {
+      "id": "bari",
+      "name": "Bari",
+      "lat": 41.12,
+      "lon": 16.87,
+      "region": "puglia"
+    },
+    {
+      "id": "bergamo",
+      "name": "Bergamo",
+      "lat": 45.7,
+      "lon": 9.67,
+      "region": "lombardia"
+    },
+    {
+      "id": "bologna",
+      "name": "Bologna",
+      "lat": 44.49,
+      "lon": 11.34,
+      "region": "emilia_romagna"
+    },
+    {
+      "id": "bolzano",
+      "name": "Bolzano",
+      "lat": 46.5,
+      "lon": 11.35,
+      "region": "trentino_alto_adige"
+    },
+    {
+      "id": "cagliari",
+      "name": "Cagliari",
+      "lat": 39.22,
+      "lon": 9.12,
+      "region": "sardegna"
+    },
+    {
+      "id": "catania",
+      "name": "Catania",
+      "lat": 37.5,
+      "lon": 15.09,
+      "region": "sicilia"
+    },
+    {
+      "id": "cosenza",
+      "name": "Cosenza",
+      "lat": 39.3,
+      "lon": 16.25,
+      "region": "calabria"
+    },
+    {
+      "id": "croazia",
+      "name": "Croazia",
+      "lat": 45.1,
+      "lon": 14.2,
+      "country": true,
+      "flag": "HR"
+    },
+    {
+      "id": "firenze",
+      "name": "Firenze",
+      "lat": 43.77,
+      "lon": 11.26,
+      "region": "toscana"
+    },
+    {
+      "id": "foggia",
+      "name": "Foggia",
+      "lat": 41.46,
+      "lon": 15.54,
+      "region": "puglia"
+    },
+    {
+      "id": "francia",
+      "name": "Francia",
+      "lat": 44.9,
+      "lon": 6.64,
+      "country": true,
+      "flag": "FR"
+    },
+    {
+      "id": "genova",
+      "name": "Genova",
+      "lat": 44.41,
+      "lon": 8.93,
+      "region": "liguria"
+    },
+    {
+      "id": "grosseto",
+      "name": "Grosseto",
+      "lat": 42.76,
+      "lon": 11.11,
+      "region": "toscana"
+    },
+    {
+      "id": "lecce",
+      "name": "Lecce",
+      "lat": 40.35,
+      "lon": 18.17,
+      "region": "puglia"
+    },
+    {
+      "id": "messina",
+      "name": "Messina",
+      "lat": 38.19,
+      "lon": 15.55,
+      "region": "sicilia"
+    },
+    {
+      "id": "milano",
+      "name": "Milano",
+      "lat": 45.46,
+      "lon": 9.19,
+      "region": "lombardia"
+    },
+    {
+      "id": "monaco",
+      "name": "Monaco",
+      "lat": 43.74,
+      "lon": 7.42,
+      "country": true,
+      "flag": "MC"
+    },
+    {
+      "id": "napoli",
+      "name": "Napoli",
+      "lat": 40.85,
+      "lon": 14.27,
+      "region": "campania"
+    },
+    {
+      "id": "olbia",
+      "name": "Olbia",
+      "lat": 40.92,
+      "lon": 9.5,
+      "region": "sardegna"
+    },
+    {
+      "id": "palermo",
+      "name": "Palermo",
+      "lat": 38.12,
+      "lon": 13.36,
+      "region": "sicilia"
+    },
+    {
+      "id": "parma",
+      "name": "Parma",
+      "lat": 44.8,
+      "lon": 10.33,
+      "region": "emilia_romagna"
+    },
+    {
+      "id": "perugia",
+      "name": "Perugia",
+      "lat": 43.11,
+      "lon": 12.39,
+      "region": "umbria"
+    },
+    {
+      "id": "pescara",
+      "name": "Pescara",
+      "lat": 42.46,
+      "lon": 14.21,
+      "region": "abruzzo"
+    },
+    {
+      "id": "pisa",
+      "name": "Pisa",
+      "lat": 43.72,
+      "lon": 10.4,
+      "region": "toscana"
+    },
+    {
+      "id": "ravenna",
+      "name": "Ravenna",
+      "lat": 44.42,
+      "lon": 12.2,
+      "region": "emilia_romagna"
+    },
+    {
+      "id": "roma",
+      "name": "Roma",
+      "lat": 41.9,
+      "lon": 12.5,
+      "region": "lazio"
+    },
+    {
+      "id": "salerno",
+      "name": "Salerno",
+      "lat": 40.68,
+      "lon": 14.77,
+      "region": "campania"
+    },
+    {
+      "id": "sassari",
+      "name": "Sassari",
+      "lat": 40.73,
+      "lon": 8.56,
+      "region": "sardegna"
+    },
+    {
+      "id": "siracusa",
+      "name": "Siracusa",
+      "lat": 37.08,
+      "lon": 15.29,
+      "region": "sicilia"
+    },
+    {
+      "id": "svizzera",
+      "name": "Svizzera",
+      "lat": 46.4,
+      "lon": 8.9,
+      "country": true,
+      "flag": "CH"
+    },
+    {
+      "id": "taranto",
+      "name": "Taranto",
+      "lat": 40.47,
+      "lon": 17.24,
+      "region": "puglia"
+    },
+    {
+      "id": "tarvisio",
+      "name": "Tarvisio",
+      "lat": 46.5,
+      "lon": 13.58,
+      "region": "friuli_venezia_giulia"
+    },
+    {
+      "id": "torino",
+      "name": "Torino",
+      "lat": 45.07,
+      "lon": 7.69,
+      "region": "piemonte"
+    },
+    {
+      "id": "trieste",
+      "name": "Trieste",
+      "lat": 45.65,
+      "lon": 13.78,
+      "region": "friuli_venezia_giulia"
+    },
+    {
+      "id": "venezia",
+      "name": "Venezia",
+      "lat": 45.44,
+      "lon": 12.32,
+      "region": "veneto"
+    },
+    {
+      "id": "verona",
+      "name": "Verona",
+      "lat": 45.44,
+      "lon": 10.99,
+      "region": "veneto"
+    }
+  ],
+  "routes": [
+    {
+      "id": "agrigento_catania_1",
+      "from": "agrigento",
+      "to": "catania",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agrigento_palermo_1",
+      "from": "agrigento",
+      "to": "palermo",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agrigento_palermo_2",
+      "from": "agrigento",
+      "to": "palermo",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agrigento_siracusa_1",
+      "from": "agrigento",
+      "to": "siracusa",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "agrigento_siracusa_2",
+      "from": "agrigento",
+      "to": "siracusa",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ancona_croazia_1",
+      "from": "ancona",
+      "to": "croazia",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "ancona_perugia_1",
+      "from": "ancona",
+      "to": "perugia",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ancona_pescara_1",
+      "from": "ancona",
+      "to": "pescara",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ancona_pescara_2",
+      "from": "ancona",
+      "to": "pescara",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ancona_ravenna_1",
+      "from": "ancona",
+      "to": "ravenna",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ancona_ravenna_2",
+      "from": "ancona",
+      "to": "ravenna",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ancona_trieste_1",
+      "from": "ancona",
+      "to": "trieste",
+      "len": 5,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 3
+    },
+    {
+      "id": "ancona_venezia_1",
+      "from": "ancona",
+      "to": "venezia",
+      "len": 5,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 3
+    },
+    {
+      "id": "austria_bolzano_1",
+      "from": "austria",
+      "to": "bolzano",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "austria_tarvisio_1",
+      "from": "austria",
+      "to": "tarvisio",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "austria_tarvisio_2",
+      "from": "austria",
+      "to": "tarvisio",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_croazia_1",
+      "from": "bari",
+      "to": "croazia",
+      "len": 7,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "bari_foggia_1",
+      "from": "bari",
+      "to": "foggia",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_foggia_2",
+      "from": "bari",
+      "to": "foggia",
+      "len": 3,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_lecce_1",
+      "from": "bari",
+      "to": "lecce",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_lecce_2",
+      "from": "bari",
+      "to": "lecce",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_taranto_1",
+      "from": "bari",
+      "to": "taranto",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bari_taranto_2",
+      "from": "bari",
+      "to": "taranto",
+      "len": 1,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_bolzano_1",
+      "from": "bergamo",
+      "to": "bolzano",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_milano_1",
+      "from": "bergamo",
+      "to": "milano",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_milano_2",
+      "from": "bergamo",
+      "to": "milano",
+      "len": 1,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_parma_1",
+      "from": "bergamo",
+      "to": "parma",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_svizzera_1",
+      "from": "bergamo",
+      "to": "svizzera",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_verona_1",
+      "from": "bergamo",
+      "to": "verona",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bergamo_verona_2",
+      "from": "bergamo",
+      "to": "verona",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_firenze_1",
+      "from": "bologna",
+      "to": "firenze",
+      "len": 1,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_parma_1",
+      "from": "bologna",
+      "to": "parma",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_parma_2",
+      "from": "bologna",
+      "to": "parma",
+      "len": 2,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_ravenna_1",
+      "from": "bologna",
+      "to": "ravenna",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_ravenna_2",
+      "from": "bologna",
+      "to": "ravenna",
+      "len": 1,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_verona_1",
+      "from": "bologna",
+      "to": "verona",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bologna_verona_2",
+      "from": "bologna",
+      "to": "verona",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bolzano_svizzera_1",
+      "from": "bolzano",
+      "to": "svizzera",
+      "len": 1,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bolzano_tarvisio_1",
+      "from": "bolzano",
+      "to": "tarvisio",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bolzano_venezia_1",
+      "from": "bolzano",
+      "to": "venezia",
+      "len": 3,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "bolzano_verona_1",
+      "from": "bolzano",
+      "to": "verona",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cagliari_napoli_1",
+      "from": "cagliari",
+      "to": "napoli",
+      "len": 6,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 3
+    },
+    {
+      "id": "cagliari_olbia_1",
+      "from": "cagliari",
+      "to": "olbia",
+      "len": 4,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cagliari_olbia_2",
+      "from": "cagliari",
+      "to": "olbia",
+      "len": 4,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cagliari_palermo_1",
+      "from": "cagliari",
+      "to": "palermo",
+      "len": 7,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "cagliari_palermo_2",
+      "from": "cagliari",
+      "to": "palermo",
+      "len": 7,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "cagliari_roma_1",
+      "from": "cagliari",
+      "to": "roma",
+      "len": 4,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "cagliari_sassari_1",
+      "from": "cagliari",
+      "to": "sassari",
+      "len": 4,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cagliari_sassari_2",
+      "from": "cagliari",
+      "to": "sassari",
+      "len": 4,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "catania_messina_1",
+      "from": "catania",
+      "to": "messina",
+      "len": 2,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "catania_palermo_1",
+      "from": "catania",
+      "to": "palermo",
+      "len": 4,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "catania_siracusa_1",
+      "from": "catania",
+      "to": "siracusa",
+      "len": 1,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cosenza_messina_1",
+      "from": "cosenza",
+      "to": "messina",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "cosenza_messina_2",
+      "from": "cosenza",
+      "to": "messina",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "cosenza_salerno_1",
+      "from": "cosenza",
+      "to": "salerno",
+      "len": 4,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cosenza_salerno_2",
+      "from": "cosenza",
+      "to": "salerno",
+      "len": 4,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cosenza_taranto_1",
+      "from": "cosenza",
+      "to": "taranto",
+      "len": 4,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "cosenza_taranto_2",
+      "from": "cosenza",
+      "to": "taranto",
+      "len": 4,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "croazia_trieste_1",
+      "from": "croazia",
+      "to": "trieste",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "croazia_trieste_2",
+      "from": "croazia",
+      "to": "trieste",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "firenze_grosseto_1",
+      "from": "firenze",
+      "to": "grosseto",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "firenze_parma_1",
+      "from": "firenze",
+      "to": "parma",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "firenze_perugia_1",
+      "from": "firenze",
+      "to": "perugia",
+      "len": 2,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "firenze_pisa_1",
+      "from": "firenze",
+      "to": "pisa",
+      "len": 1,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "firenze_pisa_2",
+      "from": "firenze",
+      "to": "pisa",
+      "len": 1,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "firenze_ravenna_1",
+      "from": "firenze",
+      "to": "ravenna",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "foggia_napoli_1",
+      "from": "foggia",
+      "to": "napoli",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "foggia_pescara_1",
+      "from": "foggia",
+      "to": "pescara",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "foggia_pescara_2",
+      "from": "foggia",
+      "to": "pescara",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "foggia_salerno_1",
+      "from": "foggia",
+      "to": "salerno",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "francia_torino_1",
+      "from": "francia",
+      "to": "torino",
+      "len": 2,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "francia_torino_2",
+      "from": "francia",
+      "to": "torino",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_milano_1",
+      "from": "genova",
+      "to": "milano",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_milano_2",
+      "from": "genova",
+      "to": "milano",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_monaco_1",
+      "from": "genova",
+      "to": "monaco",
+      "len": 3,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "genova_olbia_1",
+      "from": "genova",
+      "to": "olbia",
+      "len": 7,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "genova_olbia_2",
+      "from": "genova",
+      "to": "olbia",
+      "len": 7,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "genova_parma_1",
+      "from": "genova",
+      "to": "parma",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_parma_2",
+      "from": "genova",
+      "to": "parma",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_pisa_1",
+      "from": "genova",
+      "to": "pisa",
+      "len": 3,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_pisa_2",
+      "from": "genova",
+      "to": "pisa",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_torino_1",
+      "from": "genova",
+      "to": "torino",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "genova_torino_2",
+      "from": "genova",
+      "to": "torino",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "grosseto_perugia_1",
+      "from": "grosseto",
+      "to": "perugia",
+      "len": 2,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "grosseto_pisa_1",
+      "from": "grosseto",
+      "to": "pisa",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "grosseto_pisa_2",
+      "from": "grosseto",
+      "to": "pisa",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "grosseto_roma_1",
+      "from": "grosseto",
+      "to": "roma",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "grosseto_roma_2",
+      "from": "grosseto",
+      "to": "roma",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lecce_taranto_1",
+      "from": "lecce",
+      "to": "taranto",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "lecce_taranto_2",
+      "from": "lecce",
+      "to": "taranto",
+      "len": 2,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "messina_palermo_1",
+      "from": "messina",
+      "to": "palermo",
+      "len": 4,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "messina_palermo_2",
+      "from": "messina",
+      "to": "palermo",
+      "len": 4,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "messina_salerno_1",
+      "from": "messina",
+      "to": "salerno",
+      "len": 7,
+      "color": "Gray",
+      "double": false,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "messina_siracusa_1",
+      "from": "messina",
+      "to": "siracusa",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "messina_siracusa_2",
+      "from": "messina",
+      "to": "siracusa",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "milano_parma_1",
+      "from": "milano",
+      "to": "parma",
+      "len": 2,
+      "color": "Yellow",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "milano_svizzera_1",
+      "from": "milano",
+      "to": "svizzera",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "milano_torino_1",
+      "from": "milano",
+      "to": "torino",
+      "len": 3,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "milano_torino_2",
+      "from": "milano",
+      "to": "torino",
+      "len": 3,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "monaco_torino_1",
+      "from": "monaco",
+      "to": "torino",
+      "len": 3,
+      "color": "Green",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "napoli_palermo_1",
+      "from": "napoli",
+      "to": "palermo",
+      "len": 7,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "napoli_palermo_2",
+      "from": "napoli",
+      "to": "palermo",
+      "len": 7,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 4
+    },
+    {
+      "id": "napoli_pescara_1",
+      "from": "napoli",
+      "to": "pescara",
+      "len": 4,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "napoli_roma_1",
+      "from": "napoli",
+      "to": "roma",
+      "len": 4,
+      "color": "Yellow",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "napoli_roma_2",
+      "from": "napoli",
+      "to": "roma",
+      "len": 4,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "napoli_roma_3",
+      "from": "napoli",
+      "to": "roma",
+      "len": 4,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "napoli_salerno_1",
+      "from": "napoli",
+      "to": "salerno",
+      "len": 1,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "napoli_salerno_2",
+      "from": "napoli",
+      "to": "salerno",
+      "len": 1,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olbia_roma_1",
+      "from": "olbia",
+      "to": "roma",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "olbia_roma_2",
+      "from": "olbia",
+      "to": "roma",
+      "len": 4,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 2
+    },
+    {
+      "id": "olbia_sassari_1",
+      "from": "olbia",
+      "to": "sassari",
+      "len": 2,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "olbia_sassari_2",
+      "from": "olbia",
+      "to": "sassari",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "parma_pisa_1",
+      "from": "parma",
+      "to": "pisa",
+      "len": 2,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "perugia_pescara_1",
+      "from": "perugia",
+      "to": "pescara",
+      "len": 4,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "perugia_ravenna_1",
+      "from": "perugia",
+      "to": "ravenna",
+      "len": 3,
+      "color": "Purple",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "perugia_roma_1",
+      "from": "perugia",
+      "to": "roma",
+      "len": 3,
+      "color": "Blue",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "pescara_roma_1",
+      "from": "pescara",
+      "to": "roma",
+      "len": 3,
+      "color": "Orange",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ravenna_venezia_1",
+      "from": "ravenna",
+      "to": "venezia",
+      "len": 2,
+      "color": "Red",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "ravenna_venezia_2",
+      "from": "ravenna",
+      "to": "venezia",
+      "len": 2,
+      "color": "Black",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "salerno_taranto_1",
+      "from": "salerno",
+      "to": "taranto",
+      "len": 5,
+      "color": "White",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "svizzera_torino_1",
+      "from": "svizzera",
+      "to": "torino",
+      "len": 3,
+      "color": "Red",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "tarvisio_trieste_1",
+      "from": "tarvisio",
+      "to": "trieste",
+      "len": 2,
+      "color": "Black",
+      "double": false,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "tarvisio_venezia_1",
+      "from": "tarvisio",
+      "to": "venezia",
+      "len": 3,
+      "color": "Green",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "tarvisio_venezia_2",
+      "from": "tarvisio",
+      "to": "venezia",
+      "len": 3,
+      "color": "Blue",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "trieste_venezia_1",
+      "from": "trieste",
+      "to": "venezia",
+      "len": 3,
+      "color": "Orange",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "trieste_venezia_2",
+      "from": "trieste",
+      "to": "venezia",
+      "len": 3,
+      "color": "Gray",
+      "double": true,
+      "tunnel": false,
+      "ferries": 1
+    },
+    {
+      "id": "venezia_verona_1",
+      "from": "venezia",
+      "to": "verona",
+      "len": 2,
+      "color": "White",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    },
+    {
+      "id": "venezia_verona_2",
+      "from": "venezia",
+      "to": "verona",
+      "len": 2,
+      "color": "Purple",
+      "double": true,
+      "tunnel": false,
+      "ferries": 0
+    }
+  ],
+  "tickets": [
+    {
+      "id": "firenze_roma",
+      "from": "firenze",
+      "to": "roma",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "roma_sassari",
+      "from": "sassari",
+      "to": "roma",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "roma_venezia",
+      "from": "venezia",
+      "to": "roma",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "genova_roma",
+      "from": "genova",
+      "to": "roma",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "palermo_roma",
+      "from": "roma",
+      "to": "palermo",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "roma_taranto",
+      "from": "roma",
+      "to": "taranto",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "croazia_roma",
+      "from": "roma",
+      "to": "croazia",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "milano_napoli",
+      "from": "milano",
+      "to": "napoli",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bologna_milano",
+      "from": "milano",
+      "to": "bologna",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bari_milano",
+      "from": "milano",
+      "to": "bari",
+      "points": 17,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "cagliari_milano",
+      "from": "milano",
+      "to": "cagliari",
+      "points": 15,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "messina_milano",
+      "from": "milano",
+      "to": "messina",
+      "points": 23,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "milano_trieste",
+      "from": "milano",
+      "to": "trieste",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "napoli_perugia",
+      "from": "perugia",
+      "to": "napoli",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "napoli_trieste",
+      "from": "trieste",
+      "to": "napoli",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "napoli_siracusa",
+      "from": "napoli",
+      "to": "siracusa",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "napoli_pisa",
+      "from": "pisa",
+      "to": "napoli",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "napoli_olbia",
+      "from": "olbia",
+      "to": "napoli",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "monaco_napoli",
+      "from": "monaco",
+      "to": "napoli",
+      "points": 17,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "austria_torino",
+      "from": "torino",
+      "to": "austria",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "firenze_torino",
+      "from": "torino",
+      "to": "firenze",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "catania_torino",
+      "from": "torino",
+      "to": "catania",
+      "points": 28,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "sassari_torino",
+      "from": "torino",
+      "to": "sassari",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "pescara_torino",
+      "from": "torino",
+      "to": "pescara",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "palermo_siracusa",
+      "from": "palermo",
+      "to": "siracusa",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bergamo_palermo",
+      "from": "bergamo",
+      "to": "palermo",
+      "points": 25,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bari_palermo",
+      "from": "bari",
+      "to": "palermo",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ancona_palermo",
+      "from": "ancona",
+      "to": "palermo",
+      "points": 16,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "olbia_palermo",
+      "from": "olbia",
+      "to": "palermo",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bologna_tarvisio",
+      "from": "tarvisio",
+      "to": "bologna",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bologna_lecce",
+      "from": "bologna",
+      "to": "lecce",
+      "points": 16,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bologna_cagliari",
+      "from": "bologna",
+      "to": "cagliari",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bologna_taranto",
+      "from": "bologna",
+      "to": "taranto",
+      "points": 14,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bologna_catania",
+      "from": "bologna",
+      "to": "catania",
+      "points": 22,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "genova_tarvisio",
+      "from": "genova",
+      "to": "tarvisio",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "cosenza_genova",
+      "from": "genova",
+      "to": "cosenza",
+      "points": 18,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "genova_pescara",
+      "from": "genova",
+      "to": "pescara",
+      "points": 7,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bolzano_firenze",
+      "from": "bolzano",
+      "to": "firenze",
+      "points": 6,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "firenze_foggia",
+      "from": "firenze",
+      "to": "foggia",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "agrigento_firenze",
+      "from": "firenze",
+      "to": "agrigento",
+      "points": 20,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "ancona_bari",
+      "from": "ancona",
+      "to": "bari",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "catania_taranto",
+      "from": "taranto",
+      "to": "catania",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "catania_svizzera",
+      "from": "svizzera",
+      "to": "catania",
+      "points": 27,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "francia_venezia",
+      "from": "francia",
+      "to": "venezia",
+      "points": 10,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "pisa_venezia",
+      "from": "venezia",
+      "to": "pisa",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "messina_venezia",
+      "from": "venezia",
+      "to": "messina",
+      "points": 22,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "svizzera_verona",
+      "from": "svizzera",
+      "to": "verona",
+      "points": 4,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "grosseto_verona",
+      "from": "verona",
+      "to": "grosseto",
+      "points": 5,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "salerno_verona",
+      "from": "verona",
+      "to": "salerno",
+      "points": 13,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "cosenza_ravenna",
+      "from": "ravenna",
+      "to": "cosenza",
+      "points": 15,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "monaco_ravenna",
+      "from": "monaco",
+      "to": "ravenna",
+      "points": 9,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "olbia_parma",
+      "from": "parma",
+      "to": "olbia",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "agrigento_lecce",
+      "from": "lecce",
+      "to": "agrigento",
+      "points": 15,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "croazia_grosseto",
+      "from": "grosseto",
+      "to": "croazia",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "austria_francia",
+      "from": "francia",
+      "to": "austria",
+      "points": 11,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    },
+    {
+      "id": "bolzano_croazia",
+      "from": "bolzano",
+      "to": "croazia",
+      "points": 8,
+      "deck": "regular",
+      "sets": [
+        "standard"
+      ]
+    }
+  ]
+}

@@ -597,6 +597,7 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
     let gt = "globetrotter";
     let md = "mandala";
     let ln = "largest_network";
+    let rg = "regions";
     assert_eq!(
         summary,
         vec![
@@ -609,6 +610,7 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
             row("germany", "Deutschland", 62, 5, 2, 4, &[gt], 0),
             row("germany_2017", "Passeggeri", 89, 5, 2, 4, &[gt], 0),
             row("india", "Standard", 58, 4, 2, 3, &[lp, md], 0),
+            row("italy", "Standard", 56, 5, 3, 4, &[rg], 0),
             row("legendary_asia", "Standard", 36, 4, 2, 3, &[ln], 0),
             row("nordic", "Standard", 46, 5, 2, 3, &[gt], 0),
             row("poland", "Standard", 35, 4, 2, 3, &[], 0),
@@ -691,6 +693,17 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
         serde_json::json!(["tunnel", "ferry"])
     );
     assert_eq!(by_id("nordic")["ferryAnyCards"], 3);
+    // Le carte Traghetto sono nel catalogo come configurazione, `null` dove non ci sono.
+    assert_eq!(
+        by_id("italy")["ferryCards"],
+        serde_json::json!({ "count": 10, "maxInHand": 2, "wavesPerCard": 2 })
+    );
+    assert!(by_id("nordic").get("ferryCards").is_none());
+    assert_eq!(by_id("italy")["bonuses"][0]["minRegions"], 5);
+    assert_eq!(
+        by_id("italy")["bonuses"][0]["doubleRegions"],
+        serde_json::json!(["puglia", "sardegna", "sicilia"])
+    );
     assert!(by_id("nordic").get("freeLocomotiveDraw").is_none());
     // `specialRules`: testi non vuoti per Germany (entrambe le modalità) e Poland, vuoto altrove.
     let rules = |id: &str| -> Vec<String> {
@@ -708,6 +721,7 @@ async fn rulesets_endpoint_lists_the_loaded_rulesets() {
         ("poland", 6),
         ("india", 6),
         ("legendary_asia", 7),
+        ("italy", 8),
     ] {
         let texts = rules(id);
         assert_eq!(texts.len(), count, "{id}");

@@ -16,6 +16,8 @@ function fs(playerId: string, total: number, winner: boolean): FinalScoreInfo {
     mountainPoints: 0,
     largestNetworkBonus: 0,
     largestNetwork: 0,
+    regionsBonus: 0,
+    regionNetworks: [],
     stationPoints: 0,
     total,
     winner,

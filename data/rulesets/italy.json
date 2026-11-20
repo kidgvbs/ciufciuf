@@ -1,0 +1,89 @@
+{
+  "name": "Italy",
+  "mode": "Standard",
+  "modeOrder": 0,
+  "ticketSet": "standard",
+  "map": "italy",
+  "players": {
+    "min": 2,
+    "max": 5
+  },
+  "trainsPerPlayer": 45,
+  "deck": {
+    "perColor": 12,
+    "locomotives": 14
+  },
+  "ticketDecks": [
+    "regular"
+  ],
+  "initialTickets": {
+    "dealt": [
+      {
+        "deck": "regular",
+        "count": 5
+      }
+    ],
+    "keepMin": 3
+  },
+  "ticketDraw": {
+    "deck": "regular",
+    "count": 4,
+    "keepMin": 1
+  },
+  "setupDiscards": "reshuffleBottom",
+  "routePoints": {
+    "1": 1,
+    "2": 2,
+    "3": 4,
+    "4": 7,
+    "5": 10,
+    "6": 15,
+    "7": 18
+  },
+  "ferryCards": {
+    "count": 10,
+    "maxInHand": 2,
+    "wavesPerCard": 2
+  },
+  "bonuses": [
+    {
+      "type": "regions",
+      "label": "Regioni",
+      "points": 56,
+      "minRegions": 5,
+      "table": [
+        1,
+        2,
+        4,
+        7,
+        11,
+        16,
+        22,
+        29,
+        37,
+        46,
+        56
+      ],
+      "doubleRegions": [
+        "puglia",
+        "sardegna",
+        "sicilia"
+      ]
+    }
+  ],
+  "tieBreakers": [
+    "completedTickets"
+  ],
+  "specialRules": [
+    "Da 2 a 5 giocatori, 45 treni a testa.",
+    "Rotte doppie e triple: solo in 4 o 5 giocatori si possono usare tutti i binari (ma mai due binari dello stesso gruppo dallo stesso giocatore). In 2 e 3 giocatori, preso un binario gli altri del gruppo si chiudono. Roma–Napoli ha tre binari.",
+    "Linee traghetto: tutte grigie. Gli spazi con l'onda si pagano con una locomotiva oppure con una carta Traghetto; gli altri spazi come una rotta grigia normale (carte di un solo colore, locomotive comprese). Una carta Traghetto copre 1 o 2 spazi onda a tua scelta, una locomotiva ne copre uno; le carte Traghetto non valgono sugli spazi senza onda né sulle rotte senza onde.",
+    "Carte Traghetto: azione nuova «Pesca 1 carta Traghetto», che vale un turno intero. Puoi farla solo se hai meno di 2 carte Traghetto in mano. Le carte Traghetto usate tornano nel mazzetto, che non finisce mai.",
+    "Biglietti: ricevi 5 biglietti e ne tieni almeno 3; gli scartati vengono mescolati e rimessi in fondo al mazzo. Pescandone altri ne vedi 4 e ne tieni almeno 1; quelli scartati tornano in fondo al mazzo.",
+    "Paesi confinanti: Francia, Svizzera, Austria, Croazia e Monaco sono vicoli ciechi, non uniscono le rotte che vi arrivano. Un biglietto per un Paese è completato da una qualunque tua rotta che vi entra, collegata all'altra città.",
+    "Bonus Regioni: a fine partita, per ogni rete continua delle tue rotte, conta le Regioni con almeno una città nella rete; Sardegna, Sicilia e Puglia valgono 2 se tutte le loro città sono nella stessa rete. Con meno di 5 Regioni nessun punto; da 5 in su: 5 → 1, 6 → 2, 7 → 4, 8 → 7, 9 → 11, 10 → 16, 11 → 22, 12 → 29, 13 → 37, 14 → 46, 15 o più → 56. Reti separate si sommano, ognuna col suo punteggio. Non ci sono il bonus del percorso più lungo né il Globetrotter.",
+    "Spareggio: a parità di punti vince chi ha completato più biglietti."
+  ],
+  "doubleRouteMinPlayers": 4,
+  "finalRoundIncludesTrigger": true
+}

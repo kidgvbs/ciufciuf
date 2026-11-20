@@ -28,7 +28,7 @@
   import type { Snapshot, PublicState, ErrorPayload } from '../lib/proto';
   import { PLAYER_COLOR_CSS } from '../lib/colors';
   import { passengerColorCss } from '../lib/passengers';
-  import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations, largestNetworkWinners } from '../lib/scores';
+  import { rankedScores, winnerNames, borrowedRouteLabel, rulesetHasStations, largestNetworkWinners, regionsText } from '../lib/scores';
   import { formatSavedAt } from '../lib/saves';
   import { rulesetCatalog } from '../lib/rulesets.svelte.ts';
   import { defaultRulesetId, groupByMap } from '../lib/rulesets';
@@ -486,6 +486,8 @@
   const showMandala = $derived(rulesetCatalog.hasMandala(gameMap.rulesetId));
   const showMountains = $derived(rulesetCatalog.mountainPointsPerTrain(gameMap.rulesetId) !== null);
   const showLargestNetwork = $derived(rulesetCatalog.hasLargestNetwork(gameMap.rulesetId));
+  const showRegions = $derived(rulesetCatalog.hasRegions(gameMap.rulesetId));
+  const hasFerryCards = $derived(rulesetCatalog.ferryCards(gameMap.rulesetId) !== null);
   const networkWinners = $derived(largestNetworkWinners(publicStore.finalScores ?? [], publicStore.playersSummary));
   const globetrotterIds = $derived(
     (publicStore.finalScores ?? []).filter((fs) => fs.globetrotterBonus > 0).map((fs) => fs.playerId),
@@ -762,7 +764,7 @@
         {@const winners = winnerNames(publicStore.finalScores, publicStore.playersSummary)}
         {#if winners}<div class="winner-line">🥇 Vince {winners}!</div>{/if}
         <table>
-          <thead><tr><th>Giocatore</th><th>Rotte</th>{#if showMountains}<th>⛰ Montagne</th>{/if}<th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if showMandala}<th>🪷 {rulesetCatalog.mandalaLabel(gameMap.rulesetId)}</th>{/if}{#if showLargestNetwork}<th>🧭 {rulesetCatalog.largestNetworkLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}{#if hasCountryCards}<th>Carte Paese</th>{/if}{#if hasPassengers}<th>Passeggeri</th>{/if}<th>Totale</th></tr></thead>
+          <thead><tr><th>Giocatore</th><th>Rotte</th>{#if showMountains}<th>⛰ Montagne</th>{/if}<th>Biglietti +</th><th>Biglietti −</th>{#if showLongestPath}<th>🏆 {rulesetCatalog.longestPathLabel(gameMap.rulesetId)}</th>{/if}{#if showGlobetrotter}<th>🌍 {rulesetCatalog.globetrotterLabel(gameMap.rulesetId)}</th>{/if}{#if showMandala}<th>🪷 {rulesetCatalog.mandalaLabel(gameMap.rulesetId)}</th>{/if}{#if showLargestNetwork}<th>🧭 {rulesetCatalog.largestNetworkLabel(gameMap.rulesetId)}</th>{/if}{#if showRegions}<th>🗺 {rulesetCatalog.regionsLabel(gameMap.rulesetId)}</th>{/if}{#if hasStations}<th>Stazioni</th>{/if}{#if hasCountryCards}<th>Carte Paese</th>{/if}{#if hasPassengers}<th>Passeggeri</th>{/if}<th>Totale</th></tr></thead>
           <tbody>
             {#each rankedScores(publicStore.finalScores) as fs}
               {@const p = publicStore.playersSummary.find(ps => ps.player_id === fs.playerId)}
@@ -776,6 +778,7 @@
                 {#if showGlobetrotter}<td>{fs.globetrotterBonus > 0 ? `🌍 +${fs.globetrotterBonus}` : '0'}</td>{/if}
                 {#if showMandala}<td>{fs.mandalaBonus > 0 ? `🪷 +${fs.mandalaBonus}` : '0'}</td>{/if}
                 {#if showLargestNetwork}<td>{fs.largestNetworkBonus > 0 ? `🧭 +${fs.largestNetworkBonus}` : '0'}</td>{/if}
+                {#if showRegions}<td>{regionsText(fs.regionsBonus, fs.regionNetworks) ?? '0'}</td>{/if}
                 {#if hasStations}<td>{fs.stationPoints > 0 ? `+${fs.stationPoints}` : '0'}</td>{/if}
                 {#if hasCountryCards}<td>{fs.countryPoints > 0 ? `+${fs.countryPoints}` : '0'}</td>{/if}
                 {#if hasPassengers}<td>{fs.passengerPoints > 0 ? `+${fs.passengerPoints}` : '0'}</td>{/if}
@@ -842,7 +845,13 @@
               {#if isCurrentPlayer(p.player_id)}<span class="turn-tag">turno</span>{/if}
             </div>
             <div class="score-line"><span class="score-num">{p.score}</span><span class="score-label">punti</span></div>
-            <div class="player-stats"><span>🚂 {p.trains_remaining}</span>{#if hasStations}<span title="Stazioni rimaste">🏠 {p.stations_remaining}</span>{/if}<span>🃏 {p.cards_hand_count}</span><span>🎫 {p.tickets_count}</span></div>
+            <div class="player-stats"><span>🚂 {p.trains_remaining}</span>{#if hasStations}<span title="Stazioni rimaste">🏠 {p.stations_remaining}</span>{/if}<span>🃏 {p.cards_hand_count}</span>{#if hasFerryCards}<span title="Carte Traghetto in mano">🌊 {p.ferry_cards}</span>{/if}<span>🎫 {p.tickets_count}</span></div>
+            {#if showRegions}
+              {@const live = regionsText(p.regions_bonus, p.region_networks)}
+              {#if live}
+                <div class="player-extras" title="Regioni collegate (reti e bonus attuale)">🗺 {rulesetCatalog.regionsLabel(gameMap.rulesetId)} {live}</div>
+              {/if}
+            {/if}
             {#if hasPassengers && p.passengers.length > 0}
               <div class="player-extras" title="Passeggeri raccolti">
                 {#each p.passengers as pc (pc.color)}

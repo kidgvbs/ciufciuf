@@ -145,6 +145,7 @@ fn try_claim(eng: &mut Engine, pi: usize, route_id: &str) -> Result<Vec<GameEven
         route_id: route_id.into(),
         cards_discarded: cards,
         passengers: Default::default(),
+        ferry_cards: 0,
     })
 }
 
@@ -259,6 +260,7 @@ fn claim_is_refused_when_the_reserve_does_not_cover_the_symbols() {
         route_id: "b_c".into(),
         cards_discarded: vec![CardColor::Blue; 3],
         passengers: Default::default(),
+        ferry_cards: 0,
     });
     assert!(matches!(
         refused,
@@ -277,6 +279,7 @@ fn claim_is_refused_when_the_reserve_does_not_cover_the_symbols() {
             route_id: "b_c".into(),
             cards_discarded: vec![CardColor::Blue; 3],
             passengers: Default::default(),
+            ferry_cards: 0,
         })
         .unwrap();
     assert!(

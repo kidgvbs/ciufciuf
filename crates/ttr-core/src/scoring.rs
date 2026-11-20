@@ -6,7 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::ops::Bound;
 
 use crate::types::{
-    CityId, ClaimedRouteInfo, Route, RouteId, TicketDef, TicketResult, points_to_score,
+    CityId, ClaimedRouteInfo, MapData, Route, RouteId, Ruleset, TicketDef, TicketResult,
+    points_to_score,
 };
 
 /// Nome del nodo di un estremo di rotta: la città stessa, oppure per un Paese il nodo
@@ -1126,6 +1127,142 @@ pub fn largest_network_winners(sizes: &[u32]) -> Vec<usize> {
         .filter(|&(_, &size)| size == max)
         .map(|(i, _)| i)
         .collect()
+}
+
+// ── Bonus Regioni (Italy) ────────────────────────────────────────────
+
+/// Regole del bonus `regions` risolte dal ruleset e dalla mappa: ogni rete distinta di rotte
+/// proprie vale per il numero di Regioni con almeno una città nella rete, più una per ogni
+/// Regione doppia (`doubleRegions`) con tutte le sue città nella rete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RegionRules {
+    min_regions: u32,
+    table: Vec<u32>,
+    /// Regione di ogni città che ne ha una (i Paesi non ne hanno).
+    city_region: BTreeMap<CityId, String>,
+    /// Per ogni Regione doppia, tutte le sue città.
+    double_region_cities: BTreeMap<String, BTreeSet<CityId>>,
+}
+
+/// Reti di rotte di un giocatore e punti del bonus Regioni.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RegionStanding {
+    /// Regioni contate in ogni rete di rotte proprie, in ordine decrescente.
+    pub networks: Vec<u32>,
+    /// Punti del bonus, sommati sulle reti.
+    pub bonus: i32,
+}
+
+impl RegionRules {
+    /// Regole del bonus `regions` del ruleset; `None` se non lo prevede.
+    #[must_use]
+    pub fn new(ruleset: &Ruleset, map: &MapData) -> Option<Self> {
+        let bonus = ruleset.regions_bonus()?;
+        let city_region: BTreeMap<CityId, String> = map
+            .cities
+            .iter()
+            .filter_map(|c| Some((c.id.clone(), c.region.clone()?)))
+            .collect();
+        let double_region_cities = bonus
+            .double_regions
+            .iter()
+            .map(|region| {
+                let cities = city_region
+                    .iter()
+                    .filter(|(_, r)| *r == region)
+                    .map(|(city, _)| city.clone())
+                    .collect();
+                (region.clone(), cities)
+            })
+            .collect();
+        Some(Self {
+            min_regions: bonus.min_regions.unwrap_or(1),
+            table: bonus.table.clone(),
+            city_region,
+            double_region_cities,
+        })
+    }
+
+    /// Regioni contate in ogni rete delle rotte `claimed` del giocatore, in ordine
+    /// decrescente. Le reti sono le componenti delle sue sole rotte (non quelle in prestito
+    /// dalle stazioni); gli estremi Paese sono nodi privati per rotta, quindi non uniscono
+    /// reti e non hanno una Regione.
+    #[must_use]
+    pub fn network_counts(
+        &self,
+        claimed: &[ClaimedRouteInfo],
+        routes_map: &BTreeMap<RouteId, Route>,
+        countries: &BTreeSet<CityId>,
+    ) -> Vec<u32> {
+        let mut uf = UnionFind::new();
+        // Nodo → città che rappresenta.
+        let mut nodes: BTreeMap<String, &str> = BTreeMap::new();
+        for route in claimed.iter().filter_map(|c| routes_map.get(&c.route_id)) {
+            let from = route_node(countries, &route.id, &route.from);
+            let to = route_node(countries, &route.id, &route.to);
+            uf.union(&from, &to);
+            nodes.insert(from, &route.from);
+            nodes.insert(to, &route.to);
+        }
+        let mut components: BTreeMap<String, BTreeSet<&str>> = BTreeMap::new();
+        for (node, city) in &nodes {
+            let component = components.entry(uf.find(node)).or_default();
+            if !countries.contains(*city) {
+                component.insert(city);
+            }
+        }
+        let mut counts: Vec<u32> = components
+            .values()
+            .map(|cities| {
+                let regions: BTreeSet<&str> = cities
+                    .iter()
+                    .filter_map(|city| self.city_region.get(*city))
+                    .map(String::as_str)
+                    .collect();
+                let complete_doubles = self
+                    .double_region_cities
+                    .values()
+                    .filter(|all| all.iter().all(|city| cities.contains(city.as_str())))
+                    .count();
+                u32::try_from(regions.len() + complete_doubles).unwrap_or(u32::MAX)
+            })
+            .collect();
+        counts.sort_unstable_by(|a, b| b.cmp(a));
+        counts
+    }
+
+    /// Punti di una rete con `regions` Regioni: 0 sotto `minRegions`, poi
+    /// `table[regions - minRegions]` saturato sull'ultimo valore.
+    #[must_use]
+    pub fn points(&self, regions: u32) -> u32 {
+        let Some(index) = regions.checked_sub(self.min_regions) else {
+            return 0;
+        };
+        let index = usize::try_from(index).unwrap_or(usize::MAX);
+        self.table
+            .get(index)
+            .or_else(|| self.table.last())
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// Reti e bonus del giocatore con le rotte `claimed`.
+    #[must_use]
+    pub fn standing(
+        &self,
+        claimed: &[ClaimedRouteInfo],
+        routes_map: &BTreeMap<RouteId, Route>,
+        countries: &BTreeSet<CityId>,
+    ) -> RegionStanding {
+        let networks = self.network_counts(claimed, routes_map, countries);
+        let bonus = networks
+            .iter()
+            .fold(0u32, |acc, &k| acc.saturating_add(self.points(k)));
+        RegionStanding {
+            networks,
+            bonus: points_to_score(bonus),
+        }
+    }
 }
 
 // ── Final scoring ────────────────────────────────────────────────────
