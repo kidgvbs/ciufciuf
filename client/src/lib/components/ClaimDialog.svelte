@@ -32,6 +32,7 @@
     type RulesetPayment,
   } from '../payment';
   import TrainCard from './TrainCard.svelte';
+  import CardSymbol from './CardSymbol.svelte';
 
   let {
     route,
@@ -201,7 +202,9 @@
     <header class="cd-head">
       <h2 id="claim-title">{cityName(route.from)} → {cityName(route.to)}</h2>
       <p class="cd-meta">
-        <span class="cd-chip" style="background:{routeCard ? CARD_COLOR_CSS[routeCard] : '#9aa0a6'}" aria-hidden="true"></span>
+        <span class="cd-chip" style="background:{routeCard ? CARD_COLOR_CSS[routeCard] : '#9aa0a6'}" aria-hidden="true">
+          {#if routeCard}<CardSymbol color={routeCard} halo />{/if}
+        </span>
         {routeCard ? CARD_COLOR_NAME[routeCard] : 'Grigia'} · {route.len} 🚂 · ⭐{routePoints(route.len)}
       </p>
     </header>
@@ -425,10 +428,15 @@
     color: var(--chrome-muted);
   }
   .cd-chip {
-    width: 14px;
-    height: 14px;
+    width: 16px;
+    height: 16px;
     border-radius: 4px;
     border: 1px solid rgba(255, 255, 255, 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #1d150c;
   }
   .cd-note {
     margin: 0;

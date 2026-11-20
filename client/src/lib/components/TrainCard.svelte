@@ -1,12 +1,14 @@
 <script lang="ts">
   // Carta treno disegnata da noi: cornice pergamena, banda colore,
-  // silhouette TrainIcon, nome colore (testo vero, a11y) e badge conteggio.
+  // silhouette TrainIcon, nome colore (testo vero, a11y), simbolo del colore
+  // (daltonici) e conteggio nell'indice d'angolo.
   //
   // Riutilizzata da: mano a ventaglio del controller, face-up (controller e
   // TV, con `badge` = numero posizione), pannello pagamento.
   import type { CardColor } from '../proto';
   import { CARD_COLOR_CSS, CARD_COLOR_NAME } from '../colors';
   import TrainIcon from './TrainIcon.svelte';
+  import CardSymbol from './CardSymbol.svelte';
 
   let {
     color,
@@ -48,8 +50,12 @@
     <TrainIcon {color} {uid} />
   </div>
   <div class="card-name">{CARD_COLOR_NAME[color]}</div>
-  {#if count !== null}
-    <span class="count-badge" aria-label="{count} carte">{count}×</span>
+  {#if count !== null || color !== 'LOCOMOTIVE'}
+    <!-- Indice d'angolo come nelle carte da gioco: simbolo del colore + conteggio -->
+    <span class="corner-index">
+      <CardSymbol {color} />
+      {#if count !== null}<span aria-label="{count} carte">{count}×</span>{/if}
+    </span>
   {/if}
   {#if badge !== null}
     <span class="pos-badge">{badge}</span>
@@ -101,10 +107,13 @@
   }
   /* In alto a SINISTRA: nel ventaglio ogni carta copre il lato destro della
      precedente, quindi solo l'angolo sinistro resta sempre visibile. */
-  .count-badge {
+  .corner-index {
     position: absolute;
     top: 3%;
     left: 4%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.12rem;
     background: var(--board-ink);
     color: var(--board-1);
     font-size: 0.8rem;
@@ -115,14 +124,15 @@
     border: 1px solid rgba(251, 246, 233, 0.6);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
-  .small .count-badge {
+  .small .corner-index {
     font-size: 0.65rem;
+    padding: 0.16rem 0.24rem;
   }
   .pos-badge {
     position: absolute;
     bottom: 4%;
     right: 6%;
-    /* Pill scura come il count-badge: contrasto ≥4.5:1
+    /* Pill scura come l'indice d'angolo: contrasto ≥4.5:1
        su qualunque banda colore. */
     background: var(--board-ink);
     color: var(--board-1);

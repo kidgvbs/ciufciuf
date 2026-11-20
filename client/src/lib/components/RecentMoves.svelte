@@ -5,6 +5,7 @@
   import type { RecentMove } from '../proto';
   import { CARD_COLOR_CSS, CARD_COLOR_NAME, PLAYER_COLOR_CSS } from '../colors';
   import { describeMove, latestMoves, type MoveContext } from '../recent-moves';
+  import CardSymbol from './CardSymbol.svelte';
 
   let { moves, players, map }: {
     moves: readonly RecentMove[];
@@ -27,7 +28,7 @@
             {#if l.cards}
               {#each l.cards as c, j (j)}
                 <span class="chip" class:raises={c.raises} class:neutral={!c.raises}
-                  style="--chip:{CARD_COLOR_CSS[c.color]}" title={CARD_COLOR_NAME[c.color]}>{c.color === 'LOCOMOTIVE' ? '★' : ''}</span>
+                  style="--chip:{CARD_COLOR_CSS[c.color]}" title={CARD_COLOR_NAME[c.color]}>{#if c.color === 'LOCOMOTIVE'}★{:else}<CardSymbol color={c.color} halo />{/if}</span>
               {/each}
               {l.suffix}
             {/if}
@@ -99,6 +100,10 @@
     line-height: 14px;
     text-align: center;
     vertical-align: middle;
+  }
+  .chip :global(.card-symbol) {
+    color: #1d150c;
+    vertical-align: -0.1em;
   }
   .chip.raises {
     outline: 2px solid var(--gold);

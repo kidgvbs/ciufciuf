@@ -31,6 +31,8 @@
   import { publicStore } from '../stores.svelte.ts';
   import { PLAYER_COLOR_CSS } from '../colors';
   import { passengerColorCss } from '../passengers';
+  import { cardSymbolPath } from '../card-symbols';
+  import { routeColorToCard } from '../payment';
   import * as MapUtils from '../map-utils';
   import type { MapData as MapDataType, MapLayout, Point, RouteData } from '../map-utils';
   import { flagShapes } from '../flags';
@@ -766,6 +768,8 @@
             {@const tunnel = g.route.tunnel === true}
             {@const ferries = g.route.ferries ?? 0}
             {@const mountains = g.route.mountains ?? 0}
+            {@const routeCard = routeColorToCard(g.route.color)}
+            {@const symbol = routeCard ? cardSymbolPath(routeCard) : null}
             {#each g.slots as s, i}
               <g transform="translate({s.x} {s.y}) rotate({s.deg})">
                 <rect x={-g.slotL / 2} y={-g.sw / 2} width={g.slotL} height={g.sw} rx={g.sw * 0.22}
@@ -811,6 +815,14 @@
                     <path d="M {-h} {-h} L {h} {h} M {-h} {h} L {h} {-h}" fill="none"
                       stroke="#1d150c" stroke-width={2.8 * swFactor} stroke-linecap="round" />
                   </g>
+                {/if}
+                {#if symbol && i >= ferries && i < g.slots.length - mountains}
+                  <!-- Simbolo del colore (daltonici), sempre dritto: tratto scuro con alone chiaro -->
+                  {@const k = (Math.min(g.slotL, g.sw) * 0.78) / 24}
+                  <path d={symbol} class="color-symbol" pointer-events="none"
+                    transform="rotate({-s.deg}) scale({k}) translate(-12 -12)"
+                    fill="#1d150c" stroke="#fdf7e6" stroke-width="3"
+                    stroke-linejoin="round" paint-order="stroke" />
                 {/if}
               </g>
             {/each}
